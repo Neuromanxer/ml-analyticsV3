@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Insights - Visualization Gallery</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #0099ff;
+            --primary-dark: #0066cc;
+            --accent-color: #e0f0ff;
+            --text-color: #333333;
+            --light-gray: #f4f6f9;
+            --medium-gray: #ddd;
+            --dark-gray: #888;
+            --danger-color: #e74c3c;
+            --success-color: #2ecc71;
+            --bg-color: #e6f7ff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 30px 25px;
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 2rem;
+            color: #2196F3;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #2196F3;
+            font-weight: 700;
+            font-size: 1.8rem;
+            letter-spacing: -0.5px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+            padding: 0 25px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #9E9E9E;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+        }
+        
+        .sidebar-menu-item {
+            margin-bottom: 8px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #616161;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-decoration: none;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(33, 150, 243, 0.1);
+            color: #2196F3;
+            transform: translateX(4px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 14px;
+            width: 22px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 25px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #757575;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 18px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 14px;
+            font-size: 1.1rem;
+        }
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* Page Header */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            background-color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .page-header h1 {
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+
+        .search-box {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px 10px 40px;
+            border: 1px solid var(--medium-gray);
+            border-radius: 30px;
+            font-size: 14px;
+            transition: border 0.3s;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--dark-gray);
+        }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            background-color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-group label {
+            margin-right: 10px;
+            font-weight: 500;
+            color: #444;
+        }
+
+        .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid var(--medium-gray);
+            border-radius: 5px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        /* Gallery Grid */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        .gallery-item {
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .gallery-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-bottom: 1px solid var(--medium-gray);
+        }
+
+        .gallery-content {
+            padding: 15px;
+        }
+
+        .gallery-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .gallery-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--dark-gray);
+            margin-bottom: 10px;
+        }
+
+        .gallery-dataset {
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .gallery-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+
+        .gallery-tag {
+            background-color: var(--accent-color);
+            color: var(--primary-color);
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
+        .gallery-actions {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid var(--medium-gray);
+            padding-top: 12px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn i {
+            margin-right: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-outline {
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            background-color: transparent;
+        }
+
+        .btn-outline:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-outline-danger {
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+            background-color: transparent;
+        }
+
+        .btn-outline-danger:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+            gap: 5px;
+        }
+
+        .page-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 35px;
+            height: 35px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .page-item:hover {
+            background-color: var(--accent-color);
+        }
+
+        .page-item.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        /* Loader */
+        .loader {
+            display: none;
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--accent-color);
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Empty state */
+        .no-visualizations {
+            text-align: center;
+            padding: 50px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .no-visualizations i {
+            font-size: 50px;
+            color: var(--medium-gray);
+            margin-bottom: 20px;
+        }
+
+        .no-visualizations h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .no-visualizations p {
+            color: var(--dark-gray);
+            margin-bottom: 20px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 900px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .modal-header {
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 20px;
+        }
+
+        .modal-header .modal-title {
+            color: var(--primary-dark);
+            font-weight: 600;
+        }
+
+        .visualization-large {
+            width: 100%;
+            max-height: 500px;
+            object-fit: contain;
+            margin-bottom: 20px;
+        }
+
+        .visualization-info {
+            margin-bottom: 20px;
+        }
+
+        .viz-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .viz-detail-row {
+            display: flex;
+            margin-bottom: 10px;
+        }
+
+        .viz-detail-label {
+            font-weight: 500;
+            width: 100px;
+            color: #555;
+        }
+
+        /* Messages */
+        .message {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .error-message {
+            background-color: rgba(231, 76, 60, 0.1);
+            color: var(--danger-color);
+        }
+
+        .success-message {
+            background-color: rgba(46, 204, 113, 0.1);
+            color: var(--success-color);
+        }
+        .variant-tabs button {
+        margin-right: 5px;
+        padding: 6px 10px;
+        border: none;
+        background: #eee;
+        cursor: pointer;
+        border-radius: 4px;
+        }
+
+        .variant-tabs button.active {
+        background-color: #444;
+        color: white;
+        font-weight: bold;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .gallery-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .search-box {
+                width: 100%;
+                margin-top: 10px;
+            }
+            
+            .filters {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .filter-group {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            
+            .filter-group select {
+                width: 100%;
+            }
+            
+            .viz-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="wizard.html">
+                      <i class="fas fa-rocket"></i>
+                      Run New Experiment
+                    </a>
+                  </li>
+                <li class="sidebar-menu-item">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item active">
+                    <a href="gallery.html">
+                        <i class="fas fa-project-diagram"></i>
+                        Gallery
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="datasets.html">
+                        <i class="fas fa-database"></i>
+                        Datasets
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="pricing.html">
+                        <i class="fas fa-dollar-sign"></i>
+                        Pricing
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="contact.html">
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="page-header">
+            <h1>Visualization Gallery</h1>
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="search-input" placeholder="Search visualizations...">
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="dataset-filter">Dataset:</label>
+                <select id="dataset-filter">
+                    <option value="all">All Datasets</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="type-filter">Type:</label>
+                <select id="type-filter">
+                    <option value="all">All Types</option>
+                    <option value="regression">Regression</option>
+                    <option value="classification">Classification</option>
+                    <option value="clustering">Clustering</option>
+                    <option value="feature-impact">Feature Impact</option>
+                    <option value="counterfactual">Counterfactual</option>
+                    <option value="segments">Segments</option>
+                    <option value="risk">Risk Analysis</option>
+                    <option value="decision-paths">Decision Paths</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="date-filter">Date:</label>
+                <select id="date-filter">
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="message-container"></div>
+        <div id="loader" class="loader"></div>
+
+        <div id="gallery-container" class="gallery-grid">
+            <!-- Gallery items will be populated here -->
+        </div>
+        
+        <div id="no-visualizations" class="no-visualizations" style="display: none;">
+            <i class="fas fa-chart-area"></i>
+            <h2>No visualizations found</h2>
+            <p>Create your first visualization to see it appear here</p>
+            <button class="btn btn-primary" onclick="window.location.href='dashboard.html'">Create Visualization</button>
+        </div>
+
+        <div class="pagination" id="pagination">
+            <!-- Pagination will be populated here -->
+        </div>
+    </div>
+    <div id="modalVariantTabs" class="variant-tabs" style="margin-bottom: 10px;"></div>
+
+    <!-- Visualization Detail Modal -->
+    <div id="visualization-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" id="modal-close">&times;</span>
+            <div class="modal-header">
+                <h2 id="modal-title">Visualization Details</h2>
+            </div>
+            <img id="modal-image" class="visualization-large" src="" alt="Visualization">
+            <div class="visualization-info">
+                <div class="viz-details">
+                    <div class="viz-detail-row">
+                        <div class="viz-detail-label">Dataset:</div>
+                        <div id="modal-dataset">--</div>
+                    </div>
+                    <div class="viz-detail-row">
+                        <div class="viz-detail-label">Type:</div>
+                        <div id="modal-type">--</div>
+                    </div>
+                    <div class="viz-detail-row">
+                        <div class="viz-detail-label">Created:</div>
+                        <div id="modal-date">--</div>
+                    </div>
+                    <div class="viz-detail-row">
+                        <div class="viz-detail-label">Target:</div>
+                        <div id="modal-target">--</div>
+                    </div>
+                    <div class="viz-detail-row">
+                        <div class="viz-detail-label">Parameters:</div>
+                        <div id="modal-params">--</div>
+                    </div>
+                </div>
+            </div>
+            <div class="gallery-actions">
+                <button class="btn btn-primary" id="btn-download">
+                    <i class="fas fa-download"></i> Download
+                </button>
+                <button class="btn btn-outline-danger" id="btn-delete">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+        <script>
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
+// DOM refs
+const galleryContainer     = document.getElementById('gallery-container');
+const noVisualizationsDiv  = document.getElementById('no-visualizations');
+const loaderElement        = document.getElementById('loader');
+const datasetFilter        = document.getElementById('dataset-filter');
+const typeFilter           = document.getElementById('type-filter');
+const dateFilter           = document.getElementById('date-filter');
+const searchInput          = document.getElementById('search-input');
+const paginationElement    = document.getElementById('pagination');
+const userInitials         = document.getElementById('user-initials');
+const userName             = document.getElementById('user-name');
+const messageContainer     = document.getElementById('message-container');
+
+// Modal refs
+const visualizationModal   = document.getElementById('visualization-modal');
+const modalClose           = document.getElementById('modal-close');
+const modalTitle           = document.getElementById('modal-title');
+const modalImage           = document.getElementById('modal-image');
+const modalDataset         = document.getElementById('modal-dataset');
+const modalType            = document.getElementById('modal-type');
+const modalDate            = document.getElementById('modal-date');
+const modalParams          = document.getElementById('modal-params');
+const btnDownload          = document.getElementById('btn-download');
+const btnDelete            = document.getElementById('btn-delete');
+
+const itemsPerPage        = 12;
+let allVisualizations     = [];
+let filteredVisualizations= [];
+let currentVisualizations = [];
+let currentPage = 1;
+
+
+
+// Helper function to handle authentication errors
+function handleAuthError(error) {
+  console.error('Authentication error:', error);
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html?next=gallery.html&reason=Session expired, please log in again';
+}
+
+// Helper function to make authenticated requests
+async function authenticatedFetch(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    throw new Error('No token available');
+  }
+
+  const defaultOptions = {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  };
+
+  const response = await fetch(url, { ...options, headers: defaultOptions.headers });
+  
+  if (response.status === 401) {
+    handleAuthError(new Error('Token expired or invalid'));
+    return;
+  }
+  
+  return response;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    // no token, bail out right away
+    window.location.href = 'login.html?next=gallery.html&reason=Please log in';
+    return;
+  }
+
+  // Try to get user_id from localStorage
+  let userId = localStorage.getItem('user_id');
+
+  // If we don't have it yet, hit the /me endpoint
+  if (!userId) {
+    try {
+      const resp = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+      if (!resp || !resp.ok) {
+        throw new Error('Profile fetch failed');
+      }
+      const profile = await resp.json();
+      userId = profile.id;
+      localStorage.setItem('user_id', userId);
+      // also stash the rest of the user for setUserInfo
+      localStorage.setItem('user', JSON.stringify(profile));
+    } catch (err) {
+      console.error('Could not fetch profile:', err);
+      handleAuthError(err);
+      return;
+    }
+  }
+
+  // If we made it this far, we have a valid token & user_id
+  setUserInfo();
+  loadVisualizations();
+
+  // wire up UI
+  datasetFilter .addEventListener('change', applyFilters);
+  typeFilter    .addEventListener('change', applyFilters);
+  dateFilter    .addEventListener('change', applyFilters);
+  searchInput   .addEventListener('input',   applyFilters);
+  modalClose    .addEventListener('click',    () => visualizationModal.style.display = 'none');
+  window        .addEventListener('click',    e => { if (e.target===visualizationModal) visualizationModal.style.display='none'; });
+  btnDownload   .addEventListener('click',    handleDownload);
+  btnDelete     .addEventListener('click',    handleDelete);
+});
+
+// Sidebar highlighting (fixed variable name)
+const menuItems = document.querySelectorAll('.sidebar-menu-item');
+const currentPageName = 'gallery.html'; // or however you determine current page
+menuItems.forEach(item => {
+  const a = item.querySelector('a');
+  if (a && a.getAttribute('href').toLowerCase().includes('gallery')) {
+    item.classList.add('active');
+  }
+});
+
+const maxPageButtons = 5; 
+let currentPageNum = 1;
+
+function renderPagination() {
+  const totalPages = Math.ceil(filteredVisualizations.length / itemsPerPage);
+  paginationElement.innerHTML = "";
+
+  if (totalPages <= 1) return;
+
+  // helper to build a button
+  function makeBtn(label, page, disabled=false, active=false) {
+    const btn = document.createElement('div');
+    btn.className = ['page-item',
+                     disabled ? 'disabled' : '',
+                     active   ? 'active'   : '']
+                     .filter(Boolean).join(' ');
+    btn.textContent = label;
+    if (!disabled && !active) {
+      btn.addEventListener('click', () => {
+        currentPageNum = page;
+        renderVisualizations();
+        renderPagination();
+      });
+    }
+    return btn;
+  }
+
+  // Prev
+  paginationElement.appendChild(
+    makeBtn('‹ Prev', currentPageNum - 1, currentPageNum === 1)
+  );
+
+  // compute window
+  const half = Math.floor(maxPageButtons / 2);
+  let startPage = Math.max(1, currentPageNum - half);
+  let endPage = startPage + maxPageButtons - 1;
+  if (endPage > totalPages) {
+    endPage = totalPages;
+    startPage = Math.max(1, endPage - maxPageButtons + 1);
+  }
+
+  // numbered
+  for (let i = startPage; i <= endPage; i++) {
+    paginationElement.appendChild(
+      makeBtn(i, i, false, i === currentPageNum)
+    );
+  }
+
+  // Next
+  paginationElement.appendChild(
+    makeBtn('Next ›', currentPageNum + 1, currentPageNum === totalPages)
+  );
+}
+
+function setUserInfo() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (userName)     userName.textContent     = user.name || 'Data Scientist';
+  if (userInitials && user.name) {
+    const parts    = user.name.split(' ');
+    const initials = parts.length>1
+      ? parts[0][0] + parts[parts.length-1][0]
+      : parts[0].slice(0,2);
+    userInitials.textContent = initials.toUpperCase();
+  }
+}
+
+async function loadVisualizations() {
+  showLoader();
+  try {
+    const response = await authenticatedFetch(`${API_BASE_URL}/visualizations`);
+    if (!response || !response.ok) {
+      throw new Error("Failed to load visualizations");
+    }
+    const data = await response.json();
+    hideLoader();
+    allVisualizations = data;    // each object already has .thumbnailData & .imageData
+    populateDatasetOptions(allVisualizations);
+    applyFilters();
+  } catch (err) {
+    hideLoader();
+    console.error(err);
+    if (err.message.includes('Token') || err.message.includes('401')) {
+      handleAuthError(err);
+    } else {
+      showMessage("Failed to load visualizations", "error");
+      galleryContainer.style.display    = "none";
+      noVisualizationsDiv.style.display = "block";
+      paginationElement.style.display   = "none";
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 4) filter down allVisualizations → filteredVisualizations → render()
+// ──────────────────────────────────────────────────────────────────────────────
+
+function applyFilters() {
+  const ds = datasetFilter.value, tp = typeFilter.value, dv = dateFilter.value;
+  const sv = searchInput.value.toLowerCase();
+
+  filteredVisualizations = allVisualizations.filter(viz => {
+    if (ds!=='all' && viz.dataset!==ds) return false;
+    if (tp!=='all' && viz.type   !==tp) return false;
+
+    if (dv!=='all') {
+      const vizDate = new Date(viz.created_at), today = new Date();
+      if (dv==='today' && vizDate.toDateString()!==today.toDateString()) return false;
+      if (dv==='week') {
+        const start = new Date(today); start.setDate(today.getDate()-today.getDay());
+        if (vizDate<start) return false;
+      }
+      if (dv==='month') {
+        const start = new Date(today.getFullYear(),today.getMonth(),1);
+        if (vizDate<start) return false;
+      }
+    }
+
+    if (sv) {
+      const inTitle   = (viz.title   || '').toLowerCase().includes(sv);
+      const inDataset = viz.dataset.toLowerCase().includes(sv);
+      const inType    = viz.type   .toLowerCase().includes(sv);
+      if (!inTitle && !inDataset && !inType) return false;
+    }
+    return true;
+  });
+
+  currentPageNum = 1;
+  renderVisualizations();
+  renderPagination();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 5) draw the page‐slice of thumbnails, using Base64 first
+// ──────────────────────────────────────────────────────────────────────────────
+function renderVisualizations() {
+  galleryContainer.innerHTML = "";
+
+  if (!filteredVisualizations.length) {
+    galleryContainer.style.display    = "none";
+    noVisualizationsDiv.style.display = "block";
+    paginationElement.style.display   = "none";
+    return;
+  }
+
+  galleryContainer.style.display    = "grid";
+  noVisualizationsDiv.style.display = "none";
+  paginationElement.style.display   = "flex";
+
+  const start     = (currentPageNum - 1) * itemsPerPage;
+  const pageItems = filteredVisualizations.slice(start, start + itemsPerPage);
+
+  pageItems.forEach(viz => {
+    const thumbSrc = viz.thumbnailData;   // **always** a data:image/png;base64,… URL
+
+    const card = document.createElement("div");
+    card.className = "gallery-item";
+    card.dataset.id = viz.id;
+    
+    // Format date
+    const date = new Date(viz.created_at);
+    const formattedDate = date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+    
+    // Get visualization type icon
+    const typeIcon = getTypeIcon(viz.type);
+    
+    card.innerHTML = `
+      <div class="gallery-thumbnail">
+        <img src="${thumbSrc}" alt="${viz.dataset}" style="max-width:100%;" />
+      </div>
+      <div class="gallery-info">
+        <h3>${viz.title || viz.dataset}</h3>
+        <div class="gallery-meta">
+          <span><i class="far fa-calendar-alt"></i> ${formattedDate}</span>
+          <span><i class="fas ${typeIcon}"></i> ${viz.type}</span>
+        </div>
+        <div class="gallery-dataset">
+          <i class="fas fa-database"></i> ${viz.dataset}
+        </div>
+      </div>
+    `;
+    card.addEventListener("click", () => openVisualization(viz.id));
+    galleryContainer.appendChild(card);
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 6) full‐size modal from Base64 imageData
+// ──────────────────────────────────────────────────────────────────────────────
+function openVisualization(id) {
+  const viz = allVisualizations.find(v => v.id === id);
+  if (!viz) return;
+
+  modalTitle.textContent = viz.title || viz.dataset;
+  modalDataset.textContent = viz.dataset;
+  modalType.textContent = viz.type;
+  modalDate.textContent = new Date(viz.created_at).toLocaleString();
+
+  modalParams.innerHTML = "";
+  Object.entries(viz.parameters || {}).forEach(([k, v]) => {
+    const d = document.createElement("div");
+    d.innerHTML = `<strong>${k}</strong>: ${v}`;
+    modalParams.appendChild(d);
+  });
+
+  // 🧠 NEW: Visualization variants (dictionary-style)
+  const variants = viz.visualizations || {};
+  const variantContainer = document.getElementById("modalVariantTabs");
+  variantContainer.innerHTML = ""; // Clear any previous buttons
+
+  let defaultImageSet = false;
+  Object.entries(variants).forEach(([key, base64], index) => {
+    if (!base64) return; // Skip empty ones
+    const btn = document.createElement("button");
+    btn.textContent = key.replace(/_/g, " ").toUpperCase();
+    btn.classList.add("variant-tab-btn");
+    if (!defaultImageSet) {
+      modalImage.src = base64;
+      btn.classList.add("active");
+      defaultImageSet = true;
+    }
+
+    btn.addEventListener("click", () => {
+      modalImage.src = base64;
+      // toggle active class
+      variantContainer.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+
+    variantContainer.appendChild(btn);
+  });
+
+  // Fallback if no variants exist
+  if (!defaultImageSet) {
+    modalImage.src = viz.imageData || "";
+  }
+
+  // Button actions
+  btnDownload.dataset.id = viz.id;
+  btnDelete.dataset.id = viz.id;
+
+  visualizationModal.style.display = "flex";
+}
+
+
+function populateDatasetOptions(visualizations) {
+    // Get unique datasets
+    const datasets = [...new Set(visualizations.map(viz => viz.dataset))].sort();
+    
+    // Clear existing options except the first one
+    while (datasetFilter.options.length > 1) {
+        datasetFilter.remove(1);
+    }
+    
+    // Add dataset options
+    datasets.forEach(dataset => {
+        const option = document.createElement('option');
+        option.value = dataset;
+        option.textContent = dataset;
+        datasetFilter.appendChild(option);
+    });
+}
+
+function getTypeIcon(type) {
+    switch (type) {
+        case 'regression':
+            return 'fa-chart-line';
+        case 'classification':
+            return 'fa-project-diagram';
+        case 'clustering':
+            return 'fa-braille';
+        case 'feature-impact':
+            return 'fa-weight-hanging';
+        case 'counterfactual':
+            return 'fa-exchange-alt';
+        case 'segments':
+            return 'fa-layer-group';
+        case 'risk':
+            return 'fa-exclamation-triangle';
+        case 'decision-paths':
+            return 'fa-sitemap';
+        default:
+            return 'fa-chart-bar';
+    }
+}
+
+// Show loader
+function showLoader() {
+    loaderElement.style.display = 'block';
+}
+
+// Hide loader
+function hideLoader() {
+    loaderElement.style.display = 'none';
+}
+
+// Handle download
+async function handleDownload() {
+    const vizId = this.dataset.id;
+
+    if (!vizId) {
+        showMessage('Missing visualization ID', 'error');
+        return;
+    }
+
+    showLoader();
+
+    try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/visualizations/${vizId}/download`);
+
+        if (!response || !response.ok) {
+            throw new Error(`Download failed with status ${response?.status || 'unknown'}`);
+        }
+
+        const blob = await response.blob();
+
+        // Create a download link and trigger the file save
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `visualization-${vizId}.png`;
+        document.body.appendChild(a);
+        a.click();
+
+        // Clean up
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showMessage('Visualization downloaded successfully', 'success');
+    } catch (error) {
+        console.error('Download error:', error);
+        if (error.message.includes('Token') || error.message.includes('401')) {
+            handleAuthError(error);
+        } else {
+            showMessage('Failed to download visualization', 'error');
+        }
+    } finally {
+        hideLoader();
+    }
+}
+
+
+// Handle delete
+async function handleDelete() {
+    const vizId = this.dataset.id;
+    
+    if (!confirm('Are you sure you want to delete this visualization? This action cannot be undone.')) {
+        return;
+    }
+    
+    showLoader();
+    
+    try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/visualizations/${vizId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response || !response.ok) {
+            throw new Error('Failed to delete visualization');
+        }
+        
+        hideLoader();
+        
+        // Close modal
+        visualizationModal.style.display = 'none';
+        
+        await refreshGallery();
+        
+        showMessage('Visualization deleted successfully', 'success');
+    } catch (error) {
+        hideLoader();
+        console.error('Error:', error);
+        if (error.message.includes('Token') || error.message.includes('401')) {
+            handleAuthError(error);
+        } else {
+            showMessage('Failed to delete visualization', 'error');
+        }
+    }
+}
+async function refreshGallery() {
+    showLoader();
+    try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/visualizations`);
+        if (!response || !response.ok) {
+            throw new Error("Failed to refresh visualizations");
+        }
+        const data = await response.json();
+        allVisualizations = data;
+
+        // Rebuild dataset filters
+        populateDatasetOptions(allVisualizations);
+
+        // Reapply filters & render
+        applyFilters();
+
+        hideLoader();
+        showMessage("Gallery updated", "success");
+    } catch (err) {
+        hideLoader();
+        console.error("Error refreshing gallery:", err);
+        showMessage("Failed to refresh visualizations", "error");
+    }
+}
+
+// Show message
+function showMessage(text, type = 'error') {
+    // Create message element
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${type === 'error' ? 'error-message' : 'success-message'}`;
+    messageDiv.textContent = text;
+    
+    // Clear existing messages
+    messageContainer.innerHTML = '';
+    
+    // Add message
+    messageContainer.appendChild(messageDiv);
+    
+    // Show message
+    messageDiv.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        messageDiv.style.opacity = '0';
+        setTimeout(() => {
+            if (messageContainer.contains(messageDiv)) {
+                messageContainer.removeChild(messageDiv);
+            }
+        }, 300);
+    }, 5000);
+}
+
+// Logout function
+function logout() {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+}
+
+// Prevent form submission on search input
+searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        applyFilters();
+    }
+});
+</script>
+</body>
+</html>

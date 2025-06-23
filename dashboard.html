@@ -1,0 +1,1683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ML Analytics Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    body {
+      background-color: #e6f7ff;
+      color: #333;
+      display: flex;
+      min-height: 100vh;
+    }
+    
+ /* Sidebar Styles */
+ .sidebar {
+      width: 280px;
+      background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+      box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+      padding: 25px 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      min-height: 100vh;
+    }
+    
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      padding: 0 25px;
+      margin-bottom: 40px;
+    }
+    
+    .sidebar-logo i {
+      font-size: 1.8rem;
+      color: #0099ff;
+      margin-right: 12px;
+    }
+    
+    .sidebar-logo h1 {
+      color: #0099ff;
+      font-weight: 700;
+      font-size: 1.6rem;
+      margin: 0;
+    }
+    
+    .sidebar-section {
+      margin-bottom: 30px;
+    }
+    
+    .sidebar-section-title {
+      font-size: 0.75rem;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 0 25px;
+      margin-bottom: 15px;
+      font-weight: 600;
+    }
+    
+    .sidebar-menu {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .sidebar-menu-item {
+      margin: 0 15px 8px 15px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+    
+    .sidebar-menu-item a,
+    .sidebar-menu-item > div {
+      padding: 14px 15px;
+      display: flex;
+      align-items: center;
+      color: #666;
+      cursor: pointer;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      border-radius: 12px;
+    }
+    
+    .sidebar-menu-item:hover a,
+    .sidebar-menu-item:hover > div {
+      background-color: rgba(0, 153, 255, 0.08);
+      color: #0099ff;
+      transform: translateX(3px);
+    }
+    
+    .sidebar-menu-item.active a,
+    .sidebar-menu-item.active > div {
+      background: linear-gradient(135deg, #0099ff, #0066cc);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+      transform: translateX(0);
+    }
+    
+    .sidebar-menu-item i {
+      margin-right: 12px;
+      width: 20px;
+      text-align: center;
+      font-size: 1.1rem;
+    }
+    
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 0 15px;
+    }
+    
+    .sidebar-footer-item {
+      display: flex;
+      align-items: center;
+      color: #666;
+      cursor: pointer;
+      font-weight: 500;
+      padding: 12px 15px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    
+    .sidebar-footer-item:hover {
+      background-color: rgba(0, 153, 255, 0.08);
+      color: #0099ff;
+    }
+    
+    .sidebar-footer-item i {
+      margin-right: 12px;
+      font-size: 1.1rem;
+    }
+    .how-to-use-container {
+  padding: 10px 0;
+}
+
+.how-to-use-container h3 {
+  color: #555;
+  margin-bottom: 20px;
+  font-weight: 500;
+}
+
+.how-to-step {
+  margin-bottom: 20px;
+  padding-left: 10px;
+  border-left: 3px solid #0099ff;
+}
+
+.how-to-step h4 {
+  color: #0066cc;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.how-to-step p {
+  color: #555;
+  line-height: 1.5;
+}
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+    
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 20px;
+      background-color: white;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      margin-bottom: 30px;
+    }
+    
+    .navbar-title h2 {
+      color: #0066cc;
+      font-weight: 600;
+    }
+    
+    .navbar-actions {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .navbar-action {
+      padding: 8px 15px;
+      border-radius: 5px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    
+    .navbar-action.primary {
+      background-color: #0099ff;
+      color: white;
+    }
+    
+    .navbar-action.secondary {
+      background-color: #f2f2f2;
+      color: #444;
+    }
+    
+    .navbar-action i {
+      margin-right: 5px;
+    }
+    
+    .dashboard-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .dashboard-header h1 {
+      color: #0066cc;
+      margin-bottom: 10px;
+    }
+    
+    .dashboard-header p {
+      color: #555;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .card h2 {
+      color: #0066cc;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+    }
+    
+    .card h2 i {
+      margin-right: 10px;
+    }
+    
+    .input-group {
+      margin-bottom: 15px;
+    }
+    
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #444;
+    }
+    
+    .input-group input, 
+    .input-group select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 1rem;
+      transition: border 0.3s;
+    }
+    
+    .input-group input:focus, 
+    .input-group select:focus {
+      outline: none;
+      border-color: #0099ff;
+    }
+    .train-test-upload-section {
+  background-color: white;
+  border-radius: 15px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 30px;
+  margin-bottom: 40px;
+}
+
+.train-test-upload-section h3 {
+  color: #0066cc;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.train-test-upload-boxes {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.train-test-upload-boxes .file-upload {
+  flex: 1 1 45%;
+  min-height: 180px;
+}
+
+    /* Add these styles to your CSS */
+  .file-upload-container {
+    margin-bottom: 30px;
+  }
+  
+  .file-upload {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: rgba(0, 153, 255, 0.03);
+    min-height: 180px;
+    width: 100%;
+  }
+  
+  .file-upload:hover {
+    border-color: #0099ff;
+    background-color: rgba(0, 153, 255, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 153, 255, 0.1);
+  }
+  
+  .file-upload .upload-icon {
+    margin-bottom: 15px;
+  }
+  
+  .file-upload .upload-icon i {
+    font-size: 48px;
+    color: #0099ff;
+  }
+  
+  .file-upload .upload-text {
+    width: 100%;
+  }
+  
+  .file-upload .primary-text {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #0066cc;
+    margin-bottom: 10px;
+  }
+  
+  .file-upload .secondary-text {
+    color: #666;
+    font-size: 0.9rem;
+  }
+  
+  .file-upload input {
+    display: none;
+  }
+  
+  /* Active state for drag over */
+  .file-upload.drag-active {
+    border-color: #0099ff;
+    background-color: rgba(0, 153, 255, 0.2);
+    transform: scale(1.01);
+  }
+     
+    .preview-container {
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+    
+    .preview-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .preview-table th, 
+    .preview-table td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .preview-table th {
+      background-color: #f8f9fa;
+      font-weight: 500;
+    }
+    
+    .btn-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 25px;
+    }
+    
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 30px;
+      background: #0099ff;
+      color: white;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .btn i {
+      margin-right: 8px;
+    }
+    
+    .btn:hover {
+      background: #0066cc;
+      transform: translateY(-2px);
+    }
+    
+    .result-card {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    
+    .result-card h3 {
+      color: #0066cc;
+      margin-bottom: 15px;
+    }
+    
+    .visualization-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 25px;
+    }
+    
+    .visualization-box {
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .visualization-box img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    
+    .visualization-box .caption {
+      padding: 15px;
+      text-align: center;
+      font-weight: 500;
+      color: #444;
+    }
+    
+    .loader {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .loader i {
+      font-size: 30px;
+      color: #0099ff;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .error-message {
+      color: #e74c3c;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      background: rgba(231, 76, 60, 0.1);
+      display: none;
+    }
+    
+    .success-message {
+      color: #27ae60;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      background: rgba(39, 174, 96, 0.1);
+      display: none;
+    }
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        .sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .main-content {
+            margin-left: 0;
+        }
+
+        .mobile-toggle {
+            display: block;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+    }
+
+    .mobile-toggle {
+        display: none;
+    }
+  </style>
+</head>
+
+<body><!-- Mobile Toggle Button -->
+  <button class="mobile-toggle" onclick="toggleSidebar()">
+      <i class="fas fa-bars"></i>
+  </button>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+          <i class="fas fa-chart-line"></i>
+          <h1>MLAnalytics</h1>
+      </div>
+
+      <div class="sidebar-section">
+          <div class="sidebar-section-title">MAIN</div>
+          <ul class="sidebar-menu">
+            <li class="sidebar-menu-item">
+              <a href="wizard.html">
+                <i class="fas fa-rocket"></i>
+                Run New Experiment
+              </a>
+            </li>
+              <li class="sidebar-menu-item active">
+                  <a href="dashboard.html">
+                      <i class="fas fa-home"></i>
+                      Dashboard
+                  </a>
+              </li>
+              <li class="sidebar-menu-item">
+                  <a href="gallery.html">
+                      <i class="fas fa-project-diagram"></i>
+                      Gallery
+                  </a>
+              </li>
+              
+              <li class="sidebar-menu-item">
+                  <a href="datasets.html">
+                      <i class="fas fa-database"></i>
+                      Datasets
+                  </a>
+              </li>
+          </ul>
+      </div>
+      
+      <div class="sidebar-section">
+          <div class="sidebar-section-title">SETTINGS</div>
+          <ul class="sidebar-menu">
+              <li class="sidebar-menu-item">
+                  <a href="account.html">
+                      <i class="fas fa-user"></i>
+                      Account
+                  </a>
+              </li>
+          </ul>
+      </div>
+      
+      <div class="sidebar-section">
+          <div class="sidebar-section-title">COMMUNITY</div>
+          <ul class="sidebar-menu">
+              <li class="sidebar-menu-item">
+                  <div>
+                      <i class="fas fa-users"></i>
+                      Contact
+                  </div>
+              </li>
+          </ul>
+      </div>
+      
+      <div class="sidebar-footer">
+          <div class="sidebar-footer-item">
+              <i class="fas fa-sign-out-alt"></i>
+              Sign out
+          </div>
+      </div>
+  </div>
+
+  
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="container">
+      <div class="card">
+        <h2><i class="fas fa-question-circle"></i> How to Use</h2>
+        <div class="how-to-use-container">
+          <h3>Quick guide to using our ML Analytics platform</h3>
+          
+          <div class="how-to-step">
+            <h4>1. Upload Your Data</h4>
+            <p>Begin by uploading a CSV file containing your dataset using the Data Input section. Make sure your data is properly formatted with headers.</p>
+          </div>
+          
+          <div class="how-to-step">
+            <h4>2. Configure Your Analysis</h4>
+            <p>Specify columns to drop, choose your target column, and select impactful features you want to focus on for your analysis.</p>
+          </div>
+          
+          <div class="how-to-step">
+            <h4>3. Select Analysis Method</h4>
+            <p>Choose between regression, classification, clustering, or visualization tools depending on your goals. Each tool provides different insights into your data.</p>
+          </div>
+          
+          <div class="how-to-step">
+            <h4>4. Review Results</h4>
+            <p>After processing, examine the model information, performance metrics, and visualizations to gain insights from your data and make informed decisions.</p>
+          </div>
+        </div>
+      </div>
+      <!-- Navbar -->
+      <div class="navbar">
+        <div class="navbar-title">
+          <h2>Model Analysis</h2>
+        </div>
+        <div class="navbar-actions">
+          <div class="navbar-action secondary">
+            <i class="fas fa-cog"></i>
+            Settings
+          </div>
+          <div class="navbar-action primary">
+            <i class="fas fa-plus"></i>
+            New Project
+          </div>
+        </div>
+      </div>
+      
+      <div class="dashboard-header">
+        <h1>Machine Learning Dashboard</h1>
+        <p>Upload your data and it using various machine learning algorithms</p>
+      </div>
+      <div class="card">
+        <h2><i class="fas fa-upload"></i> Data Input</h2>
+        
+        <div class="file-upload-container">
+          <label for="full-input" class="file-upload">
+            <div class="upload-icon">
+              <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <div class="upload-text">
+              <p id="full-name" class="primary-text">Upload File</p>
+              <p class="secondary-text">
+                Drag and drop or click to browse <strong>(.csv or .txt)</strong>
+              </p>
+            </div>
+            <input type="file" id="full-input" accept=".csv, .txt">
+          </label>
+        </div>
+      
+        <div class="train-test-upload-section">
+          <h3><i class="fas fa-file-upload"></i>OR Train & Test Dataset Upload</h3>
+          <div class="train-test-upload-boxes">
+            <!-- Train Upload -->
+            <label for="train-input" class="file-upload">
+              <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+              <div class="upload-text">
+                <p id="train-name" class="primary-text">Upload Train CSV</p>
+                <p class="secondary-text">Drag and drop or click to browse <strong>(.csv)</strong></p>
+              </div>
+              <input type="file" id="train-input" accept=".csv, .txt">
+            </label>
+      
+            <!-- Test Upload -->
+            <label for="test-input" class="file-upload">
+              <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+              <div class="upload-text">
+                <p id="test-name" class="primary-text">Upload Test CSV</p>
+                <p class="secondary-text">Drag and drop or click to browse <strong>(.csv)</strong></p>
+              </div>
+              <input type="file" id="test-input" accept=".csv, .txt">
+            </label>
+          </div>
+        </div>
+      </div>
+      
+ 
+        
+        <div class="input-group">
+          <label for="drop-columns">Columns to drop (comma-separated)</label>
+          <input type="text" id="drop-columns" placeholder="e.g., id, timestamp, name">
+        </div>
+        
+        <div class="input-group">
+          <label for="target-column">Target column</label>
+          <input type="text" id="target-column" placeholder="e.g., price, class, outcome">
+        </div>
+        <div class="input-group">
+          <label for="time-column">Time column (only  necessary for survival-analysis)</label>
+          <input type="text" id='time-column' placeholder="e.g., event_time, survival(months, years, days, etc)"> 
+        </div>
+        <div class="input-group">
+          <label for="forecast-periods">Forecast Periods (only for forecast)</label>
+          <input type="number" id="forecast-periods" min="1" value="" placeholder="e.g., 24">
+        </div>        
+        
+        <div class="input-group">
+          <label for="feature-column">Impactful Features (comma-separated)</label>
+          <input type="text" id="feature-column" placeholder="e.g., age, income, location">
+        </div>
+      </div>
+      
+      <div id="data-preview" class="card" style="display: none;">
+        <h2><i class="fas fa-table"></i> Data Preview</h2>
+        <div class="preview-container">
+          <table id="preview-table" class="preview-table">
+            <!-- Data will be inserted here by JavaScript -->
+          </table>
+        </div>
+      </div>
+      <!-- Train Data Preview -->
+<div id="train-preview" class="card" style="display: none;">
+  <h2><i class="fas fa-table"></i> Train Data Preview</h2>
+  <div class="preview-container">
+    <table id="train-preview-table" class="preview-table">
+      <!-- Train preview rows go here -->
+    </table>
+  </div>
+</div>
+
+<!-- Test Data Preview -->
+<div id="test-preview" class="card" style="display: none;">
+  <h2><i class="fas fa-table"></i> Test Data Preview</h2>
+  <div class="preview-container">
+    <table id="test-preview-table" class="preview-table">
+      <!-- Test preview rows go here -->
+    </table>
+  </div>
+</div>
+
+      <div class="card">
+        <h2><i class="fas fa-chart-line"></i> Analysis Tools</h2>
+        <p>Select an analysis method to apply to your data:</p>
+        
+        <div class="btn-group">
+          <button id="btn-regression" class="btn"><i class="fas fa-chart-line"></i> Regression Model</button>
+          <button id="btn-classification" class="btn"><i class="fas fa-tags"></i> Classification Model</button>
+          <button id="btn-clustering" class="btn"><i class="fas fa-braille"></i> KMeans Clustering</button>
+          <button id="btn-visualize" class="btn"><i class="fas fa-chart-bar"></i> Visualize Relationships</button>
+          <button id="btn-feature-impact" class="btn"><i class="fas fa-chart-pie"></i> Feature Impact Analysis</button>
+          <button id="btn-counterfactual" class="btn"><i class="fas fa-random"></i> Counterfactual Analysis</button>
+          <button id="btn-segments" class="btn"><i class="fas fa-users"></i> Customer Segments</button>
+          <button id="btn-risk" class="btn"><i class="fas fa-exclamation-triangle"></i> Risk Analysis</button>
+          <button id="btn-decision-paths" class="btn"><i class="fas fa-project-diagram"></i> Optimal Decision Paths</button>
+          <button id="btn-time-series-analysis" class="btn"><i class="fas fa-chart-line"></i>Time Series Analysis</button>
+          <button id="btn-survival" class="btn">
+            <i class="fas fa-heartbeat"></i> Survival Analysis
+          </button>
+        </div>
+        <!-- wrap all TS-specific controls in a container -->
+<div id="ts-params" style="display: none; margin-top: 1em;">
+  <label for="arima-order">ARIMA Order (p,d,q):</label>
+  <input 
+    type="text" 
+    id="arima-order" 
+    value="1,1,1" 
+    placeholder="e.g. 1,1,1"
+    style="width: 6em; margin-right: 1em;"
+  />
+
+  <label for="forecast-periods">Forecast Periods:</label>
+  <input 
+    type="number" 
+    id="forecast-periods" 
+    value="24" 
+    min="1" 
+    style="width: 4em;"
+  />
+</div>
+
+        
+        <div id="loader" class="loader">
+          <i class="fas fa-spinner"></i>
+          <p>Processing your data...</p>
+        </div>
+        
+        <div id="error-message" class="error-message"></div>
+        <div id="success-message" class="success-message"></div>
+      </div>
+      
+      <div id="results-container" style="display: none;">
+        <div class="card">
+          <h2><i class="fas fa-poll"></i> Analysis Results</h2>
+          
+          <div id="model-info" class="result-card">
+            <h3>Model Information</h3>
+            <div id="model-details"></div>
+          </div>
+          
+          <div id="metrics" class="result-card">
+            <h3>Performance Metrics</h3>
+            <div id="metrics-details"></div>
+          </div>
+          
+          <div class="visualization-container" id="visualization-container">
+            <!-- Visualizations will be inserted here -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+
+
+  const API_BASE_URL = 'http://127.0.0.1:8000';
+  // Helper: safely read from localStorage
+  function safeStorageGet(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (err) {
+      console.error(`safeStorageGet('${key}') error:`, err);
+      return null;
+    }
+  }
+  // Helper: is JWT expired?
+  function isTokenExpired(token) {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!payload.exp) return false;
+      return (Math.floor(Date.now()/1000) + 30) >= payload.exp;
+    } catch (err) {
+      console.error('Error parsing token:', err);
+      return true;
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    // Inputs & preview elements
+    const fullInput  = document.getElementById('full-input');
+    const trainInput = document.getElementById('train-input');
+    const testInput  = document.getElementById('test-input');
+
+    const fullName        = document.getElementById('full-name');
+    const trainName       = document.getElementById('train-name');
+    const testName        = document.getElementById('test-name');
+
+    const fullPreview     = document.getElementById('data-preview');
+    const trainPreview    = document.getElementById('train-preview');
+    const testPreview     = document.getElementById('test-preview');
+
+    const fullPreviewTable  = document.getElementById('preview-table');
+    const trainPreviewTable = document.getElementById('train-preview-table');
+    const testPreviewTable  = document.getElementById('test-preview-table');
+    const loader                 = document.getElementById('loader');
+    const errorMessage           = document.getElementById('error-message');
+    const successMessage         = document.getElementById('success-message');
+    const resultsContainer       = document.getElementById('results-container');
+    const modelDetails           = document.getElementById('model-details');
+    const metricsDetails         = document.getElementById('metrics-details');
+    const visualizationContainer = document.getElementById('visualization-container');
+    const token  = safeStorageGet('access_token');
+    const userId = safeStorageGet('user_id');
+    if (!token || !userId || isTokenExpired(token)) {
+      // redirect back to login, preserving this page in `next`
+      const next = encodeURIComponent(window.location.pathname);
+      window.location.href = `login.html?next=${next}&reason=Please log in`;
+      return;
+    }
+
+    // Helpers to show/hide previews
+    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
+    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
+    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
+    function clearTable(tbl){ tbl.innerHTML = ''; }
+
+    // Core parser + previewer
+    function parseAndPreview(file, nameEl, previewEl, tableEl) {
+      nameEl.textContent = file.name;
+      nameEl.style.color = '#0066cc';
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (!lines.length) {
+          nameEl.textContent = 'File is empty';
+          nameEl.style.color = 'red';
+          previewEl.style.display = 'none';
+          return;
+        }
+
+        // choose delimiter
+        let delim = ',';
+        if (file.name.toLowerCase().endsWith('.txt')) {
+          delim = lines[0].includes('\t') ? '\t' : /\s+/;
+        }
+
+        const headers = lines[0].split(delim).map(h => h.trim());
+        const maxRows = Math.min(5, lines.length - 1);
+
+        // build table
+        let html = '<thead><tr>' +
+                  headers.map(h => `<th>${h}</th>`).join('') +
+                  '</tr></thead><tbody>';
+
+        for (let i = 1; i <= maxRows; i++) {
+          const cells = lines[i].split(delim).map(c => c.trim());
+          html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+        }
+        html += '</tbody>';
+
+        tableEl.innerHTML = html;
+        previewEl.style.display = 'block';
+      };
+
+      reader.onerror = function() {
+        nameEl.textContent = 'Error reading file';
+        nameEl.style.color = 'red';
+        previewEl.style.display = 'none';
+      };
+
+      reader.readAsText(file);
+    }
+
+  // Whenever you pick a full dataset, clear train/test
+  fullInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    // clear train/test
+    trainInput.value = '';
+    testInput.value  = '';
+    hideTrain(); hideTest();
+    clearTable(trainPreviewTable);
+    clearTable(testPreviewTable);
+
+    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
+  });
+
+  // Whenever you pick train, clear full
+  trainInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    fullInput.value = '';
+    hideFull();
+    clearTable(fullPreviewTable);
+
+    parseAndPreview(file, trainName, trainPreview, trainPreviewTable);
+  });
+
+  // Whenever you pick test, clear full
+  testInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    fullInput.value = '';
+    hideFull();
+    clearTable(fullPreviewTable);
+
+    parseAndPreview(file, testName, testPreview, testPreviewTable);
+  });
+
+  // Make file upload area draggable (drops as full dataset)
+  const fileUpload = document.querySelector('.file-upload');
+  fileUpload.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('drag-active');
+  });
+  fileUpload.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+  });
+  fileUpload.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length !== 1) return;
+
+    const file = files[0];
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      fullName.textContent = 'Please upload a CSV or TXT file';
+      fullName.style.color = '#e74c3c';
+      return;
+    }
+    
+    // Treat drop as full-dataset upload
+    fullInput.files = e.dataTransfer.files;
+    trainInput.value = '';
+    testInput.value  = '';
+    hideTrain(); hideTest();
+    clearTable(trainPreviewTable);
+    clearTable(testPreviewTable);
+
+    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
+  });
+
+// Function for displaying results from any analysis endpoint
+function displayResults(endpoint, data) {
+  console.log("Displaying results for:", endpoint, data);
+
+  // Check if data is null or undefined
+  if (!data) {
+    console.error("No data received from API");
+    resultsContainer.style.display = 'block';
+    modelDetails.innerHTML = `<p style="color: red;">Error: No data received from the API. Please check your request and try again.</p>`;
+    metricsDetails.innerHTML = '';
+    visualizationContainer.innerHTML = '';
+    return;
+  }
+
+  // Ensure the results container is visible
+  resultsContainer.style.display = 'block';
+
+  // Clear out any previous details and visualizations
+  modelDetails.innerHTML = `<p>Analysis type: <strong>${endpoint.replace(/-/g, ' ')}</strong></p>`;
+  metricsDetails.innerHTML = '';
+  visualizationContainer.innerHTML = '';
+
+  switch (endpoint) {
+    case 'regression':
+      // Show regression metrics - check for both test_scores and cv_scores
+      const testMetrics = data.test_scores;
+      if (testMetrics) {
+        metricsDetails.innerHTML = '<h4>Test Set Performance</h4><ul>';
+        for (const [metric, value] of Object.entries(testMetrics)) {
+          metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${value.toFixed(4)}</li>`;
+        }
+        metricsDetails.innerHTML += '</ul>';
+      }
+      
+      // Show CV scores if available
+      if (data.cv_scores) {
+        metricsDetails.innerHTML += '<h4>Cross-Validation Scores</h4>';
+        for (const [model, scores] of Object.entries(data.cv_scores)) {
+          metricsDetails.innerHTML += `<h5>${model}</h5><ul>`;
+          for (const [metric, value] of Object.entries(scores)) {
+            metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${value.toFixed(4)}</li>`;
+          }
+          metricsDetails.innerHTML += '</ul>';
+        }
+      }
+      
+      // Show best model
+      if (data.best_model) {
+        modelDetails.innerHTML += `<p>Best Model: <strong>${data.best_model}</strong></p>`;
+      }
+      
+      // Show feature count if available
+      if (data.feature_count) {
+        modelDetails.innerHTML += `<p>Features Used: <strong>${data.feature_count}</strong></p>`;
+      }
+      
+      // If no metrics available, show fallback message
+      if (!testMetrics && !data.cv_scores) {
+        metricsDetails.innerHTML = '<p>No metrics available</p>';
+      }
+      
+      if (data.visualizations) {
+        if (data.visualizations.feature_importance || data.visualizations.shap_bar) {
+            const vis = data.visualizations.feature_importance || data.visualizations.shap_bar;
+            addVisualization('Feature Importance', vis);
+        }
+        if (data.visualizations.feature_importance_detailed || data.visualizations.shap_dot) {
+            const visDetailed = data.visualizations.feature_importance_detailed || data.visualizations.shap_dot;
+            addVisualization('Detailed Feature Importance', visDetailed);
+        }
+    }
+
+      
+      // Show predictions if available (when test set doesn't have target)
+      if (data.predictions) {
+        const predictionCount = Array.isArray(data.predictions) ? data.predictions.length : Object.keys(data.predictions).length;
+        modelDetails.innerHTML += `<p>Predictions Generated: <strong>${predictionCount}</strong></p>`;
+      }
+      
+      break;
+
+    case 'classification':
+      // Show classification metrics - check for both accuracy_scores and test_scores
+      const metrics = data.test_scores || data.accuracy_scores;
+      if (metrics) {
+        metricsDetails.innerHTML = '<h4>Test Set Performance</h4><ul>';
+        for (const [metric, value] of Object.entries(metrics)) {
+          const displayValue = metric === 'accuracy' ? (value * 100).toFixed(2) + '%' : value.toFixed(4);
+          metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${displayValue}</li>`;
+        }
+        metricsDetails.innerHTML += '</ul>';
+        
+        // Also show CV scores if available
+        if (data.cv_scores) {
+          metricsDetails.innerHTML += '<h4>Cross-Validation Scores</h4>';
+          for (const [model, scores] of Object.entries(data.cv_scores)) {
+            metricsDetails.innerHTML += `<h5>${model}</h5><ul>`;
+            for (const [metric, value] of Object.entries(scores)) {
+              const displayValue = metric === 'accuracy' ? (value * 100).toFixed(2) + '%' : value.toFixed(4);
+              metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${displayValue}</li>`;
+            }
+            metricsDetails.innerHTML += '</ul>';
+          }
+        }
+        
+        // Show best model
+        if (data.best_model) {
+          modelDetails.innerHTML += `<p>Best Model: <strong>${data.best_model}</strong></p>`;
+        }
+      } else {
+        metricsDetails.innerHTML = '<p>No metrics available</p>';
+      }
+      
+      // Feature importance visualization
+      if (data.visualizations && data.visualizations.feature_importance) {
+        addVisualization('Feature Importance', data.visualizations.feature_importance);
+      }
+      if (data.visualizations && data.visualizations.feature_importance_detailed) {
+        addVisualization('Detailed Feature Importance', data.visualizations.feature_importance_detailed);
+      }
+      break;
+
+      case 'clustering':
+        // Handle clustering response with visualizations object
+        if (data.visualizations) {
+          // Add cluster visualization
+          if (data.visualizations.cluster_viz) {
+            addVisualization('Cluster Plot', data.visualizations.cluster_viz);
+          }
+          
+          // Add elbow method visualization
+          if (data.visualizations.elbow_method) {
+            addVisualization('Elbow Method', data.visualizations.elbow_method);
+          }
+        }
+        
+        // Display cluster information (uncomment and modify based on your message display function)
+        if (data.cluster_counts) {
+          const clusterInfo = Object.entries(data.cluster_counts)
+            .map(([cluster, count]) => `Cluster ${cluster}: ${count} items`)
+            .join('\n');
+          
+          console.log(`Clustering Results:\n${data.message}\n\nCluster Distribution:\n${clusterInfo}`);
+          // Replace console.log with your actual message display function
+          // Example: showMessage(`Clustering Results:\n${data.message}\n\nCluster Distribution:\n${clusterInfo}`);
+        }
+        
+        // Fallback for old format (backward compatibility)
+        if (data.cluster_plot || data.visualization) {
+          addVisualization('Cluster Plot', data.cluster_plot || data.visualization);
+        }
+        break;
+    case 'visualize':
+      // Scatter and PDP plots
+      if (data.scatter_plot) {
+        addVisualization('Scatter Plot', data.scatter_plot);
+      }
+      if (data.pdp_plot) {
+        addVisualization('Partial Dependence Plot', data.pdp_plot);
+      }
+      break;
+
+    case 'feature-impact':
+      if (data.visualization) {
+        addVisualization('Feature Impact', data.visualization);
+      }
+      break;
+
+    case 'counterfactual':
+      if (data.counterfactual_plot) {
+        addVisualization('Counterfactual Explanation', data.counterfactual_plot);
+      }
+      break;
+
+    case 'segments':
+      if (data.segments) {
+        createSegmentTable(data.segments);
+      } else {
+        metricsDetails.innerHTML = '<p>No segmentation data available</p>';
+      }
+      break;
+
+    case 'risk':
+      if (data.risk_plot) {
+        addVisualization('Risk Analysis', data.risk_plot);
+      }
+      break;
+
+    case 'decision-paths':
+      if (data.decision_paths) {
+        addVisualization('Decision Paths', data.decision_paths);
+      }
+      break;
+
+    case 'time-series-analysis':
+      if (data.result && data.result.adf_test && data.result.model_order) {
+        metricsDetails.innerHTML = `<h4>Time Series Model</h4>
+          <ul>
+            <li>ADF Statistic: ${data.result.adf_test.statistic.toFixed(4)}</li>
+            <li>p-value: ${data.result.adf_test.p_value.toFixed(4)}</li>
+            <li>Is Stationary: ${data.result.adf_test.is_stationary ? 'Yes' : 'No'}</li>
+            <li>Order: p=${data.result.model_order.p}, d=${data.result.model_order.d}, q=${data.result.model_order.q}</li>
+          </ul>`;
+      }
+
+      // Now correctly access visualizations inside result
+      if (data.result.visualizations) {
+        if (data.result.visualizations.forecast) {
+          addVisualization('Forecast Plot', data.result.visualizations.forecast);
+        }
+        if (data.result.visualizations.acf_pacf) {
+          addVisualization('ACF/PACF Plot', data.result.visualizations.acf_pacf);
+        }
+      }
+      break;
+
+
+      case 'survival':
+      metricsDetails.innerHTML = '<h4>Survival Analysis Metrics</h4><ul>';
+      
+      if ('high_risk_percentage' in data) {
+        metricsDetails.innerHTML += `<li>High Risk Percentage: ${(data.high_risk_percentage * 100).toFixed(2)}%</li>`;
+      }
+      if ('mean_risk_score' in data) {
+        metricsDetails.innerHTML += `<li>Mean Risk Score: ${data.mean_risk_score.toFixed(4)}</li>`;
+      }
+      
+      metricsDetails.innerHTML += '</ul>';
+
+      if (data.model) {
+        modelDetails.innerHTML = `<p>Model: <strong>${data.model}</strong></p>`;
+      }
+      
+      // Survival visualizations
+      if (data.visualizations) {
+        if (data.visualizations.baseline_curve) {
+          addVisualization('Baseline Survival Curve', data.visualizations.baseline_curve);
+        }
+        if (data.visualizations.cox_coefficients) {
+          addVisualization('Hazard Ratios (Coefficients)', data.visualizations.cox_coefficients);
+        }
+        if (data.visualizations.risk_distribution) {
+          addVisualization('Risk Distribution', data.visualizations.risk_distribution);
+        }
+      }
+  break;
+
+    default:
+      modelDetails.innerHTML += '<p>No renderer defined for this analysis.</p>';
+      break;
+  }
+    // Scroll to the results for user convenience
+    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+  // Function to create a table for segment analysis results
+  function createSegmentTable(data) {
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    
+    // Create table header
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    for (const key in data[0]) {
+      const th = document.createElement('th');
+      th.textContent = key;
+      headerRow.appendChild(th);
+    }
+    
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // Create table body
+    const tbody = document.createElement('tbody');
+    data.forEach(row => {
+      const tr = document.createElement('tr');
+      
+      for (const key in row) {
+        const td = document.createElement('td');
+        td.textContent = row[key];
+        tr.appendChild(td);
+      }
+      
+      tbody.appendChild(tr);
+    });
+    
+    table.appendChild(tbody);
+    
+    // Add to visualization container
+    const visBox = document.createElement('div');
+    visBox.className = 'visualization-box';
+    visBox.style.width = '100%';
+    
+    const caption = document.createElement('div');
+    caption.className = 'caption';
+    caption.textContent = 'Customer Segments';
+    
+    visBox.appendChild(caption);
+    visBox.appendChild(table);
+    visualizationContainer.appendChild(visBox);
+  }
+
+  function addVisualization(caption, dataUrl) {
+  const visBox = document.createElement('div');
+  visBox.className = 'visualization-box';
+
+  const img = document.createElement('img');
+  img.src = dataUrl;      // now ALWAYS a full "data:image/png;base64,..." string
+  img.alt = caption;
+  img.style.maxWidth = '100%';
+  img.style.height   = 'auto';
+  visBox.appendChild(img);
+
+  const cap = document.createElement('div');
+  cap.className   = 'caption';
+  cap.textContent = caption;
+  visBox.appendChild(cap);
+
+  visualizationContainer.appendChild(visBox);
+}
+
+  // Helper function to detect if a string is likely a base64 encoded image
+  function isBase64String(str) {
+    // Check if it's a string and has reasonable length for base64
+    if (typeof str !== 'string' || str.length < 20) {
+      return false;
+    }
+    
+    // Base64 strings often start with specific patterns for PNG/JPEG
+    if (str.startsWith('iVBOR') || // PNG
+        str.startsWith('R0lGOD') || // GIF
+        str.startsWith('/9j/') ||   // JPEG
+        str.startsWith('PHN2Zy')) { // SVG
+      return true;
+    }
+    
+    // More thorough check - base64 only contains certain characters
+    const base64Pattern = /^[A-Za-z0-9+/=]+$/;
+    return str.length > 100 && 
+           !str.includes('/') && 
+           base64Pattern.test(str);
+  }
+  // Add fallback visualizations specific to each endpoint
+  function addEndpointSpecificVisualizations(endpoint, data) {
+    console.log(`Looking for default visualizations for endpoint: ${endpoint}`);
+    
+    // Only add the default visualizations if the backend didn't provide any
+    if (data && 
+       ((data.visualizations && Object.keys(data.visualizations).length > 0) || 
+        data.visualization || 
+        data.scatter_plot)) {
+      console.log("Backend provided visualizations, skipping defaults");
+      return;
+    }
+    
+    console.log(`Adding default visualizations for endpoint: ${endpoint}`);
+    
+    // Fallback to default visualizations if backend didn't provide any
+    switch (endpoint) {
+      case 'regression':
+        addVisualization('SHAP Summary', 'shap_summary.png');
+        addVisualization('SHAP Waterfall', 'shap_waterfall.png');
+        break;
+      case 'classification':
+        addVisualization('Feature Importance', 'feature_importance.png');
+        addVisualization('SHAP Summary', 'shap_summary.png');
+        break;
+      case 'feature-impact':
+        addVisualization('Feature Importance', 'feature_importance.png');
+        break;
+      case 'counterfactual':
+        addVisualization('Counterfactual Analysis', 'counterfactual_analysis.png');
+        break;
+      case 'risk':
+        addVisualization('Risk Analysis', 'risk_analysis.png');
+        break;
+      case 'decision-paths':
+        addVisualization('Decision Tree', 'decision_tree.png');
+        break;
+      case 'time-series-analysis':
+        addVisualization('Time Series Analysis', 'time_series_analysis.png');
+        break;
+      default:
+        console.log(`No default visualizations for endpoint: ${endpoint}`);
+    }
+  }
+
+  // Show error message
+  function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+    successMessage.style.display = 'none';
+  }
+
+  // Show success message
+  function showSuccess(message) {
+    successMessage.textContent = message;
+    successMessage.style.display = 'block';
+    errorMessage.style.display = 'none';
+  }
+  // 1) Map your friendly endpoint names to their paths
+const endpointMap = {
+  regression:             '/regression/',
+  classification:         '/classification/',
+  clustering:             '/cluster/',
+  visualize:              '/visualize/',
+  'feature-impact':       '/feature_impact/',
+  counterfactual:         '/counterfactual/',
+  segments:               '/segment_analysis/',
+  risk:                   '/risk_analysis/',
+  'decision-paths':       '/decision_paths/',
+  'time-series-analysis': '/forecast/',
+  survival:               '/survival/'
+};
+function callRealAPI(endpoint, params) {
+  // Show the spinner & clear any messages
+  loader.style.display        = 'block';
+  errorMessage.style.display  = 'none';
+  successMessage.style.display= 'none';
+
+  // Build the URL & form data
+  const url = API_BASE_URL + endpointMap[endpoint];
+  const formData = new FormData();
+
+  // Debug: Log what we're sending
+  console.log('Calling endpoint:', endpoint);
+  console.log('URL:', url);
+  console.log('Params:', params);
+
+  // 1) Append files
+  if (fullInput.files.length === 1) {
+    formData.append('file', fullInput.files[0]);
+    console.log('Uploading full dataset:', fullInput.files[0].name);
+  } else if (trainInput.files.length === 1 && testInput.files.length === 1) {
+    formData.append('train_file', trainInput.files[0]);
+    formData.append('test_file',  testInput.files[0]);
+    console.log('Uploading train/test files:', trainInput.files[0].name, testInput.files[0].name);
+  } else {
+    loader.style.display = 'none';
+    showError('Please upload either a full dataset or both train+test files.');
+    return;
+  }
+
+  // 2) Append any additional form fields
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && value !== '') {
+      formData.append(key, value);
+      console.log(`Form field: ${key} = ${value}`);
+    }
+  }
+
+  // 3) Pull the stored JWT
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    loader.style.display = 'none';
+    alert('Session expired—please log in again.');
+    window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
+    return;
+  }
+
+  // 4) Fire the request
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    body: formData
+  })
+  .then(res => {
+    console.log('Response status:', res.status);
+    console.log('Response headers:', res.headers);
+
+    if (!res.ok) {
+      // Read any error text from the server and throw
+      return res.text().then(text => {
+        console.error('Server error response:', text);
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      });
+    }
+    // Always expect JSON (with base64 images)
+    return res.json();
+  })
+  .then(data => {
+    loader.style.display = 'none';
+    showSuccess('Analysis completed successfully.');
+    displayResults(endpoint, data);
+  })
+  .catch(err => {
+    loader.style.display = 'none';
+    showError(`Error: ${err.message}`);
+    console.error('Full API error:', err);
+    console.error('Error stack:', err.stack);
+  });
+}
+document.getElementById('btn-survival').addEventListener('click', () => {
+  const eventCol = document.getElementById('target-column').value;
+  const timeCol  = document.getElementById('time-column').value;
+  const drop     = document.getElementById('drop-columns').value;
+
+  // Enhanced validation
+  if (!eventCol || !timeCol) {
+    showError('Please specify both the event (target) and time columns.');
+    return;
+  }
+
+  if (eventCol === timeCol) {
+    showError('Event column and time column cannot be the same.');
+    return;
+  }
+
+  // Check file upload
+  const hasFullFile = fullInput.files.length === 1;
+  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
+  
+  if (!hasFullFile && !hasTrainTest) {
+    showError('Please upload either a full dataset or both train and test files.');
+    return;
+  }
+
+  console.log('Survival analysis parameters:');
+  console.log('Event column:', eventCol);
+  console.log('Time column:', timeCol);
+  console.log('Drop columns:', drop);
+
+  callRealAPI('survival', {
+    event_col: eventCol,
+    time_col: timeCol,
+    drop_cols: drop
+  });
+});
+// Feature impact
+document.getElementById('btn-feature-impact').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('feature-impact', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Counterfactual
+document.getElementById('btn-counterfactual').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('counterfactual', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Customer segments
+document.getElementById('btn-segments').addEventListener('click', () => {
+  const drop = document.getElementById('drop-columns').value;
+  callRealAPI('segments', {
+    drop_columns: drop
+  });
+});
+
+// Risk analysis
+document.getElementById('btn-risk').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('risk', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Decision paths
+document.getElementById('btn-decision-paths').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('decision-paths', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Time-series analysis
+document.getElementById('btn-time-series-analysis').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const order  = document.getElementById('arima-order').value;
+  const periods = parseInt(document.getElementById("forecast-periods").value, 10);
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('time-series-analysis', {
+    target_column: target,
+    order:         order,
+    periods:       periods
+  });
+});
+document.getElementById('btn-regression').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('regression', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Classification
+document.getElementById('btn-classification').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('classification', {
+    target_column: target,
+    drop_columns:  drop
+  });
+});
+
+// Clustering
+document.getElementById('btn-clustering').addEventListener('click', () => {
+  const drop = document.getElementById('drop-columns').value;
+  callRealAPI('clustering', {
+    drop_columns: drop
+  });
+});
+
+// Visualize
+document.getElementById('btn-visualize').addEventListener('click', () => {
+  const target = document.getElementById('target-column').value;
+  const feature = document.getElementById('feature-column').value
+  const drop   = document.getElementById('drop-columns').value;
+  if (!target) return showError('Please specify a target column.');
+  callRealAPI('visualize', {
+    target_column: target,
+    feature_column: feature,  // Changed from feature_columns to feature_column
+    drop_columns: drop
+  });
+});
+  function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('open');
+    }
+    window.toggleSidebar = toggleSidebar; // Make it accessible in inline onclick
+
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', function (e) {
+        const sidebar = document.getElementById('sidebar');
+        const toggleBtn = document.querySelector('.mobile-toggle');
+
+        if (window.innerWidth <= 768 &&
+            !sidebar.contains(e.target) &&
+            !toggleBtn.contains(e.target) &&
+            sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+        }
+    });
+    // Auto close sidebar on window resize if width > 768px
+    window.addEventListener('resize', function () {
+        const sidebar = document.getElementById('sidebar');
+        if (window.innerWidth > 768) {
+            sidebar.classList.remove('open');
+        }
+    });
+  });
+
+  </script>
+</body>
+</html>

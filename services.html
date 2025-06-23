@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ML Services - ML Insights</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,200&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      background: #e6f7ff;
+    }
+
+    h1 {
+      font-weight: 600;
+      margin: 0;
+      color: #0066cc;
+    }
+
+    h2 {
+      text-align: center;
+      color: #0066cc;
+      margin-bottom: 20px;
+    }
+
+    h3 {
+      color: #0066cc;
+      margin: 15px 0;
+    }
+
+    h4 {
+      color: #0066cc;
+      margin: 10px 0;
+    }
+
+    p {
+      font-size: 14px;
+      font-weight: 300;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+      margin: 10px 0;
+      color: #555;
+    }
+
+    span {
+      font-size: 12px;
+      color: #555;
+      margin: 15px 0;
+    }
+
+    a {
+      color: #0099ff;
+      font-size: 14px;
+      text-decoration: none;
+      margin: 15px 0;
+      transition: 0.3s ease;
+    }
+
+    a:hover {
+      color: #0066cc;
+    }
+
+    button, .btn {
+      border-radius: 20px;
+      border: 1px solid #0099ff;
+      background-color: #0099ff;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 12px 45px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transition: transform 80ms ease-in;
+      cursor: pointer;
+      display: inline-block;
+      text-align: center;
+      margin: 15px 0;
+    }
+
+    button:active, .btn:active {
+      transform: scale(0.95);
+    }
+
+    button:focus, .btn:focus {
+      outline: none;
+    }
+
+    select {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 25px;
+    }
+
+    .header {
+      background: #e6f7ff;
+      padding: 20px 0;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+
+    .logo {
+      cursor: pointer;
+    }
+    
+    .logo h1 {
+      font-size: 32px;
+      color: #0099ff;
+      margin: 0;
+    }
+    
+    .logo span {
+      color: #0066cc;
+    }
+
+    .logo img {
+      max-width: 125px;
+      height: auto;
+    }
+
+    nav {
+      flex: 1;
+      text-align: right;
+    }
+
+    nav ul {
+      display: inline-block;
+      list-style-type: none;
+    }
+
+    nav ul li {
+      display: inline-block;
+      margin-right: 20px;
+    }
+
+    nav ul li a {
+      text-decoration: none;
+      color: #555;
+      font-weight: 500;
+    }
+
+    nav ul li a:hover {
+      color: #0099ff;
+    }
+
+    .menu-icon {
+      display: none;
+      cursor: pointer;
+      width: 28px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: space-around;
+      margin: 30px 0;
+    }
+
+    .row-2 {
+      justify-content: space-between;
+      margin: 40px 0;
+    }
+
+    .small-container {
+      max-width: 1080px;
+      margin: auto;
+      padding-left: 25px;
+      padding-right: 25px;
+    }
+
+    .col-2 {
+      flex-basis: 48%;
+      min-width: 300px;
+      padding: 10px;
+    }
+
+    .col-2 img {
+      max-width: 100%;
+      border-radius: 5px;
+    }
+
+    .col-4 {
+      flex-basis: 23%;
+      min-width: 200px;
+      margin-bottom: 30px;
+      padding: 10px;
+      transition: transform 0.3s;
+    }
+
+    .col-4:hover {
+      transform: translateY(-5px);
+    }
+
+    .col-4 img {
+      width: 100%;
+      border-radius: 5px;
+    }
+
+    .rating {
+      color: #ff9f1a;
+      margin: 10px 0;
+    }
+
+    .single-product {
+      margin-top: 40px;
+    }
+
+    .single-product .col-2 {
+      padding: 20px;
+    }
+
+    .single-product h2 {
+      text-align: left;
+      margin: 15px 0;
+    }
+
+    .small-img-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+
+    .small-img-col {
+      flex-basis: 24%;
+      cursor: pointer;
+    }
+
+    .small-img-col img {
+      width: 100%;
+      border-radius: 5px;
+    }
+
+    .model-card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      margin-bottom: 30px;
+      transition: transform 0.3s;
+    }
+    
+    .model-card:hover {
+      transform: translateY(-5px);
+    }
+    
+    .model-card .model-stats {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+    
+    .model-card .model-stats div {
+      text-align: center;
+    }
+    
+    .model-card .model-stats p {
+      margin: 5px 0;
+      font-weight: 600;
+    }
+    
+    .model-card .model-stats span {
+      font-size: 12px;
+      color: #888;
+    }
+    
+    .model-card .tags {
+      display: flex;
+      flex-wrap: wrap;
+      margin: 15px 0;
+    }
+    
+    .model-card .tag {
+      background: #e6f7ff;
+      color: #0099ff;
+      padding: 5px 10px;
+      border-radius: 20px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    
+    .model-card .model-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    
+    .model-card .model-actions button {
+      padding: 8px 20px;
+      font-size: 12px;
+    }
+    
+    .model-card .model-actions button.secondary {
+      background: transparent;
+      color: #0099ff;
+      border: 1px solid #0099ff;
+    }
+    
+    .page-header {
+      text-align: center;
+      margin: 50px 0;
+    }
+    
+    .page-header h1 {
+      font-size: 36px;
+      color: #0066cc;
+    }
+    
+    .page-header p {
+      font-size: 16px;
+      color: #555;
+      max-width: 600px;
+      margin: 20px auto;
+    }
+    
+    .filter-options {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    
+    .filter-options select {
+      padding: 8px 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      outline: none;
+    }
+    
+    .filter-options input {
+      padding: 8px 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      outline: none;
+      width: 200px;
+    }
+    
+    .progress-container {
+      width: 100%;
+      background-color: #e1e4e8;
+      border-radius: 10px;
+      margin: 5px 0;
+    }
+    
+    .progress-bar {
+      height: 6px;
+      border-radius: 10px;
+      background-color: #0099ff;
+    }
+    
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 30px;
+    }
+    
+    .title {
+      position: relative;
+      text-align: center;
+      color: #0066cc;
+      margin: 50px auto 30px;
+      line-height: 60px;
+    }
+
+    .title::after {
+      content: '';
+      background: #0099ff;
+      width: 80px;
+      height: 5px;
+      border-radius: 5px;
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .footer {
+      background: #0066cc;
+      color: #fff;
+      font-size: 14px;
+      padding: 60px 0 20px;
+      margin-top: 50px;
+    }
+
+    .footer p {
+      color: #fff;
+    }
+
+    .footer h3 {
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    .footer-col-1, .footer-col-2, .footer-col-3, .footer-col-4 {
+      min-width: 250px;
+      margin-bottom: 20px;
+    }
+
+    .footer-col-1 {
+      flex-basis: 30%;
+    }
+
+    .footer-col-2 {
+      flex: 1;
+      text-align: center;
+    }
+
+    .footer-col-2 img {
+      max-width: 180px;
+      margin-bottom: 20px;
+    }
+
+    .footer-col-3, .footer-col-4 {
+      flex-basis: 12%;
+      text-align: center;
+    }
+
+    .footer ul {
+      list-style-type: none;
+    }
+
+    .footer ul li {
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: color 0.3s;
+    }
+
+    .footer ul li:hover {
+      color: #0099ff;
+    }
+
+    .app-logo {
+      margin-top: 20px;
+    }
+
+    .app-logo img {
+      width: 140px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    .footer hr {
+      border: none;
+      background: #b5b5b5;
+      height: 1px;
+      margin: 20px 0;
+    }
+
+    .copyright {
+      text-align: center;
+    }
+
+    /* Media Queries */
+    @media only screen and (max-width: 800px) {
+      nav ul {
+        position: absolute;
+        top: 70px;
+        left: 0;
+        background: #fff;
+        width: 100%;
+        overflow: hidden;
+        transition: max-height 0.5s;
+        max-height: 0;
+        z-index: 1000;
+        box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+      }
+      
+      nav ul li {
+        display: block;
+        margin: 10px 25px;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+      }
+      
+      nav ul li:last-child {
+        border-bottom: none;
+      }
+      
+      nav ul li a {
+        color: #333;
+      }
+      
+      .menu-icon {
+        display: block;
+      }
+      
+      .row {
+        flex-direction: column;
+      }
+      
+      .col-2, .col-4 {
+        flex-basis: 100%;
+      }
+      
+      .single-product .row {
+        text-align: left;
+      }
+      
+      .single-product .col-2 {
+        padding: 20px 0;
+      }
+      
+      .single-product h2 {
+        font-size: 22px;
+      }
+      
+      .footer {
+        text-align: center;
+      }
+      
+      .footer-col-1, .footer-col-2, .footer-col-3, .footer-col-4 {
+        flex-basis: 100%;
+        margin-bottom: 30px;
+      }
+    }
+    
+    @media only screen and (max-width: 600px) {
+      .row {
+        padding: 0 10px;
+      }
+      
+      .col-4 {
+        flex-basis: 100%;
+      }
+      
+      .small-container {
+        padding: 0 10px;
+      }
+      
+      .filter-options {
+        flex-direction: column;
+      }
+      
+      .filter-options select,
+      .filter-options input {
+        margin-bottom: 10px;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="container">
+      <div class="navbar">
+        <div class="logo">
+          <a href="index.html">
+            <img src="./assets/images/logo.png" alt="ML Insights Logo" />
+          </a>
+        </div>
+        <nav>
+          <ul id="MenuItems">
+            <li><a href="platform.html">Home</a></li>
+            <li><a href="models.html">Models</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
+            <li><a href="services.html">Services</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="account.html">Account</a></li>
+            <li><a href= "login.html">Login</a></li>
+            <li><a href= "login.html">Sign Up</a></li>
+          </ul>
+        </nav>
+        <img src="./assets/images/menu.png" alt="Menu" class="menu-icon" onclick="menutoggle()" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Featured Service Detail -->
+  <div class="small-container single-product">
+    <div class="row">
+      <div class="col-2">
+        <img src="./assets/images/regression-main.jpg" width="100%" id="ServiceImg" alt="Regression Analysis" />
+
+        <div class="small-img-row">
+          <div class="small-img-col">
+            <img src="./assets/images/regression-1.jpg" class="small-img" alt="Regression Example 1" />
+          </div>
+          <div class="small-img-col">
+            <img src="./assets/images/regression-2.jpg" class="small-img" alt="Regression Example 2" />
+          </div>
+          <div class="small-img-col">
+            <img src="./assets/images/regression-3.jpg" class="small-img" alt="Regression Example 3" />
+          </div>
+          <div class="small-img-col">
+            <img src="./assets/images/regression-4.jpg" class="small-img" alt="Regression Example 4" />
+          </div>
+        </div>
+      </div>
+      <div class="col-2">
+        <p>Services / Machine Learning</p>
+        <h2>Advanced Regression Analysis</h2>
+        <h4>Starting at $500</h4>
+        <select name="package" id="package">
+          <option value="">Select Package</option>
+          <option value="basic">Basic - Linear Models</option>
+          <option value="standard">Standard - Advanced Models</option>
+          <option value="premium">Premium - Full Implementation</option>
+          <option value="enterprise">Enterprise - Custom Solution</option>
+        </select>
+        <a href="#" class="btn">Request Service</a>
+        <h3>Service Details <i class="fa fa-indent"></i></h3>
+        <p>
+          Our regression analysis service helps you predict continuous outcomes with high accuracy. 
+          We implement various regression techniques including linear, polynomial, ridge, lasso, 
+          and gradient boosting models tailored to your specific business needs. Get actionable 
+          insights from your data with our comprehensive analysis and visualization tools.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Title -->
+  <div class="small-container">
+    <div class="row row-2">
+      <h2>More ML Services</h2>
+      <p><a href="services.html">View All Services</a></p>
+    </div>
+  </div>
+
+  <!-- ML Services -->
+  <div class="small-container">
+    <div class="row">
+      <div class="col-4">
+        <img src="./assets/images/classification.jpg" alt="Classification" />
+        <h4>Classification Models</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-half-o"></i>
+        </div>
+        <p>From $450</p>
+      </div>
+
+      <div class="col-4">
+        <img src="./assets/images/anomaly.jpg" alt="Anomaly Detection" />
+        <h4>Anomaly Detection</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-o"></i>
+        </div>
+        <p>From $600</p>
+      </div>
+
+      <div class="col-4">
+        <img src="./assets/images/clustering.jpg" alt="K-means Clustering" />
+        <h4>K-means Clustering</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-half-o"></i>
+          <i class="fa fa-star-o"></i>
+        </div>
+        <p>From $550</p>
+      </div>
+
+      <div class="col-4">
+        <img src="./assets/images/visualization.jpg" alt="Data Visualization" />
+        <h4>Advanced Visualization</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-o"></i>
+        </div>
+        <p>From $350</p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-4">
+        <img src="./assets/images/survival.jpg" alt="Survival Analysis" />
+        <h4>Survival Analysis</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-o"></i>
+        </div>
+        <p>From $700</p>
+      </div>
+
+      <div class="col-4">
+        <img src="./assets/images/nlp.jpg" alt="Natural Language Processing" />
+        <h4>Natural Language Processing</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-half-o"></i>
+          <i class="fa fa-star-o"></i>
+        </div>
+        <p>From $800</p>
+      </div>
+
+      <div class="col-4">
+        <img src="./assets/images/time-series.jpg" alt="Time Series Analysis" />
+        <h4>Time Series Analysis</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star-half-o"></i>
+        </div>
+        <p>From $650</p>
+      </div>
+      
+      <div class="col-4">
+        <img src="./assets/images/custom.jpg" alt="Custom Solutions" />
+        <h4>Custom ML Solutions</h4>
+        <div class="rating">
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+          <i class="fa fa-star"></i>
+        </div>
+        <p>Contact Us</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="container">
+      <div class="row">
+        <div class="footer-col-1">
+          <h3>Download Our App</h3>
+          <p>
+            Access ML Insights on mobile<br />
+            for Android and iOS
+          </p>
+          <div class="app-logo">
+            <img src="./assets/images/play-store.png" alt="Google Play Store" />
+            <img src="./assets/images/app-store.png" alt="Apple App Store" />
+          </div>
+        </div>
+        <div class="footer-col-2">
+          <img src="./assets/images/logo-white.png" alt="ML Insights Logo" />
+          <p>
+            Making advanced machine learning<br />accessible for businesses of all sizes
+          </p>
+        </div>
+        <div class="footer-col-3">
+          <h3>Useful Links</h3>
+          <ul>
+            <li>Documentation</li>
+            <li>Blog</li>
+            <li>Case Studies</li>
+            <li>Partner Program</li>
+          </ul>
+        </div>
+
+        <div class="footer-col-4">
+          <h3>Follow us</h3>
+          <ul>
+            <li>LinkedIn</li>
+            <li>Twitter</li>
+            <li>GitHub</li>
+            <li>Medium</li>
+          </ul>
+        </div>
+      </div>
+      <hr />
+      <p class="copyright" id="copyright-text">Copyright 2025 - ML Insights</p>
+    </div>
+  </div>
+
+  <!-- scripts -->
+  <script>
+    // Gallery image handler
+    var ServiceImg = document.getElementById("ServiceImg");
+    var SmallImg = document.getElementsByClassName("small-img");
+    
+    SmallImg[0].onclick = function() {
+      ServiceImg.src = SmallImg[0].src;
+    }
+    SmallImg[1].onclick = function() {
+      ServiceImg.src = SmallImg[1].src;
+    }
+    SmallImg[2].onclick = function() {
+      ServiceImg.src = SmallImg[2].src;
+    }
+    SmallImg[3].onclick = function() {
+      ServiceImg.src = SmallImg[3].src;
+    }
+    
+    // Toggle menu
+    var MenuItems = document.getElementById("MenuItems");
+    MenuItems.style.maxHeight = "0px";
+    
+    function menutoggle() {
+      if (MenuItems.style.maxHeight == "0px") {
+        MenuItems.style.maxHeight = "200px";
+      } else {
+        MenuItems.style.maxHeight = "0px";
+      }
+    }
+  </script>
+</body>
+
+</html>

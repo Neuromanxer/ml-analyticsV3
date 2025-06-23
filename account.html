@@ -1,0 +1,2333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Dashboard - ML Analytics</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        /* Layout Structure */
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.8rem;
+        }
+
+        .logo span {
+            color: #667eea;
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: #666;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #0099ff;
+        }
+
+        .menu-icon {
+            display: none;
+            cursor: pointer;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            margin-bottom: 40px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 1.8rem;
+            color: #0099ff;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.6rem;
+            margin: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 0 25px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu-item {
+            margin: 0 15px 8px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+            transform: translateX(3px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+            transform: translateX(0);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+
+        .account-page {
+            padding: 40px 0;
+            flex: 1;
+        }
+
+        .account-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .account-container h2 {
+            color: #2d3748;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #fff, #f8fafc);
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.15);
+        }
+
+        .stat-card i {
+            font-size: 2.5rem;
+            color: #667eea;
+            margin-bottom: 12px;
+        }
+
+        .stat-card h3 {
+            color: #2d3748;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card p {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .usage-bar {
+            background: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .usage-bar-fill {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .account-tabs {
+            display: flex;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+
+        .account-tab {
+            flex: 1;
+            padding: 12px 20px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .account-tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .account-form {
+            max-width: 100%;
+        }
+
+        .account-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .account-col {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .account-col label {
+            display: block;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .account-col input,
+        .account-col select,
+        .account-col textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+            background: white;
+        }
+
+        .account-col input:focus,
+        .account-col select:focus,
+        .account-col textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .account-col textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            margin-top: 8px;
+            margin-right: 8px;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .plans-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .plan-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .plan-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .plan-card.popular {
+            border-color: #667eea;
+            position: relative;
+        }
+
+        .plan-card.popular::before {
+            content: 'Most Popular';
+            position: absolute;
+            top: -1px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 0 0 8px 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .plan-header {
+            padding: 24px;
+            text-align: center;
+        }
+
+        .plan-header h3 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .plan-price {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .plan-price span {
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+
+        .plan-features {
+            padding: 0 24px;
+        }
+
+        .plan-features ul {
+            list-style: none;
+        }
+
+        .plan-features li {
+            padding: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .plan-features i {
+            margin-right: 12px;
+            width: 16px;
+        }
+
+        .fa-check {
+            color: #28a745;
+        }
+
+        .fa-times {
+            color: #dc3545;
+        }
+
+        .plan-footer {
+            padding: 24px;
+        }
+
+        .recent-activity {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+
+        .activity-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+        }
+
+        .activity-icon i {
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .activity-details {
+            flex: 1;
+        }
+
+        .activity-details h4 {
+            color: #2d3748;
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .activity-details p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .activity-time {
+            color: #999;
+            font-size: 0.85rem;
+        }
+
+        .api-key-display {
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .rate-limits-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .rate-limits-table th,
+        .rate-limits-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .rate-limits-table th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            font-weight: 600;
+        }
+
+        .rate-limits-table tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .footer {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            margin-top: 40px;
+            padding: 40px 0 20px;
+        }
+
+        .footer .row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .footer h3 {
+            color: #2d3748;
+            margin-bottom: 16px;
+        }
+
+        .footer ul {
+            list-style: none;
+        }
+
+        .footer li {
+            margin-bottom: 8px;
+            color: #666;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .footer li:hover {
+            color: #0099ff;
+        }
+
+        .footer hr {
+            border: none;
+            height: 1px;
+            background: #e2e8f0;
+            margin: 20px 0;
+        }
+
+        .copyright {
+            text-align: center;
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading i {
+            font-size: 3rem;
+            color: #667eea;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-280px);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .menu-icon {
+                display: block;
+            }
+
+            nav ul {
+                display: none;
+            }
+
+            .dashboard-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .account-row {
+                flex-direction: column;
+            }
+
+            .account-col {
+                min-width: auto;
+            }
+
+            .plans-container {
+                grid-template-columns: 1fr;
+            }
+
+            .account-tabs {
+                flex-direction: column;
+            }
+
+            .account-tab {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MLAnalytics - Account</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+  <div class="layout">
+      <!-- Sidebar -->
+      <div class="sidebar" id="sidebar">
+          <div class="sidebar-logo">
+              <i class="fas fa-chart-line"></i>
+              <h1>MLAnalytics</h1>
+          </div>
+          
+          <div class="sidebar-section">
+              <div class="sidebar-section-title">MAIN</div>
+              <ul class="sidebar-menu">
+                  <li class="sidebar-menu-item">
+                      <a href="wizard.html">
+                        <i class="fas fa-rocket"></i>
+                        Run New Experiment
+                      </a>
+                  </li>
+                  <li class="sidebar-menu-item">
+                      <a href="dashboard.html">
+                          <i class="fas fa-home"></i>
+                          Dashboard
+                      </a>
+                  </li>
+                  <li class="sidebar-menu-item">
+                      <a href="gallery.html">
+                          <i class="fas fa-project-diagram"></i>
+                          Gallery
+                      </a>
+                  </li>
+                  <li class="sidebar-menu-item">
+                      <a href="datasets.html">
+                          <i class="fas fa-database"></i>
+                          Datasets
+                      </a>
+                  </li>
+              </ul>
+          </div>
+          
+          <div class="sidebar-section">
+              <div class="sidebar-section-title">SETTINGS</div>
+              <ul class="sidebar-menu">
+                  <li class="sidebar-menu-item active">
+                      <a href="account.html">
+                          <i class="fas fa-user"></i>
+                          Account
+                      </a>
+                  </li>
+              </ul>
+          </div>
+  
+          <div class="sidebar-section">
+              <div class="sidebar-section-title">COMMUNITY</div>
+              <ul class="sidebar-menu">
+                  <li class="sidebar-menu-item">
+                      <a href="contact.html">
+                          <i class="fas fa-users"></i>
+                          Contact
+                      </a>
+                  </li>
+              </ul>
+          </div>
+          
+          <div class="sidebar-footer">
+              <div class="sidebar-footer-item">
+                  <i class="fas fa-sign-out-alt"></i>
+                  Sign out
+              </div>
+          </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+          <div class="header">
+              <div class="container">
+                  <div class="navbar">
+                      <div class="logo">
+                          <h1>ML<span>Analytics</span></h1>
+                      </div>
+                      <div class="menu-icon">
+                          <i class="fas fa-bars"></i>
+                      </div>
+                      <nav>
+                          <ul>
+                              <li><a href="#home">Home</a></li>
+                              <li><a href="#models">Models</a></li>
+                              <li><a href="#visualization">Visualization</a></li>
+                              <li><a href="#account">Account</a></li>
+                          </ul>
+                      </nav>
+                  </div>
+              </div>
+          </div>
+
+          <div class="account-page container">
+              <div class="account-container">
+                  <div id="loading" class="loading">
+                      <i class="fas fa-spinner"></i>
+                      <p>Loading account data...</p>
+                  </div>
+                  
+                  <div id="account-content" style="display: none;">
+                      <h2>Account Dashboard</h2>
+                      
+                      <div class="dashboard-stats">
+                        <div class="stat-card">
+                          <i class="fas fa-database"></i>
+                          <h3>MB Processed</h3>
+                          <p id="mb-used">0.00</p>
+                        </div>
+                        <div class="stat-card">
+                          <i class="fas fa-clock"></i>
+                          <h3>Compute Time (sec)</h3>
+                          <p id="compute-seconds">0.00</p>
+                        </div>
+                        <div class="stat-card">
+                          <i class="fas fa-coins"></i>
+                          <h3>Tokens Remaining</h3>
+                          <p id="tokens-remaining">0</p>
+                        </div>
+                        <div class="stat-card">
+                          <i class="fas fa-calendar-check"></i>
+                          <h3>Plan Status</h3>
+                          <p id="plan-status"></p>
+                        </div>
+                      </div>
+                      
+                      
+                      <div class="account-tabs">
+                          <div class="account-tab active">Profile</div>
+                          <div class="account-tab">Subscription</div>
+                          <div class="account-tab">Billing</div>
+                          <div class="account-tab">Tokens</div>
+                          <div class="account-tab">Activity</div>
+                      </div>
+                      
+                      <div id="profile" class="tab-content active">
+                          <div class="account-form">
+                              <div class="account-row">
+                                  <div class="account-col">
+                                      <label for="firstName">First Name</label>
+                                      <input type="text" id="firstName" />
+                                  </div>
+                                  <div class="account-col">
+                                      <label for="lastName">Last Name</label>
+                                      <input type="text" id="lastName" />
+                                  </div>
+                              </div>
+                              
+                              <div class="account-row">
+                                  <div class="account-col">
+                                      <label for="email">Email</label>
+                                      <input type="email" id="email" />
+                                  </div>
+                                  <div class="account-col">
+                                      <label for="phone">Phone</label>
+                                      <input type="tel" id="phone" />
+                                  </div>
+                              </div>
+                              
+                              <div class="account-row">
+                                  <div class="account-col">
+                                      <label for="company">Company</label>
+                                      <input type="text" id="company" />
+                                  </div>
+                                  <div class="account-col">
+                                      <label for="role">Role</label>
+                                      <input type="text" id="role" />
+                                  </div>
+                              </div>
+                              
+                              <div class="account-row">
+                                  <div class="account-col">
+                                      <label for="password">Change Password</label>
+                                      <input type="password" id="password" placeholder="New Password" />
+                                  </div>
+                                  <div class="account-col">
+                                      <label for="confirmPassword">Confirm Password</label>
+                                      <input type="password" id="confirmPassword" placeholder="Confirm New Password" />
+                                  </div>
+                              </div>
+                              
+                              <div class="account-row">
+                                  <div class="account-col" style="flex-basis: 100%;">
+                                      <label for="bio">Bio</label>
+                                      <textarea id="bio"></textarea>
+                                  </div>
+                              </div>
+                              
+                              <div class="account-row">
+                                  <div class="account-col">
+                                      <label for="notifications">Email Notifications</label>
+                                      <select id="notifications">
+                                          <option value="all">All Notifications</option>
+                                          <option value="important">Important Only</option>
+                                          <option value="none">None</option>
+                                      </select>
+                                  </div>
+                                  <div class="account-col">
+                                      <label for="timezone">Timezone</label>
+                                      <select id="timezone">
+                                          <option value="pst">Pacific Time (PST)</option>
+                                          <option value="est">Eastern Time (EST)</option>
+                                          <option value="utc">UTC</option>
+                                          <option value="gmt">GMT</option>
+                                      </select>
+                                  </div>
+                              </div>
+                              
+                              <button class="btn">Save Changes</button>
+                          </div>
+                      </div>
+                      
+                      <div id="subscription" class="tab-content">
+                          <h3>Current Plan: <span id="current-plan-name">Loading...</span></h3>
+                          <p>Your subscription renews on <span id="renewal-date">Loading...</span></p>
+                          
+                          <div class="plans-container">
+                              <div class="plan-card">
+                                  <div class="plan-header" style="background: #f8f9fa;">
+                                      <h3>Starter</h3>
+                                      <div class="plan-price">$29<span>/month</span></div>
+                                  </div>
+                                  <div class="plan-features">
+                                      <ul>
+                                        <ul>
+                                          <li><i class="fas fa-check"></i> 290 Tokens / Month</li>
+                                          <li><i class="fas fa-check"></i> Equivalent to 1.45GB or 580s processing</li>
+                                          <li><i class="fas fa-check"></i> Email Support</li>
+                                          <li><i class="fas fa-check"></i> Basic Analytics</li>
+                                          <li><i class="fas fa-times"></i> Custom Models</li>
+                                          <li><i class="fas fa-times"></i> Advanced Visualization</li>                                 
+                                      </ul>
+                                  </div>
+                                  <div class="plan-footer">
+                                      <button class="btn btn-secondary">Select Plan</button>
+                                  </div>
+                              </div>
+                              
+                              <div class="plan-card popular">
+                                  <div class="plan-header" style="background: linear-gradient(135deg, #0066cc, #0099ff); color: white;">
+                                      <h3 style="color: white;">Professional</h3>
+                                      <div class="plan-price" style="color: white;">$59<span style="color: rgba(255,255,255,0.8);">/month</span></div>
+                                  </div>
+                                  <div class="plan-features">
+                                    <ul>
+                                      <li><i class="fas fa-check"></i> 990 Tokens / Month</li>
+                                      <li><i class="fas fa-check"></i> Equivalent to 4.95GB or 1,980s processing</li>
+                                      <li><i class="fas fa-check"></i> Priority Support</li>
+                                      <li><i class="fas fa-check"></i> Advanced Analytics</li>
+                                      <li><i class="fas fa-check"></i> Custom Models</li>
+                                      <li><i class="fas fa-times"></i> White Label</li>
+                                  </ul>
+                                  </div>
+                                  <div class="plan-footer">
+                                      <button class="btn" id="professional-btn">Select Plan</button>
+                                  </div>
+                              </div>
+                              
+                              <div class="plan-card">
+                                  <div class="plan-header" style="background: #f8f9fa;">
+                                      <h3>Enterprise</h3>
+                                      <div class="plan-price">$99<span>/month</span></div>
+                                  </div>
+                                  <div class="plan-features">
+                                    <ul>
+                                      <li><i class="fas fa-check"></i> 2,990 Tokens / Month</li>
+                                      <li><i class="fas fa-check"></i> Equivalent to 15GB or 5,980s processing</li>
+                                      <li><i class="fas fa-check"></i> 24/7 Support</li>
+                                      <li><i class="fas fa-check"></i> Advanced Analytics</li>
+                                      <li><i class="fas fa-check"></i> Custom Models</li>
+                                      <li><i class="fas fa-check"></i> White Label</li>
+                                  </ul>                                  
+                                  </div>
+                                  <div class="plan-footer">
+                                      <button class="btn">Select Plan</button>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div id="billing" class="tab-content">
+                          <h3>Payment Information</h3>
+                          
+                          <div class="account-row">
+                              <div class="account-col">
+                                  <h4>Payment Method</h4>
+                                  <div class="payment-method-card">
+                                      <i class="fab fa-cc-visa"></i>
+                                      <span>**** **** **** 4242</span>
+                                      <span class="card-expiry">Expires 12/26</span>
+                                  </div>
+                                  <button class="btn btn-sm">Update Payment Method</button>
+                              </div>
+                              <div class="account-col">
+                                  <h4>Billing Address</h4>
+                                  <div class="billing-address">
+                                      <p>John Doe</p>
+                                      <p>123 Main Street</p>
+                                      <p>San Francisco, CA 94105</p>
+                                      <p>United States</p>
+                                  </div>
+                                  <button class="btn btn-sm">Edit Address</button>
+                              </div>
+                          </div>
+                          
+                          <div class="account-row">
+                              <div class="account-col" style="flex-basis: 100%;">
+                                  <h4>Billing History</h4>
+                                  <table class="billing-history-table">
+                                      <thead>
+                                          <tr>
+                                              <th>Date</th>
+                                              <th>Description</th>
+                                              <th>Amount</th>
+                                              <th>Status</th>
+                                              <th>Action</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          <tr>
+                                              <td>Jan 15, 2025</td>
+                                              <td>Professional Plan - Monthly</td>
+                                              <td>$99.00</td>
+                                              <td><span class="status-paid">Paid</span></td>
+                                              <td><a href="#" class="download-invoice">Download</a></td>
+                                          </tr>
+                                          <tr>
+                                              <td>Dec 15, 2024</td>
+                                              <td>Professional Plan - Monthly</td>
+                                              <td>$99.00</td>
+                                              <td><span class="status-paid">Paid</span></td>
+                                              <td><a href="#" class="download-invoice">Download</a></td>
+                                          </tr>
+                                          <tr>
+                                              <td>Nov 15, 2024</td>
+                                              <td>Professional Plan - Monthly</td>
+                                              <td>$99.00</td>
+                                              <td><span class="status-paid">Paid</span></td>
+                                              <td><a href="#" class="download-invoice">Download</a></td>
+                                          </tr>
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      </div>
+                      <div id="tokens" class="tab-content">
+                        <h3>Token Management</h3>
+                        
+                        <div class="token-overview">
+                            <div class="token-balance-card">
+                                <i class="fas fa-coins"></i>
+                                <div class="token-info">
+                                    <h4>Current Balance</h4>
+                                    <div class="token-amount" id="token-balance">Loading...</div>
+                                    <p class="token-value" id="token-dollar-value">≈ Loading...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="account-row">
+                          <div class="account-col">
+                            <h4>Purchase Tokens</h4>
+                            <div class="token-packages">
+                        
+                              <div class="token-package">
+                                <div class="package-header">
+                                  <span class="token-count">140 Tokens</span>
+                                  <span class="package-price">$10.00</span>
+                                </div>
+                                <button class="btn btn-sm" onclick="purchaseTokens(140)">Purchase</button>
+                              </div>
+                        
+                              <div class="token-package">
+                                <div class="package-header">
+                                  <span class="token-count">640 Tokens</span>
+                                  <span class="package-price">$45.00</span>
+                                </div>
+                                <button class="btn btn-sm" onclick="purchaseTokens(640)">Purchase</button>
+                              </div>
+                        
+                              <div class="token-package popular">
+                                <div class="package-header">
+                                  <span class="token-count">1,140 Tokens</span>
+                                  <span class="package-price">$80.00</span>
+                                </div>
+                                <button class="btn btn-sm" onclick="purchaseTokens(1140)">Purchase</button>
+                              </div>
+                        
+                              <div class="token-package">
+                                <div class="package-header">
+                                  <span class="token-count">5,360 Tokens</span>
+                                  <span class="package-price">$375.00</span>
+                                </div>
+                                <button class="btn btn-sm" onclick="purchaseTokens(5360)">Purchase</button>
+                              </div>
+                        
+                            </div>
+                          </div>
+                        </div>
+                        
+                    
+                          
+                          <div class="account-row">
+                              <div class="account-col" style="flex-basis: 100%;">
+                                  <h4>Token Usage History</h4>
+                                  <table class="token-usage-table">
+                                      <thead>
+                                          <tr>
+                                              <th>Date</th>
+                                              <th>Service</th>
+                                              <th>Tokens Used</th>
+                                              <th>Cost</th>
+                                              <th>Remaining Balance</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          <tr>
+                                              <td>Jun 11, 2025</td>
+                                              <td>Model Training - XGBoost</td>
+                                              <td>25</td>
+                                              <td>$2.50</td>
+                                              <td>1,250</td>
+                                          </tr>
+                                          <tr>
+                                              <td>Jun 10, 2025</td>
+                                              <td>Data Processing</td>
+                                              <td>10</td>
+                                              <td>$1.00</td>
+                                              <td>1,275</td>
+                                          </tr>
+                                          <tr>
+                                              <td>Jun 09, 2025</td>
+                                              <td>Visualization Generation</td>
+                                              <td>5</td>
+                                              <td>$0.50</td>
+                                              <td>1,285</td>
+                                          </tr>
+                                          <tr>
+                                              <td>Jun 08, 2025</td>
+                                              <td>Model Training - Random Forest</td>
+                                              <td>30</td>
+                                              <td>$3.00</td>
+                                              <td>1,290</td>
+                                          </tr>
+                                          <tr>
+                                              <td>Jun 07, 2025</td>
+                                              <td>API Calls - Batch Processing</td>
+                                              <td>15</td>
+                                              <td>$1.50</td>
+                                              <td>1,320</td>
+                                          </tr>
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div id="activity" class="tab-content">
+                          <h3>Recent Activity</h3>
+                          <div class="activity-timeline">
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-cog"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>Model Training Completed</h4>
+                                      <p>XGBoost regression model finished training on customer_data.csv</p>
+                                      <span class="activity-time">2 hours ago</span>
+                                  </div>
+                              </div>
+                              
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-upload"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>Dataset Uploaded</h4>
+                                      <p>Successfully uploaded sales_forecast.csv (2.3 MB)</p>
+                                      <span class="activity-time">5 hours ago</span>
+                                  </div>
+                              </div>
+                              
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-chart-bar"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>Visualization Created</h4>
+                                      <p>Generated correlation heatmap for feature analysis</p>
+                                      <span class="activity-time">1 day ago</span>
+                                  </div>
+                              </div>
+                              
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-code"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>API Key Generated</h4>
+                                      <p>New API key created for production environment</p>
+                                      <span class="activity-time">2 days ago</span>
+                                  </div>
+                              </div>
+                              
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-users"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>Team Member Added</h4>
+                                      <p>Added sarah.johnson@company.com to Analytics Team</p>
+                                      <span class="activity-time">3 days ago</span>
+                                  </div>
+                              </div>
+                              
+                              <div class="activity-item">
+                                  <div class="activity-icon">
+                                      <i class="fas fa-download"></i>
+                                  </div>
+                                  <div class="activity-content">
+                                      <h4>Report Downloaded</h4>
+                                      <p>Downloaded monthly analytics report (PDF)</p>
+                                      <span class="activity-time">1 week ago</span>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+      <div class="container">
+          <div class="row">
+              <div class="footer-col-1">
+                  <h3>ML Analytics Platform</h3>
+                  <p>Streamline your machine learning workflow with our comprehensive analytics platform</p>
+              </div>
+              <div class="footer-col-2">
+                  <h3>Quick Links</h3>
+                  <ul>
+                      <li>Home</li>
+                      <li>Models</li>
+                      <li>Visualization</li>
+                      <li>Account</li>
+                  </ul>
+              </div>
+              <div class="footer-col-3">
+                  <h3>Resources</h3>
+                  <ul>
+                      <li>Documentation</li>
+                      <li>Tutorials</li>
+                      <li>Blog</li>
+                      <li>Community</li>
+                      <li>Support</li>
+                  </ul>
+              </div>
+              <div class="footer-col-4">
+                  <h3>Follow Us</h3>
+                  <ul>
+                      <li>Facebook</li>
+                      <li>Twitter</li>
+                      <li>Instagram</li>
+                      <li>LinkedIn</li>
+                      <li>YouTube</li>
+                  </ul>
+              </div>
+          </div>
+          <hr>
+          <p class="copyright">Copyright 2025 - ML Analytics Platform</p>
+      </div>
+  </div>
+</body>
+<script>
+const API_BASE_URL = 'http://127.0.0.1:8000';
+function safeStorageSet(key, value) {
+    try {
+        if (!value) return false;
+        localStorage.removeItem(key);
+        localStorage.setItem(key, value);
+        return localStorage.getItem(key) === value;
+    } catch (error) {
+        console.error(`Error storing ${key}:`, error);
+        return false;
+    }
+}
+function safeStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        console.error(`Error getting ${key}:`, error);
+        return null;
+    }
+}
+
+function clearAuthStorage() {
+    try {
+        const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail', 'userData'];
+        keys.forEach(key => localStorage.removeItem(key));
+    } catch (error) {
+        console.error('Error clearing auth storage:', error);
+    }
+}
+
+// FIXED: More robust token storage with validation
+function storeAuthTokens(tokenData) {
+    if (!tokenData) return false;
+    
+    let success = true;
+    
+    if (tokenData.access_token) {
+        success = safeStorageSet('access_token', tokenData.access_token) && success;
+    }
+    
+    if (tokenData.refresh_token) {
+        success = safeStorageSet('refresh_token', tokenData.refresh_token) && success;
+    }
+    
+    // CRITICAL: Set this AFTER tokens are stored
+    success = safeStorageSet('userLoggedIn', 'true') && success;
+    
+    if (tokenData.name) {
+        success = safeStorageSet('userName', tokenData.name) && success;
+    }
+    
+    if (tokenData.email) {
+        success = safeStorageSet('userEmail', tokenData.email) && success;
+    }
+    
+    // ADDED: Verify all required tokens are actually stored
+    if (success) {
+        const storedToken = safeStorageGet('access_token');
+        const storedLoggedIn = safeStorageGet('userLoggedIn');
+        success = !!(storedToken && storedLoggedIn === 'true');
+    }
+    
+    return success;
+}
+
+function openTab(event, tabName) {
+    // Hide all tab contents
+    const tabContents = document.getElementsByClassName("tab-content");
+    for (let i = 0; i < tabContents.length; i++) {
+        tabContents[i].style.display = "none";
+    }
+
+    // Remove active class from all tabs
+    const tabs = document.getElementsByClassName("account-tab");
+    for (let i = 0; i < tabs.length; i++) {
+        tabs[i].classList.remove("active");
+    }
+
+    // Show selected tab content and set tab to active
+    document.getElementById(tabName).style.display = "block";
+    event.currentTarget.classList.add("active");
+}
+
+// FIXED: Token management with consistent naming
+function isTokenExpired(token) {
+    if (!token) return true;
+    
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (!payload.exp) return false;
+        
+        const currentTime = Math.floor(Date.now() / 1000);
+        return payload.exp < (currentTime + 30);
+    } catch (error) {
+        console.error('Error parsing token:', error);
+        return true;
+    }
+}
+
+async function refreshUserToken() {
+    const refreshToken = safeStorageGet('refresh_token');
+    
+    if (!refreshToken) {
+        throw new Error('No refresh token available');
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Store refreshed tokens - don't worry about userData here
+        const tokenStored = storeAuthTokens({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || refreshToken,
+            // Preserve existing user info if available
+            name: safeStorageGet('userName'),
+            email: safeStorageGet('userEmail')
+        });
+        
+        if (!tokenStored) {
+            throw new Error('Failed to store refreshed tokens');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        clearAuthStorage();
+        throw error;
+    }
+}
+// Central helper to fetch profile
+async function fetchUserProfile(token) {
+    const response = await fetch(`${API_BASE_URL}/api/account/profile`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (response.status === 401) {
+        throw new Error('unauthorized');
+    }
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch profile: ${response.status}`);
+    }
+
+    const userData = await response.json();
+
+    if (!userData.name || !userData.email) {
+        return 'CREATE_PROFILE';
+    }
+
+    return userData;
+}
+async function checkUserProfileStatus() {
+    const token = await checkAuth();
+    if (!token) {
+        console.error('No valid token from checkAuth()');
+        return false;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/account/profile`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.status === 401) {
+            // Token is invalid or expired — try refresh and retry
+            await refreshUserToken();
+            const newToken = safeStorageGet('access_token');
+            const retryRes = await fetch(`${API_BASE_URL}/api/account/profile`, {
+                headers: {
+                    'Authorization': `Bearer ${newToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!retryRes.ok) throw new Error(`Retry failed: ${retryRes.status}`);
+            const userData = await retryRes.json();
+            if (!userData.name || !userData.email) return 'CREATE_PROFILE';
+            return userData;
+        }
+
+        if (!response.ok) {
+            console.error(`Failed to fetch profile: ${response.status}`);
+            return false;
+        }
+
+        const userData = await response.json();
+        if (!userData.name || !userData.email) return 'CREATE_PROFILE';
+        return userData;
+
+    } catch (err) {
+        console.error('Error checking profile:', err);
+        return false;
+    }
+}
+function checkAuthentication() {
+    const token = safeStorageGet('access_token');
+    const userLoggedIn = safeStorageGet('userLoggedIn');
+    
+    console.log('Authentication check:', {
+        token: token ? 'Token found' : 'No token found',
+        userLoggedIn: userLoggedIn,
+        tokenExpired: token ? isTokenExpired(token) : 'No token'
+    });
+    
+    // Check both token existence/validity AND login flag
+    return token && 
+           !isTokenExpired(token) && 
+           userLoggedIn === 'true';
+}
+// Returns the raw token if OK, or redirects and returns null
+function checkAuth() {
+  if (!checkAuthentication()) {
+    // include a “next” param so you can return to this page after login
+    const current = encodeURIComponent(window.location.pathname);
+    window.location.href = `login.html?next=${current}`;
+    return null;
+  }
+  return safeStorageGet("access_token");
+}
+
+
+async function saveProfile() {
+    const token = safeStorageGet('access_token');
+    if (!token || safeStorageGet('userLoggedIn') !== 'true') {
+        showError('Authentication required. Please log in again.');
+        clearAuthStorage();
+        window.location.href = 'login.html';
+        return;
+    }
+
+    // 1) Collect form values
+    const firstName = document.getElementById('firstName')?.value.trim();
+    const lastName = document.getElementById('lastName')?.value.trim();
+    const email = document.getElementById('email')?.value.trim();
+    const phone = document.getElementById('phone')?.value.trim();
+    const company = document.getElementById('company')?.value.trim();
+    const role = document.getElementById('role')?.value.trim();
+    const password = document.getElementById('password')?.value;
+    const confirmPassword = document.getElementById('confirmPassword')?.value;
+    const bio = document.getElementById('bio')?.value.trim();
+    const notifications = document.getElementById('notifications')?.value;
+    const timezone = document.getElementById('timezone')?.value;
+
+    // 2) Basic validation
+    if (password || confirmPassword) {
+        if (password !== confirmPassword) {
+            showError('Passwords do not match.');
+            return;
+        }
+        if (password.length < 6) {
+            showError('Password must be at least 6 characters long.');
+            return;
+        }
+    }
+
+    // 3) Build payload
+    const payload = {
+        firstName,
+        lastName,
+        email,
+        phone,
+        company,
+        role,
+        bio,
+        notifications,
+        timezone
+    };
+    // Only include password if the user entered one
+    if (password) {
+        payload.password = password;
+    }
+
+    try {
+        // 4) Send to backend
+        let response = await fetch(`${API_BASE_URL}/api/account/update-profile`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 401) {
+            // Try refreshing token once
+            try {
+                await refreshUserToken();
+                const newToken = safeStorageGet('access_token');
+                response = await fetch(`${API_BASE_URL}/api/account/update-profile`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${newToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    const msg = err.detail || 'Failed to update profile after token refresh.';
+                    showError(msg);
+                    return;
+                }
+            } catch (refreshErr) {
+                console.error('Token refresh failed:', refreshErr);
+                clearAuthStorage();
+                window.location.href = 'login.html';
+                return;
+            }
+        }
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            const msg = err.detail || 'Failed to update profile.';
+            showError(msg);
+            return;
+        }
+
+        // 5) Success
+        showSuccess('Profile updated successfully!');
+        
+        // Optionally refresh account data to reflect changes immediately
+        loadAccountData();
+    } catch (err) {
+        console.error('Error in saveProfile():', err);
+        showError('An unexpected error occurred. Please try again.');
+    }
+}
+function showProfileCreationMode() {
+    console.log('Entering profile creation mode');
+    
+    // Hide loading indicator
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'none';
+    
+    // Show account content
+    const accountContentEl = document.getElementById('account-content');
+    if (accountContentEl) accountContentEl.style.display = 'block';
+    
+    // Show message about profile creation
+    const existingMessage = document.getElementById('profile-creation-message');
+    
+    if (!existingMessage && accountContentEl) {
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'profile-creation-message';
+        messageDiv.style.cssText = `
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #1976d2;
+        `;
+        messageDiv.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: #1976d2;">Welcome! Complete Your Profile</h3>
+            <p style="margin: 0;">You're successfully logged in! Please fill out your profile information below and click "Save Changes" to complete your account setup.</p>
+        `;
+        
+        // Insert message after the first child
+        if (accountContentEl.children.length > 0) {
+            accountContentEl.insertBefore(messageDiv, accountContentEl.children[1] || accountContentEl.firstChild);
+        } else {
+            accountContentEl.appendChild(messageDiv);
+        }
+    }
+    
+    // Set default dashboard values for new users
+    const elements = {
+        'mb-used': '0.00',
+        'compute-seconds': '0.00',
+        'total-cost': '$0.00',
+        'plan-status': 'Inactive',
+        'current-plan-name': 'Free'
+    };
+    
+    Object.entries(elements).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    });
+    
+    // Remove or hide the old usage bar if still present
+    const usageBar = document.getElementById('usage-bar-fill');
+    if (usageBar) usageBar.style.width = '0%';
+    
+    // Highlight the Professional plan as default
+    const professionalBtn = document.getElementById('professional-btn');
+    if (professionalBtn) {
+        professionalBtn.textContent = 'Current Plan';
+        professionalBtn.style.backgroundColor = '#28a745';
+    }
+    
+    // Pre-populate form fields with any available info
+    populateFormFromStoredData();
+    
+    // Focus on first empty required field
+    focusFirstEmptyField();
+}
+
+
+function populateFormFromStoredData() {
+    // Try to get info from token first
+    const token = safeStorageGet('access_token');
+    if (token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.email) {
+                const emailEl = document.getElementById('email');
+                if (emailEl && !emailEl.value) emailEl.value = payload.email;
+            }
+            if (payload.name) {
+                const nameParts = payload.name.split(' ');
+                const firstNameEl = document.getElementById('firstName');
+                const lastNameEl = document.getElementById('lastName');
+                if (firstNameEl && !firstNameEl.value) firstNameEl.value = nameParts[0] || '';
+                if (lastNameEl && !lastNameEl.value) lastNameEl.value = nameParts.slice(1).join(' ') || '';
+            }
+        } catch (error) {
+            console.log('Could not extract info from token:', error);
+        }
+    }
+    
+    // Also check for stored basic info (fallback)
+    const userEmail = safeStorageGet('userEmail');
+    const userName = safeStorageGet('userName');
+    
+    if (userEmail) {
+        const emailEl = document.getElementById('email');
+        if (emailEl && !emailEl.value) emailEl.value = userEmail;
+    }
+    
+    if (userName) {
+        const nameParts = userName.split(' ');
+        const firstNameEl = document.getElementById('firstName');
+        const lastNameEl = document.getElementById('lastName');
+        if (firstNameEl && !firstNameEl.value) firstNameEl.value = nameParts[0] || '';
+        if (lastNameEl && !lastNameEl.value) lastNameEl.value = nameParts.slice(1).join(' ') || '';
+    }
+}
+
+function focusFirstEmptyField() {
+    const requiredFields = ['firstName', 'lastName', 'email'];
+    for (const fieldId of requiredFields) {
+        const field = document.getElementById(fieldId);
+        if (field && !field.value.trim()) {
+            field.focus();
+            break;
+        }
+    }
+}
+async function changePlan(planName) {
+  const token = safeStorageGet("access_token");
+  const loggedIn = safeStorageGet("userLoggedIn") === "true";
+
+  // 1) Must be logged in
+  if (!token || !loggedIn) {
+    showError("Authentication required. Please log in again.");
+    clearAuthStorage();
+    window.location.href = "login.html";
+    return;
+  }
+
+  // 2) Confirm with the user
+  if (!confirm(`Are you sure you want to change to the ${planName} plan?`)) {
+    return;
+  }
+
+  // 3) Helper to call the API
+  async function doFetch(currentToken) {
+    return fetch(`${API_BASE_URL}/api/account/change-plan`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${currentToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ planName })  // match ChangePlanRequest
+    });
+  }
+
+  try {
+    let response = await doFetch(token);
+
+    // 4) Try refresh token if unauthorized
+    if (response.status === 401) {
+      try {
+        await refreshUserToken();
+        const newToken = safeStorageGet("access_token");
+        if (!newToken) throw new Error("No new token after refresh");
+
+        response = await doFetch(newToken);
+      } catch (refreshError) {
+        console.error("🔒 Token refresh failed:", refreshError);
+        showError("Your session has expired. Please log in again.");
+        clearAuthStorage();
+        window.location.href = "login.html";
+        return;
+      }
+    }
+
+    // 5) If still not OK, show backend error
+    if (!response.ok) {
+      let errMsg = `Failed to change plan (${response.status})`;
+      try {
+        const errData = await response.json();
+        if (errData.detail) errMsg = errData.detail;
+      } catch (_) { /* silent */ }
+      showError(errMsg);
+      return;
+    }
+
+    // 6) Handle successful response
+    const data = await response.json();
+
+    if (data.checkoutUrl) {
+      // ✅ Redirect to Stripe Checkout
+      window.location.href = data.checkoutUrl;
+      return;
+    }
+
+    if (data.success) {
+      showSuccess(data.message || "Plan changed successfully.");
+      loadAccountData();  // refresh dashboard
+    } else {
+      showError(data.message || "Plan change was not successful.");
+    }
+
+  } catch (error) {
+    console.error("❌ Error in changePlan():", error);
+    showError("An unexpected error occurred. Please try again.");
+  }
+}
+
+function updateAccountStatsUI(data) {
+  if (!data) return;
+
+  // MB Processed
+  if (typeof data.mbUsed !== "undefined") {
+    document.getElementById("mb-used").textContent = data.mbUsed.toFixed(2);
+  }
+
+  // Compute Time (Seconds)
+  if (typeof data.computeSeconds !== "undefined") {
+    document.getElementById("compute-seconds").textContent = data.computeSeconds.toFixed(2);
+  }
+
+  // Tokens Remaining
+  if (typeof data.tokensRemaining !== "undefined") {
+    document.getElementById("tokens-remaining").textContent = data.tokensRemaining;
+  }
+
+  // Plan Status
+  if (typeof data.plan_status !== "undefined") {
+    document.getElementById("plan-status").textContent = data.plan_status;
+  }
+}
+
+
+
+/**
+ * loadAccountStats
+ *   1) Sends GET /api/account/stats
+ *   2) If 401, attempts token refresh once and retries
+ *   3) Calls updateAccountStatsUI(data) if successful
+ */
+async function loadAccountStats() {
+    // 0) Must have a token and the user must be logged in
+    const token = safeStorageGet("access_token");
+    if (!token || safeStorageGet("userLoggedIn") !== "true") {
+        console.warn("No token or not logged in—cannot load account stats.");
+        return;
+    }
+
+    // 1) Attempt initial fetch
+    let response;
+    try {
+        response = await fetch(`${API_BASE_URL}/api/account/stats`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+        });
+    } catch (networkError) {
+        console.error("Network error when fetching account stats:", networkError);
+        return;
+    }
+
+    // 2) If 401, try token refresh → retry once
+    if (response.status === 401) {
+        try {
+            await refreshUserToken();
+            const newToken = safeStorageGet("access_token");
+            if (!newToken) throw new Error("refreshUserToken did not produce a new token");
+
+            const retryResponse = await fetch(`${API_BASE_URL}/api/account/stats`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${newToken}`,
+                    "Content-Type": "application/json",
+                },
+            });
+            if (!retryResponse.ok) {
+                console.error("Retry for account stats failed with status", retryResponse.status);
+                return;
+            }
+            const retryData = await retryResponse.json();
+            updateAccountStatsUI(retryData);
+            return;
+        } catch (refreshError) {
+            console.error("Could not refresh token when loading stats:", refreshError);
+            clearAuthStorage();
+            window.location.href = "login.html";
+            return;
+        }
+    }
+
+    // 3) If initial fetch wasn't 401 but is not ok
+    if (!response.ok) {
+        console.error(`Failed to load stats: HTTP ${response.status}`);
+        return;
+    }
+
+    // 4) Parse JSON and update UI
+    try {
+        const data = await response.json();
+        updateAccountStatsUI(data);
+    } catch (parseError) {
+        console.error("Failed to parse account stats JSON:", parseError);
+    }
+}
+async function loadAccountData() {
+  // ➊ synchronous auth check + redirect
+  const token = checkAuth();
+  if (!token) return;
+
+  // ➋ fetch with the stored token
+  const res = await fetch(`${API_BASE_URL}/api/account/dashboard`, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (res.status === 401) {
+    clearAuthStorage();
+    return window.location.href = "login.html";
+  }
+  if (!res.ok) {
+    return showProfileCreationMode();
+  }
+
+  const data = await res.json();
+  updateDashboard(data);
+  loadAccountStats();
+}
+
+// ——— Load activity feed ———
+async function loadActivityFeed() {
+  const token = checkAuth();
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/account/dashboard`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error();
+    const json = await res.json();
+    const items = Array.isArray(json.activity) ? json.activity : [];
+    const container = document.querySelector(".activity-timeline");
+    if (!container) return;
+    container.innerHTML = "";
+    items.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "activity-item";
+      div.innerHTML = `
+        <div class="activity-icon"><i class="fas fa-coins"></i></div>
+        <div class="activity-content">
+          <h4>${item.title}</h4>
+          <p>${item.description}</p>
+          <span class="activity-time">${timeAgo(new Date(item.timestamp))}</span>
+        </div>`;
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error("Failed to load activity feed:", err);
+  }
+}
+
+// Utility to format timestamps like "2 hours ago"
+function timeAgo(date) {
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
+// Helper functions for UI feedback
+function showError(message) {
+    // Remove existing alerts
+    const existingAlert = document.querySelector('.alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-error';
+    alertDiv.style.cssText = `
+        background: #ffebee;
+        border: 1px solid #f44336;
+        color: #c62828;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        min-width: 300px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    `;
+    alertDiv.textContent = message;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+function showSuccess(message) {
+    // Remove existing alerts
+    const existingAlert = document.querySelector('.alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success';
+    alertDiv.style.cssText = `
+        background: #e8f5e8;
+        border: 1px solid #4caf50;
+        color: #2e7d32;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        min-width: 300px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    `;
+    alertDiv.textContent = message;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+
+function updateDashboard(data) {
+    // Hide loading and show content
+    const loadingEl = document.getElementById('loading');
+    const contentEl = document.getElementById('account-content');
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (contentEl) contentEl.style.display = 'block';
+    
+    // Remove profile creation message if it exists
+    const messageDiv = document.getElementById('profile-creation-message');
+    if (messageDiv) {
+        messageDiv.remove();
+    }
+
+    // ✅ Update resource-based dashboard stats
+    if (data.apiStats) {
+        const mbUsedEl = document.getElementById('mb-used');
+        const computeTimeEl = document.getElementById('compute-seconds');
+        const totalCostEl = document.getElementById('total-cost');
+
+        if (mbUsedEl) mbUsedEl.textContent = data.apiStats.mbUsed?.toFixed(2) || '0.00';
+        if (computeTimeEl) computeTimeEl.textContent = data.apiStats.computeSeconds?.toFixed(2) || '0.00';
+        if (totalCostEl) totalCostEl.textContent = `$${data.apiStats.totalCost?.toFixed(2) || '0.00'}`;
+    }
+
+    // ✅ Subscription info
+    if (data.subscription) {
+        const statusEl = document.getElementById('plan-status');
+        const planNameEl = document.getElementById('current-plan-name');
+        const renewalEl = document.getElementById('renewal-date');
+        
+        if (statusEl) statusEl.textContent = data.subscription.status || 'Inactive';
+        if (planNameEl) planNameEl.textContent = data.subscription.planName || 'Free';
+        if (renewalEl) renewalEl.textContent = data.subscription.renewalDate || 'Loading...';
+    }
+
+    // ✅ Profile info
+    if (data.profile) {
+        const profile = data.profile;
+        const fields = {
+            'firstName': profile.firstName,
+            'lastName': profile.lastName,
+            'email': profile.email,
+            'phone': profile.phone,
+            'company': profile.company,
+            'role': profile.role,
+            'bio': profile.bio,
+            'notifications': profile.notifications || 'all',
+            'timezone': profile.timezone || 'pst'
+        };
+        
+        Object.entries(fields).forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.value = value || '';
+        });
+    }
+
+    // ✅ API keys
+    if (data.apiKeys) {
+        const prodKeyEl = document.getElementById('prod-api-key');
+        const devKeyEl = document.getElementById('dev-api-key');
+        
+        if (prodKeyEl) prodKeyEl.textContent = data.apiKeys.production || 'Loading...';
+        if (devKeyEl) devKeyEl.textContent = data.apiKeys.development || 'Loading...';
+    }
+
+    // ✅ Billing info
+    if (data.billing) {
+        const paymentEl = document.getElementById('payment-method');
+        const addressEl = document.getElementById('billing-address');
+        
+        if (paymentEl) paymentEl.textContent = data.billing.paymentMethod || 'Loading...';
+        if (addressEl) addressEl.textContent = data.billing.address || 'Loading...';
+    }
+}
+async function loadTokenBalance() {
+  const token = checkAuth();
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/users/me`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error();
+    const { tokens } = await res.json();
+    document.getElementById("token-balance").textContent =
+      `${tokens.toFixed(2)} tokens`;
+  } catch {
+    document.getElementById("token-balance").textContent = "Error loading";
+  }
+}
+
+// ——— Purchase tokens (redirect to Stripe) ———
+async function purchaseTokens(amount) {
+  if (amount <= 0) return;
+  const token = checkAuth();
+  if (!token) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/tokens/topup-tokens`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ amount })
+    });
+    if (!res.ok) throw new Error();
+    const { checkoutUrl } = await res.json();
+    window.location.href = checkoutUrl;
+  } catch (err) {
+    console.error("Purchase failed:", err);
+    alert("❌ Purchase failed; please try again.");
+  }
+}
+
+// ——— Load token usage ———
+async function loadTokenUsage() {
+  const token = checkAuth();
+  if (!token) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/tokens/token-usage`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error();
+    const usageData = await res.json();
+    const tbody = document.getElementById("token-usage-body");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    usageData.forEach(log => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${log.endpoint}</td>
+        <td>${log.tokens_used.toFixed(2)}</td>
+        <td>${new Date(log.timestamp).toLocaleString()}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error("Error loading token usage:", err);
+    const tbody = document.getElementById("token-usage-body");
+    if (tbody) tbody.innerHTML = "<tr><td colspan='3'>Error</td></tr>";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    // 1) Load account data on page load
+    const authHeader = { 
+        'Authorization': `Bearer ${window.USER_API_KEY}` 
+      };
+    loadAccountData();
+    loadTokenBalance();
+    loadTokenUsage();
+    loadActivityFeed(); // ← add this to update activity UI
+    // 2) Set up tab click handlers using the existing openTab function
+    const tabs = document.querySelectorAll(".account-tab");
+    tabs.forEach((tab) => {
+        tab.addEventListener("click", (e) => {
+            // Get the tab name from data attribute or text content
+            const tabName = e.currentTarget.getAttribute('data-tab') || 
+                           e.currentTarget.textContent.toLowerCase().trim();
+            
+            // Use the existing openTab function
+            openTab(e, tabName);
+        });
+    });
+    
+    // 3) Set up save profile button
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    if (saveProfileBtn) {
+        saveProfileBtn.addEventListener('click', saveProfile);
+    }
+    
+    // 4) Set up plan change buttons
+    const planButtons = document.querySelectorAll('[data-plan]');
+    planButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const planName = e.currentTarget.getAttribute('data-plan');
+            if (planName) changePlan(planName);
+        });
+    });
+    
+    // 6) Sidebar toggle (if you have a hamburger menu)
+    const toggleBtn = document.querySelector(".menu-icon");
+    const sidebar = document.getElementById("sidebar");
+    const mainContent = document.querySelector(".main-content");
+    
+    if (toggleBtn && sidebar && mainContent) {
+        toggleBtn.addEventListener("click", () => {
+            sidebar.classList.toggle("collapsed");
+            mainContent.classList.toggle("sidebar-collapsed");
+        });
+    }
+    
+    // 7) Set up logout functionality if logout button exists
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (confirm('Are you sure you want to log out?')) {
+                clearAuthStorage();
+                window.location.href = 'login.html';
+            }
+        });
+    }
+    
+    // 9) Form validation helpers
+    const form = document.querySelector('#profile-form');
+    if (form) {
+        // Add real-time validation
+        const emailField = document.getElementById('email');
+        if (emailField) {
+            emailField.addEventListener('blur', () => {
+                const email = emailField.value.trim();
+                if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    emailField.style.borderColor = '#f44336';
+                    showError('Please enter a valid email address');
+                } else {
+                    emailField.style.borderColor = '';
+                }
+            });
+        }
+        
+        const phoneField = document.getElementById('phone');
+        if (phoneField) {
+            phoneField.addEventListener('input', (e) => {
+                // Basic phone number formatting
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length >= 6) {
+                    value = value.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+                } else if (value.length >= 3) {
+                    value = value.replace(/(\d{3})(\d{0,3})/, '($1) $2');
+                }
+                e.target.value = value;
+            });
+        }
+    }
+});
+</script>
+</body>
+</html>

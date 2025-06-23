@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MLAnalytics | API Documentation</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,200&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
+    />
+    <style>
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+          font-family: 'Poppins', sans-serif;
+        }
+    
+        body {
+          background: #e6f7ff; /* Light blue background */
+        }
+    
+        h1 {
+          font-weight: 600;
+          margin: 0;
+          color: #0066cc;
+        }
+    
+        h2 {
+          text-align: center;
+          color: #0066cc;
+          margin: 20px 0;
+        }
+        
+        h3 {
+          color: #0066cc;
+          margin: 15px 0;
+        }
+        
+        h4 {
+          color: #0099ff;
+          margin: 10px 0;
+        }
+    
+        p {
+          font-size: 14px;
+          font-weight: 300;
+          line-height: 20px;
+          letter-spacing: 0.5px;
+          margin: 10px 0;
+        }
+    
+        span {
+          font-size: 12px;
+          color: #555;
+          margin: 15px 0;
+        }
+    
+        a {
+          color: #0099ff;
+          font-size: 14px;
+          text-decoration: none;
+          margin: 15px 0;
+          transition: 0.3s ease;
+        }
+    
+        a:hover {
+          color: #0066cc;
+        }
+    
+        button {
+          border-radius: 20px;
+          border: 1px solid #0099ff;
+          background-color: #0099ff;
+          color: #FFFFFF;
+          font-size: 12px;
+          font-weight: bold;
+          padding: 12px 45px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          transition: transform 80ms ease-in;
+          cursor: pointer;
+        }
+    
+        button:active {
+          transform: scale(0.95);
+        }
+    
+        button:focus {
+          outline: none;
+        }
+    
+        .container {
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 25px;
+        }
+    
+        .header {
+          background: #e6f7ff;
+          padding: 20px 0;
+        }
+    
+        .navbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 0;
+        }
+    
+        .logo {
+          cursor: pointer;
+        }
+        
+        .logo h1 {
+          font-size: 32px;
+          color: #0099ff;
+          margin: 0;
+        }
+        
+        .logo span {
+          color: #0066cc;
+        }
+    
+        nav {
+          flex: 1;
+          text-align: right;
+        }
+    
+        nav ul {
+          display: inline-block;
+          list-style-type: none;
+        }
+    
+        nav ul li {
+          display: inline-block;
+          margin-right: 20px;
+        }
+    
+        nav ul li a {
+          text-decoration: none;
+          color: #555;
+          font-weight: 500;
+        }
+    
+        nav ul li a:hover {
+          color: #0099ff;
+        }
+    
+        .menu-icon {
+          display: none;
+          cursor: pointer;
+        }
+    
+        .small-container {
+          max-width: 1080px;
+          margin: auto;
+          padding-left: 25px;
+          padding-right: 25px;
+        }
+    
+        .page-header {
+          text-align: center;
+          margin: 50px 0;
+        }
+        
+        .page-header h1 {
+          font-size: 36px;
+          color: #0066cc;
+        }
+        
+        .page-header p {
+          font-size: 16px;
+          color: #555;
+          max-width: 600px;
+          margin: 20px auto;
+        }
+        
+        .title {
+          position: relative;
+          text-align: center;
+          color: #0066cc;
+          margin: 50px auto 30px;
+          line-height: 60px;
+        }
+    
+        .title::after {
+          content: '';
+          background: #0099ff;
+          width: 80px;
+          height: 5px;
+          border-radius: 5px;
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        
+        .api-section {
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+          padding: 30px;
+          margin-bottom: 30px;
+        }
+        
+        .api-endpoints {
+          margin: 30px 0;
+        }
+        
+        .endpoint {
+          border-left: 4px solid #0099ff;
+          padding-left: 15px;
+          margin-bottom: 25px;
+        }
+        
+        .endpoint-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+        
+        .method {
+          background: #0099ff;
+          color: white;
+          padding: 5px 10px;
+          border-radius: 4px;
+          font-weight: 600;
+          margin-right: 10px;
+          font-size: 14px;
+        }
+        
+        .method.get {
+          background: #28a745;
+        }
+        
+        .method.post {
+          background: #0099ff;
+        }
+        
+        .method.put {
+          background: #ffc107;
+        }
+        
+        .method.delete {
+          background: #dc3545;
+        }
+        
+        .endpoint-url {
+          font-family: monospace;
+          font-size: 14px;
+          color: #333;
+        }
+        
+        .code-block {
+          background: #f8f9fa;
+          border-radius: 4px;
+          padding: 15px;
+          margin: 10px 0;
+          overflow-x: auto;
+        }
+        
+        pre {
+          font-family: monospace;
+          font-size: 14px;
+          line-height: 1.4;
+          color: #333;
+        }
+        
+        .parameter-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 15px 0;
+        }
+        
+        .parameter-table th, .parameter-table td {
+          padding: 10px;
+          text-align: left;
+          border-bottom: 1px solid #eee;
+        }
+        
+        .parameter-table th {
+          font-weight: 600;
+          color: #0066cc;
+        }
+        
+        .required {
+          color: #dc3545;
+          font-weight: 600;
+        }
+        
+        .optional {
+          color: #6c757d;
+        }
+        
+        .api-key-section {
+          background: #f8f9fa;
+          border-left: 4px solid #28a745;
+          padding: 15px;
+          margin: 20px 0;
+        }
+        
+        .api-navigation {
+          display: flex;
+          margin-bottom: 30px;
+          flex-wrap: wrap;
+        }
+        
+        .api-nav-item {
+          background: #fff;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          padding: 10px 15px;
+          margin: 5px;
+          transition: all 0.3s ease;
+        }
+        
+        .api-nav-item:hover {
+          background: #e6f7ff;
+          border-color: #0099ff;
+          transform: translateY(-2px);
+        }
+        
+        .tabs {
+          display: flex;
+          margin-bottom: 15px;
+          border-bottom: 1px solid #ddd;
+        }
+        
+        .tab {
+          padding: 10px 20px;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+        }
+        
+        .tab.active {
+          border-bottom: 2px solid #0099ff;
+          color: #0099ff;
+        }
+        
+        .response-example {
+          margin-top: 15px;
+        }
+        
+        .footer {
+          background: #0066cc;
+          color: #fff;
+          font-size: 14px;
+          padding: 60px 0 20px;
+        }
+    
+        .footer p {
+          color: #fff;
+        }
+    
+        .footer h3 {
+          color: #fff;
+          margin-bottom: 20px;
+        }
+    
+        .footer-col-1, .footer-col-2, .footer-col-3, .footer-col-4 {
+          min-width: 250px;
+          margin-bottom: 20px;
+        }
+    
+        .footer-col-1 {
+          flex-basis: 30%;
+        }
+    
+        .footer-col-2 {
+          flex: 1;
+          text-align: center;
+        }
+    
+        .footer-col-3, .footer-col-4 {
+          flex-basis: 12%;
+          text-align: center;
+        }
+    
+        ul {
+          list-style-type: none;
+        }
+    
+        .app-logo {
+          margin-top: 20px;
+        }
+    
+        .app-logo img {
+          width: 140px;
+          margin-right: 10px;
+        }
+    
+        .footer hr {
+          border: none;
+          background: #b5b5b5;
+          height: 1px;
+          margin: 20px 0;
+        }
+    
+        .copyright {
+          text-align: center;
+        }
+        
+        .row {
+          display: flex;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          justify-content: space-around;
+        }
+    
+        /* Media Queries */
+        @media only screen and (max-width: 800px) {
+          nav ul {
+            position: absolute;
+            top: 70px;
+            left: 0;
+            background: #fff;
+            width: 100%;
+            overflow: hidden;
+            transition: max-height 0.5s;
+            max-height: 0;
+            z-index: 1000;
+          }
+          nav ul li {
+            display: block;
+            margin-right: 50px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+          }
+          nav ul li a {
+            color: #333;
+          }
+          .menu-icon {
+            display: block;
+            width: 28px;
+            margin-left: 20px;
+          }
+        }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="container">
+        <div class="navbar">
+          <div class="logo">
+            <a href="index.html">
+              <h1>ML<span>Analytics</span></h1>
+            </a>
+          </div>
+          <nav>
+            <ul id="MenuItems">
+                <li><a href="platform.html">Home</a></li>
+                <li><a href="models.html">Models</a></li>
+                <li><a href="pricing.html">Pricing</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="api.html">API</a></li>
+                <li><a href="account.html">Account</a></li>
+                <li><a href= "login.html">Login</a></li>
+                <li><a href= "login.html">Sign Up</a></li>
+            </ul>
+          </nav>
+          <a href="signup.html">
+            <img src="./assets/images/user-icon.png" alt="Sign Up" width="30px" height="30px" />
+          </a>
+          <img
+            src="./assets/images/menu.png"
+            alt="Menu"
+            class="menu-icon"
+            onclick="menutoggle()"
+          />
+        </div>
+      </div>
+    </div>
+    
+    <div class="small-container">
+      <div class="page-header">
+        <h1>API Documentation</h1>
+        <p>Integrate MLAnalytics machine learning capabilities directly into your applications with our powerful and flexible API.</p>
+      </div>
+      
+      <div class="api-navigation">
+        <a href="#authentication" class="api-nav-item">Authentication</a>
+        <a href="#models" class="api-nav-item">Models</a>
+        <a href="#predictions" class="api-nav-item">Predictions</a>
+        <a href="#datasets" class="api-nav-item">Datasets</a>
+        <a href="#training" class="api-nav-item">Training</a>
+        <a href="#rate-limits" class="api-nav-item">Rate Limits</a>
+        <a href="#errors" class="api-nav-item">Error Codes</a>
+        <a href="#sdks" class="api-nav-item">SDKs & Libraries</a>
+      </div>
+      
+      <!-- Authentication Section -->
+      <div id="authentication" class="api-section">
+        <h2>Authentication</h2>
+        <p>All API requests require authentication using an API key. You can obtain your API key from your account dashboard.</p>
+        
+        <div class="api-key-section">
+          <h4>API Key Security</h4>
+          <p>Your API key grants access to your account and resources. Keep it secure and do not share it in publicly accessible areas like GitHub, client-side code, or in your application source code.</p>
+        </div>
+        
+        <h3>Authorization Header</h3>
+        <p>Include your API key in the Authorization header of all requests:</p>
+        
+        <div class="code-block">
+          <pre>Authorization: Bearer YOUR_API_KEY</pre>
+        </div>
+        
+        <h3>Example Request</h3>
+        <div class="code-block">
+          <pre>curl -X GET "https://api.mlanalytics.com/v1/models" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"</pre>
+        </div>
+      </div>
+      
+      <!-- Models Section -->
+      <div id="models" class="

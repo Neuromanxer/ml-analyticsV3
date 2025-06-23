@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLAnalytics - Datasets</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        body {
+            background-color: #e6f7ff;
+            color: #333;
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 30px 25px;
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 2rem;
+            color: #2196F3;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #2196F3;
+            font-weight: 700;
+            font-size: 1.8rem;
+            letter-spacing: -0.5px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+            padding: 0 25px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #9E9E9E;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+        }
+        
+        .sidebar-menu-item {
+            margin-bottom: 8px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #616161;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-decoration: none;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(33, 150, 243, 0.1);
+            color: #2196F3;
+            transform: translateX(4px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 14px;
+            width: 22px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 25px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #757575;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 18px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 14px;
+            font-size: 1.1rem;
+        }
+        
+        /* Main Content - Fixed alignment */
+        .main-content {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+        
+        .content-header {
+            margin-bottom: 30px;
+        }
+        
+        .content-header h1 {
+            color: #0066cc;
+            margin-bottom: 10px;
+            font-weight: 600;
+            font-size: 2rem;
+        }
+        
+        .content-header p {
+            color: #666;
+            font-size: 1rem;
+        }
+        
+        .upload-form {
+            border-radius: 15px;
+            background-color: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .upload-form h3 {
+            color: #0066cc;
+            margin-bottom: 25px;
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            font-size: 0.95rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background-color: #fafafa;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #0099ff;
+            background-color: white;
+            box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.1);
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+        }
+        
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 153, 255, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 153, 255, 0.4);
+        }
+        
+        .datasets-section h3 {
+            color: #0066cc;
+            margin-bottom: 25px;
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+        
+        .error-message {
+            color: #e74c3c;
+            background-color: rgba(231, 76, 60, 0.1);
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(231, 76, 60, 0.2);
+            font-weight: 500;
+        }
+        
+        .dataset-card {
+            margin-bottom: 20px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .dataset-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 153, 255, 0.15);
+        }
+        
+        .dataset-card-body {
+            padding: 25px;
+        }
+        
+        .dataset-card .card-title {
+            color: #0066cc;
+            font-weight: 600;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+        
+        .dataset-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .dataset-actions button {
+            flex: 1;
+            border-radius: 6px;
+            padding: 10px 0;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+        
+        .dataset-actions button:hover {
+            transform: translateY(-1px);
+        }
+        
+        .btn-outline-primary {
+            color: #0099ff;
+            border: 2px solid #0099ff;
+            background-color: transparent;
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: #0099ff;
+            color: white;
+        }
+        
+        .btn-outline-success {
+            color: #27ae60;
+            border: 2px solid #27ae60;
+            background-color: transparent;
+        }
+        
+        .btn-outline-success:hover {
+            background-color: #27ae60;
+            color: white;
+        }
+        
+        .btn-outline-danger {
+            color: #e74c3c;
+            border: 2px solid #e74c3c;
+            background-color: transparent;
+        }
+        
+        .btn-outline-danger:hover {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .dataset-actions {
+                flex-direction: column;
+            }
+        }
+        .popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.popup-box {
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.popup-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #888;
+  cursor: pointer;
+}
+
+</style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="wizard.html">
+                      <i class="fas fa-rocket"></i>
+                      Run New Experiment
+                    </a>
+                  </li>
+                <li class="sidebar-menu-item">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="gallery.html">
+                        <i class="fas fa-project-diagram"></i>
+                        Gallery
+                    </a>
+                </li>
+                <li class="sidebar-menu-item active">
+                    <a href="datasets.html">
+                        <i class="fas fa-database"></i>
+                        Datasets
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <div>
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </div>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="main-content">
+        <div class="content-header">
+            <h1>Datasets Management</h1>
+            <p>Upload, manage and download your queried datasets</p>
+        </div>
+        <div id="uploadStatus" class="alert" style="display: none; margin-bottom: 1rem;"></div>
+
+        <div class="upload-form">
+            <h3>Upload New Dataset</h3>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="input-group">
+                    <label for="name">Dataset Name</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+                <div class="input-group">
+                    <label for="description">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="3" placeholder="Enter a brief description of your dataset..."></textarea>
+                </div>
+                <div class="input-group">
+                    <label for="file">CSV File</label>
+                    <input class="form-control" type="file" id="file" name="file" accept=".csv" required>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Upload Dataset
+                </button>
+            </form>
+        </div>
+        <div id="inlinePreviewContainer" style="display: none; margin-bottom: 40px;">
+            <div class="dataset-card">
+              <div class="dataset-card-body">
+                <div id="inlineDatasetInfo"></div>
+                <div class="table-responsive">
+                  <table class="table table-striped">
+                    <thead id="inlinePreviewTableHead"></thead>
+                    <tbody id="inlinePreviewTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        <div class="datasets-section">
+            <h3>Available Datasets</h3>
+            <div id="datasetsList"></div> <!-- ← Add this div -->
+            <div class="error-message">
+                Error loading datasets. Please try again later.
+            </div>
+        </div>
+    </div>
+    
+    <!-- Simple Popup Box -->
+<div id="queryPopup" class="popup-overlay" style="display: none;">
+    <div class="popup-box">
+      <div class="popup-header">
+        <span id="queryPopupTitle">Query</span>
+        <button onclick="closeQueryPopup()" class="popup-close">&times;</button>
+      </div>
+      <textarea id="queryInput" rows="4" class="form-control" placeholder="Enter SQL SELECT query here..."></textarea>
+      <button class="btn btn-primary mt-2" onclick="runDatasetQuery()">Run Query</button>
+      <div class="mt-3" id="queryResults"></div>
+    </div>
+  </div>
+
+  
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        
+        // Add this code to the beginning of your datasets.html JavaScript
+
+    document.addEventListener('DOMContentLoaded', function() {
+    // 1️⃣ Delegate all download-button clicks from the container
+    const list = document.getElementById('datasetsList');
+    list.addEventListener('click', function(e) {
+        const btn = e.target.closest('.download-btn');
+        if (!btn) return;              // not a download button
+        const id   = btn.dataset.id;
+        const name = btn.dataset.name;
+        downloadDataset(id, name);
+    });
+
+    // 2️⃣ Auth guard + load
+    if (!checkAuthentication()) {
+        window.location.href = 
+        'login.html?next=datasets.html&reason=Please log in to view your datasets';
+        return;
+    }
+    loadDatasetsWithAuth();
+
+    // 3️⃣ Upload form handler
+    const uploadForm = document.getElementById('uploadForm');
+    uploadForm.addEventListener('submit', function(e) {
+        uploadDataset(e);
+    });
+    });
+
+/**
+ * Check if the user is authenticated
+ * @returns {boolean} - Authentication status
+ */
+ /**
+ * Download dataset with automatic token refresh support
+ */
+async function downloadDataset(datasetId, datasetName) {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    return alert('Please log in first');
+  }
+
+  try {
+    // Use fetchWithTokenRefresh instead of direct fetch
+    const resp = await fetchWithTokenRefresh(
+      `${API_BASE_URL}/datasets/${datasetId}/download`,
+      {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (!resp.ok) {
+      throw new Error(`Download failed: ${resp.status}`);
+    }
+
+    // Grab it as a Blob
+    const blob = await resp.blob();
+
+    // Create a temporary link to trigger the download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    // use the datasetName (sanitized) for the filename
+    const filename = `${datasetName.replace(/\s+/g,'_') || 'dataset'}_${datasetId}.csv`;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error(err);
+    alert('Error downloading dataset: ' + err.message);
+  }
+}
+ function checkAuthentication() {
+    const token = safeStorageGet('access_token');
+    const userLoggedIn = safeStorageGet('userLoggedIn');
+    
+    console.log('Authentication check:', {
+        token: token ? 'Token found' : 'No token found',
+        userLoggedIn: userLoggedIn,
+        tokenExpired: token ? isTokenExpired(token) : 'No token'
+    });
+    
+    // Check both token existence/validity AND login flag
+    return token && 
+           !isTokenExpired(token) && 
+           userLoggedIn === 'true';
+}
+// Alternative: If you want to keep the userLoggedIn flag, 
+// make sure your login process sets it:
+function handleLoginSuccess(tokenData) {
+    // Set tokens
+    safeStorageSet('access_token', tokenData.access_token);
+    if (tokenData.refresh_token) {
+        safeStorageSet('refresh_token', tokenData.refresh_token);
+    }
+    
+    // Set login flag
+    safeStorageSet('userLoggedIn', 'true');
+    
+    // Redirect or continue
+    window.location.href = 'datasets.html';
+}
+function safeStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        console.error(`Error getting ${key} from localStorage:`, error);
+        return null;
+    }
+}
+function safeStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (error) {
+        console.error('Error setting localStorage:', error);
+        return false;
+    }
+}
+function isTokenExpired(token) {
+    if (!token) return true;
+    
+    try {
+        // Parse the JWT token to get the payload
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        
+        // Check if the token has an expiration time
+        if (!payload.exp) return false;
+        
+        // Compare expiration time with current time (with 30-second buffer)
+        const currentTime = Math.floor(Date.now() / 1000);
+        return payload.exp < currentTime;
+    } catch (error) {
+        console.error('Error parsing token:', error);
+        return true; // Consider invalid tokens as expired
+    }
+}
+// Function to format a date in 'YYYY-MM-DD' format
+function formatDate(dateString) {
+        const date = new Date(dateString);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0'); // months are 0-based, so add 1
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+function loadDatasetsWithAuth() {
+    // Show loading indicator
+    const errorDiv = document.querySelector('.error-message');
+    if (errorDiv) {
+        errorDiv.style.display = 'none';
+    }
+    document.getElementById('datasetsList').innerHTML = '<div class="col-12"><p>Loading datasets...</p></div>';
+    
+    const token = safeStorageGet('access_token');
+    
+    fetchWithTokenRefresh('http://127.0.0.1:8000/datasets/', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.datasets || data.datasets.length === 0) {
+            document.getElementById('datasetsList').innerHTML = 
+                '<div class="col-12"><p>No datasets available. Upload your first dataset above.</p></div>';
+            return;
+        }
+
+        const container = document.getElementById('datasetsList');
+        container.innerHTML = '';
+
+        data.datasets.forEach(dataset => {
+            const card = document.createElement('div');
+            card.className = 'col-md-6 col-lg-4';
+            card.innerHTML = `
+                <div class="card dataset-card">
+                    <div class="card-body">
+                        <h5 class="card-title">${dataset.name}</h5>
+                        <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
+                        <p class="card-text">${dataset.description || 'No description provided'}</p>
+                        <div class="dataset-actions">
+                            <button class="btn btn-outline-primary" onclick="previewDataset(${dataset.id})">
+                                <i class="fas fa-eye"></i> Preview
+                            </button>
+                            <button class="btn btn-outline-primary download-btn"
+                            data-id="${dataset.id}"
+                            data-name="${dataset.name}"
+                            >
+                            <i class="fas fa-download"></i> Download
+                            </button>
+                            <button class="btn btn-outline-info" onclick="openQueryModal(${dataset.id}, '${dataset.name}')">
+                                <i class="fas fa-search"></i> Query
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="deleteDataset(${dataset.id})">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    })
+    .catch(error => {
+        console.error('Error loading datasets:', error);
+        document.getElementById('datasetsList').innerHTML = 
+            '<div class="col-12"><p class="text-danger">Error loading datasets. Please try again later.</p></div>';
+    });
+}
+let currentQueryDatasetId = null;
+
+function openQueryModal(datasetId, datasetName) {
+  currentQueryDatasetId = datasetId;
+  document.getElementById('queryPopupTitle').innerText = `Query: ${datasetName}`;
+  document.getElementById('queryInput').value = '';
+  document.getElementById('queryResults').innerHTML = '';
+  document.getElementById('queryPopup').style.display = 'flex';
+}
+
+function closeQueryPopup() {
+  document.getElementById('queryPopup').style.display = 'none';
+}
+
+
+function runDatasetQuery() {
+    const token = safeStorageGet('access_token');
+    const query = document.getElementById('queryInput').value;
+
+    if (!query.trim().toLowerCase().startsWith('select')) {
+        alert('Only SELECT queries are allowed.');
+        return;
+    }
+
+    fetch(`${API_BASE_URL}/datasets/${currentQueryDatasetId}/query`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ query })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => { throw new Error(data.detail || 'Query failed'); });
+        }
+        return response.json();
+    })
+    .then(data => {
+        const resultsDiv = document.getElementById('queryResults');
+        const columns = data.columns;
+        const rows = data.data;
+
+        let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr>' +
+            columns.map(col => `<th>${col}</th>`).join('') +
+            '</tr></thead><tbody>' +
+            rows.map(row => `<tr>${columns.map(col => `<td>${row[col]}</td>`).join('')}</tr>`).join('') +
+            '</tbody></table></div>';
+
+        resultsDiv.innerHTML = html;
+    })
+    .catch(error => {
+        alert(`Query error: ${error.message}`);
+        console.error('Query error:', error);
+    });
+}
+
+
+// Function to handle fetch requests with token refresh capability
+async function fetchWithTokenRefresh(url, options = {}) {
+    try {
+        // Attempt the original request
+        const response = await fetch(url, options);
+        
+        // If response is successful or not an auth error, return it
+        if (response.ok || (response.status !== 401 && response.status !== 403)) {
+            return response;
+        }
+        
+        // If we got a 401/403, try to refresh the token
+        console.log('Authentication failed, attempting token refresh');
+        
+        const refreshToken = safeStorageGet('refresh_token');
+        if (!refreshToken) {
+            throw new Error('No refresh token available');
+        }
+        
+        // Attempt to refresh the token
+        const refreshResponse = await fetch('http://127.0.0.1:8000/api/auth/refresh-token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                refresh_token: refreshToken
+            })
+        });
+        
+        if (!refreshResponse.ok) {
+            throw new Error('Token refresh failed');
+        }
+        
+        // Get the new tokens
+        const tokenData = await refreshResponse.json();
+        
+        // Save the new tokens
+        safeStorageSet('access_token', tokenData.access_token);
+        if (tokenData.refresh_token) {
+            safeStorageSet('refresh_token', tokenData.refresh_token);
+        }
+        
+        // Retry the original request with the new token
+        const newOptions = {
+            ...options,
+            headers: {
+                ...options.headers,
+                'Authorization': `Bearer ${tokenData.access_token}`
+            }
+        };
+        
+        return fetch(url, newOptions);
+    } catch (error) {
+        console.error('Error in fetchWithTokenRefresh:', error);
+        
+        // If token refresh fails, redirect to login
+        if (error.message === 'Token refresh failed' || error.message === 'No refresh token available') {
+            window.location.href = 'login.html?next=' + encodeURIComponent(window.location.pathname) + '&reason=Your session has expired';
+        }
+        
+        throw error;
+    }
+}
+function showUploadStatus(message, type = 'success') {
+    const statusDiv = document.getElementById('uploadStatus');
+    
+    statusDiv.className = 'alert alert-' + type;
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+function uploadDataset(event) {
+
+    event.preventDefault();  // Prevent default form submission
+
+    const form = document.getElementById('uploadForm');
+    const fileInput = form.querySelector('input[type="file"]');
+    const nameInput = form.querySelector('input[name="name"]');
+
+    // Validate required fields
+    if (!fileInput.files[0]) {
+        showUploadStatus('Please select a file to upload', 'danger');
+        return;
+    }
+
+    if (!nameInput.value.trim()) {
+        showUploadStatus('Please provide a dataset name', 'danger');
+        return;
+    }
+
+    const formData = new FormData(form);
+    const statusDiv = document.getElementById('uploadStatus');
+
+    showUploadStatus('Uploading dataset...', 'info');
+
+    const token = safeStorageGet('access_token');
+
+    fetch('http://127.0.0.1:8000/datasets/', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Authentication failed');
+            }
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data && data.dataset_id) {
+            showUploadStatus(
+                `Dataset "${data.name}" uploaded successfully with ${data.rows} rows and ${data.columns} columns!`, 
+                'success'
+            );
+            form.reset();
+            loadDatasetsWithAuth();
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        } else {
+            showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading dataset:', error);
+        if (error.message === 'Authentication failed') {
+            window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
+        } else {
+            showUploadStatus('Error uploading dataset. Please try again.', 'danger');
+        }
+    });
+}
+
+const API_BASE_URL = 'http://127.0.0.1:8000';
+function closePreviewModal() {
+  document.getElementById('datasetPreviewModal').style.display = 'none';
+}
+async function fetchWithAuth(url, token) {
+  const response = await fetch(url, {
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+  }
+
+  return response;
+}
+
+async function previewDataset(datasetId, options = {}) {
+  const { previewLimit = 5, columnLimit = 3 } = options;
+  
+  // Validate input
+  if (!datasetId || (typeof datasetId !== 'string' && typeof datasetId !== 'number')) {
+    throw new Error('Valid dataset ID is required');
+}
+
+  const token = safeStorageGet('access_token');
+  if (!token) {
+    throw new Error('Authentication token not found');
+  }
+
+  // Show loading state
+  showPreviewLoading();
+
+  try {
+    // Fetch metadata and preview data concurrently
+    const [metadataResponse, previewResponse] = await Promise.all([
+      fetchWithAuth(`${API_BASE_URL}/datasets/${datasetId}`, token),
+      fetchWithAuth(`${API_BASE_URL}/datasets/${datasetId}/preview?limit=${previewLimit}`, token)
+    ]);
+
+    const [metadata, previewData] = await Promise.all([
+      metadataResponse.json(),
+      previewResponse.json()
+    ]);
+
+    // Validate data
+    validatePreviewData(previewData);
+    
+    // Render the preview
+    renderDatasetPreview(metadata, previewData, columnLimit);
+    
+  } catch (error) {
+    handlePreviewError(error);
+  }
+}
+function validatePreviewData(data) {
+  if (!data || !data.preview_data || !Array.isArray(data.preview_data)) {
+    throw new Error('Invalid preview data format');
+  }
+  
+  if (data.preview_data.length === 0) {
+    throw new Error('No preview data available');
+  }
+}
+function showPreviewLoading() {
+  const container = document.getElementById('inlinePreviewContainer');
+  if (container) {
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="dataset-card">
+        <div class="dataset-card-body">
+          <div class="text-center p-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading dataset preview...</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+function renderDatasetPreview(metadata, previewData, columnLimit) {
+  const rows = previewData.preview_data;
+  const allColumns = Object.keys(rows[0]);
+  const displayColumns = allColumns.slice(0, columnLimit);
+  const hasMoreColumns = allColumns.length > columnLimit;
+
+  // Sanitize and format metadata
+  const sanitizedMetadata = {
+    name: escapeHtml(metadata.name || 'Unnamed Dataset'),
+    description: escapeHtml(metadata.description || 'No description provided'),
+    createdAt: formatDate(metadata.created_at),
+    rowCount: Number(metadata.row_count) || rows.length,
+    columnCount: Number(metadata.column_count) || allColumns.length
+  };
+
+  // Build the complete HTML
+  const containerHTML = `
+    <div class="dataset-card">
+      <div class="dataset-card-body">
+        ${buildInfoSection(sanitizedMetadata, hasMoreColumns, columnLimit)}
+        ${buildTableSection(displayColumns, rows, hasMoreColumns)}
+      </div>
+    </div>
+  `;
+
+  // Update DOM
+  const container = document.getElementById('inlinePreviewContainer');
+  if (container) {
+    container.innerHTML = containerHTML;
+    container.style.display = 'block';
+  }
+}
+
+/**
+ * Build the dataset info section
+ */
+function buildInfoSection(metadata, hasMoreColumns, columnLimit) {
+  return `
+    <div id="inlineDatasetInfo">
+      <h4 style="color: #0066cc; margin-bottom: 1rem;">${metadata.name}</h4>
+      <p style="margin-bottom: 0.5rem;">${metadata.description}</p>
+      <p style="margin-bottom: 0.5rem;">
+        <small class="text-muted">Created on ${metadata.createdAt}</small>
+      </p>
+      <div class="row mb-3">
+        <div class="col-sm-6">
+          <strong>Rows:</strong> ${metadata.rowCount.toLocaleString()}
+        </div>
+        <div class="col-sm-6">
+          <strong>Columns:</strong> ${metadata.columnCount.toLocaleString()}
+        </div>
+      </div>
+      <p class="text-muted">
+        <em>Preview of first ${metadata.rowCount} rows${hasMoreColumns ? ` and ${columnLimit} columns` : ''}:</em>
+        ${hasMoreColumns ? `<br><small>Showing ${columnLimit} of ${metadata.columnCount} columns</small>` : ''}
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Build the preview table section
+ */
+function buildTableSection(columns, rows, hasMoreColumns) {
+  const headerRow = columns.map(col => `<th scope="col">${escapeHtml(col)}</th>`).join('');
+  const moreColumnsIndicator = hasMoreColumns ? '<th scope="col" class="text-muted">...</th>' : '';
+  
+  const bodyRows = rows.map(row => {
+    const cells = columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('');
+    const moreCell = hasMoreColumns ? '<td class="text-muted">...</td>' : '';
+    return `<tr>${cells}${moreCell}</tr>`;
+  }).join('');
+
+  return `
+    <div class="table-responsive">
+      <table class="table table-striped table-hover">
+        <thead class="table-light">
+          <tr>${headerRow}${moreColumnsIndicator}</tr>
+        </thead>
+        <tbody>
+          ${bodyRows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/**
+ * Handle preview errors with user-friendly messages
+ */
+function handlePreviewError(error) {
+  console.error('Dataset preview error:', error);
+  
+  const container = document.getElementById('inlinePreviewContainer');
+  if (container) {
+    let userMessage = 'Unable to load dataset preview.';
+    
+    if (error.message.includes('401') || error.message.includes('Authentication')) {
+      userMessage = 'Authentication failed. Please log in again.';
+    } else if (error.message.includes('404')) {
+      userMessage = 'Dataset not found.';
+    } else if (error.message.includes('403')) {
+      userMessage = 'Access denied to this dataset.';
+    } else if (error.message.includes('No preview data')) {
+      userMessage = 'This dataset appears to be empty.';
+    }
+    
+    container.innerHTML = `
+      <div class="dataset-card">
+        <div class="dataset-card-body">
+          <div class="alert alert-warning" role="alert">
+            <h6 class="alert-heading">Preview Unavailable</h6>
+            <p class="mb-0">${escapeHtml(userMessage)}</p>
+            ${error.message !== userMessage ? `<small class="text-muted d-block mt-1">Error: ${escapeHtml(error.message)}</small>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    container.style.display = 'block';
+  }
+}
+
+/**
+ * Utility function to escape HTML and prevent XSS
+ */
+
+/**
+ * Escape HTML to prevent XSS
+ * @param {string} unsafe - Unsafe string
+ * @returns {string} - Safe HTML string
+ */
+ function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+/**
+ * Format file size in human readable format
+ * @param {number} bytes - File size in bytes
+ * @returns {string} - Formatted file size
+ */
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+/**
+ * Enhanced date formatting with error handling
+ */
+function formatDate(dateString) {
+  if (!dateString) return 'Unknown date';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.warn('Date formatting error:', error);
+    return 'Invalid date';
+  }
+}
+/**
+ * Modified function to include authentication token in dataset deletion
+ */
+function deleteDataset(datasetId) {
+    if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
+        // Get the authentication token
+        const token = safeStorageGet('access_token');
+        
+        fetch(`${API_BASE_URL}/datasets/${datasetId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('Authentication failed');
+                }
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.message) {
+                // Reload the datasets list
+                loadDatasetsWithAuth();
+                previewDataset(String(data.dataset_id)); // Convert to string just in case
+
+                alert("Dataset deleted successfully");
+            } else {
+                alert(`Error: ${data.detail || 'Unknown error occurred'}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting dataset:', error);
+            if (error.message === 'Authentication failed') {
+                // Redirect to login page
+                window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
+            } else {
+                alert('Error deleting dataset. Please try again.');
+            }
+        })
+    }
+}
+    </script>
+</body>
+</html>

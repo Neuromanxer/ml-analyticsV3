@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Driven Business Insights</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        /* Header Section */
+        .header {
+            background: linear-gradient(135deg, #2196F3 0%, #21CBF3 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 50px;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 25px;
+            color: #2c3e50;
+            border-bottom: 3px solid #2196F3;
+            padding-bottom: 10px;
+        }
+
+        /* Assumptions Form */
+        .assumptions-form {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid #e9ecef;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+
+        .form-group input {
+            padding: 12px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #2196F3;
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+        }
+
+        .form-note {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        .save-btn {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+        }
+
+        /* Insights Cards */
+        .insights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .insight-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #28a745;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .insight-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .insight-card h3 {
+            color: #28a745;
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .insight-card h3::before {
+            content: "🟢";
+            margin-right: 10px;
+        }
+
+        .insight-card p {
+            color: #666;
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        .impact-value {
+            font-weight: 700;
+            color: #28a745;
+            font-size: 1.2rem;
+        }
+
+        /* Historical Impact Table */
+        .impact-table {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .impact-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .impact-table th {
+            background: linear-gradient(135deg, #2196F3 0%, #21CBF3 100%);
+            color: white;
+            padding: 20px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .impact-table td {
+            padding: 18px 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .impact-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .revenue-cell {
+            font-weight: 600;
+            color: #28a745;
+        }
+
+        /* Future Predictions */
+        .prediction-card {
+            background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 15px 35px rgba(108, 92, 231, 0.3);
+        }
+
+        .prediction-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        .prediction-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 20px 0;
+        }
+
+        .prediction-note {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .main-content {
+                padding: 20px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .insights-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .prediction-value {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <h1>AI-Driven Business Insights</h1>
+            <p>These insights quantify the financial impact of your models based on your business assumptions.</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Section 1: Financial Assumptions -->
+            <div class="section">
+                <h2 class="section-title">Financial Assumptions</h2>
+                <div class="assumptions-form">
+                    <div id="statusMessage"></div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="revenue-per-customer">Estimated Revenue per Customer</label>
+                            <input type="number" id="revenue-per-customer" placeholder="1200" step="0.01">
+                            <div class="form-note">e.g. $1,200</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="cost-per-lost-customer">Cost per Lost Customer</label>
+                            <input type="number" id="cost-per-lost-customer" placeholder="800" step="0.01">
+                            <div class="form-note">e.g. $800</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="revenue-per-lead">Revenue per Lead</label>
+                            <input type="number" id="revenue-per-lead" placeholder="100" step="0.01">
+                            <div class="form-note">e.g. $100</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="average-order-value">Average Order Value</label>
+                            <input type="number" id="average-order-value" placeholder="60" step="0.01">
+                            <div class="form-note">e.g. $60</div>
+                        </div>
+                    </div>
+                    <button class="save-btn" onclick="saveAssumptions()">Save Assumptions</button>
+                </div>
+            </div>
+
+            <!-- Section 2: AI Actionable Insights -->
+            <div class="section">
+                <h2 class="section-title">AI Actionable Insights</h2>
+                <div id="insights-container">
+                    <div class="status-message status-info">
+                        Please save your financial assumptions above to view personalized business impact insights.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Historical Impact Log -->
+            <div class="section">
+                <h2 class="section-title">Historical Impact Log</h2>
+                <div class="impact-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Revenue Saved</th>
+                                <th>New Revenue</th>
+                                <th>Cost Reduction</th>
+                                <th>Total Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historical-data">
+                            <tr>
+                                <td>January 2025</td>
+                                <td class="revenue-cell">$14,000</td>
+                                <td class="revenue-cell">$8,300</td>
+                                <td class="revenue-cell">$4,900</td>
+                                <td class="revenue-cell">$27,200</td>
+                            </tr>
+                            <tr>
+                                <td>February 2025</td>
+                                <td class="revenue-cell">$19,500</td>
+                                <td class="revenue-cell">$12,100</td>
+                                <td class="revenue-cell">$6,200</td>
+                                <td class="revenue-cell">$37,800</td>
+                            </tr>
+                            <tr>
+                                <td>March 2025</td>
+                                <td class="revenue-cell">$22,800</td>
+                                <td class="revenue-cell">$15,400</td>
+                                <td class="revenue-cell">$7,800</td>
+                                <td class="revenue-cell">$46,000</td>
+                            </tr>
+                            <tr>
+                                <td>April 2025</td>
+                                <td class="revenue-cell">$26,300</td>
+                                <td class="revenue-cell">$18,700</td>
+                                <td class="revenue-cell">$9,100</td>
+                                <td class="revenue-cell">$54,100</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Section 4: Future Predictions -->
+            <div class="section">
+                <h2 class="section-title">Future Predictions</h2>
+                <div class="prediction-card">
+                    <h3>Projected Impact Next Quarter</h3>
+                    <div class="prediction-value" id="future-prediction">$165,100</div>
+                    <div class="prediction-note">Based on current retention rates and model performance trends</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store assumptions in memory
+        let businessAssumptions = {
+            revenuePerCustomer: 1200,
+            costPerLostCustomer: 800,
+            revenuePerLead: 100,
+            averageOrderValue: 60
+        };
+
+        // Sample data for insights calculation
+        const modelMetrics = {
+            atRiskCustomers: 75,
+            retainedCustomers: 52,
+            emailCampaignLeads: 83,
+            inventoryReduction: 18,
+            upsellCustomers: 53
+        };
+
+        function saveAssumptions() {
+            const revenuePerCustomer = parseFloat(document.getElementById('revenue-per-customer').value) || 1200;
+            const costPerLostCustomer = parseFloat(document.getElementById('cost-per-lost-customer').value) || 800;
+            const revenuePerLead = parseFloat(document.getElementById('revenue-per-lead').value) || 100;
+            const averageOrderValue = parseFloat(document.getElementById('average-order-value').value) || 60;
+
+            businessAssumptions = {
+                revenuePerCustomer,
+                costPerLostCustomer,
+                revenuePerLead,
+                averageOrderValue
+            };
+
+            // Show success message
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.innerHTML = '<div class="status-message status-success">✅ Assumptions saved successfully! Your insights have been updated below.</div>';
+
+            // Generate insights
+            generateInsights();
+
+            // Update future prediction
+            updateFuturePrediction();
+        }
+
+        function generateInsights() {
+            const assumptions = businessAssumptions;
+            const metrics = modelMetrics;
+
+            // Calculate impacts
+            const retentionImpact = metrics.retainedCustomers * assumptions.revenuePerCustomer;
+            const emailImpact = metrics.emailCampaignLeads * assumptions.revenuePerLead;
+            const inventoryImpact = (assumptions.revenuePerCustomer * 0.4) * (metrics.inventoryReduction / 100) * 100; // Estimated inventory impact
+            const upsellImpact = metrics.upsellCustomers * (assumptions.averageOrderValue * 0.8);
+
+            const insights = [
+                {
+                    title: "Retention Impact",
+                    description: `Your churn model identified ${metrics.atRiskCustomers} at-risk customers. You retained ${metrics.retainedCustomers} of them, preserving <span class="impact-value">$${retentionImpact.toLocaleString()}</span> in revenue.`
+                },
+                {
+                    title: "Email Campaign Impact",
+                    description: `Your last email segmentation generated ${metrics.emailCampaignLeads} qualified leads, resulting in <span class="impact-value">$${emailImpact.toLocaleString()}</span> in incremental sales.`
+                },
+                {
+                    title: "Forecast Optimization",
+                    description: `Your demand forecast reduced inventory overstock by ${metrics.inventoryReduction}%, saving <span class="impact-value">$${inventoryImpact.toLocaleString()}</span> in holding costs.`
+                },
+                {
+                    title: "Upsell Opportunity",
+                    description: `Targeted upsell offers to high-value customer segments generated ${metrics.upsellCustomers} conversions, leading to <span class="impact-value">$${upsellImpact.toLocaleString()}</span> in new revenue.`
+                }
+            ];
+
+            const container = document.getElementById('insights-container');
+            container.innerHTML = '<div class="insights-grid">' + 
+                insights.map(insight => `
+                    <div class="insight-card">
+                        <h3>${insight.title}</h3>
+                        <p>${insight.description}</p>
+                    </div>
+                `).join('') + 
+            '</div>';
+        }
+
+        function updateFuturePrediction() {
+            // Calculate future prediction based on current trends
+            const monthlyAverage = (27200 + 37800 + 46000 + 54100) / 4;
+            const quarterlyPrediction = monthlyAverage * 3 * 1.15; // 15% growth factor
+            
+            document.getElementById('future-prediction').textContent = `$${Math.round(quarterlyPrediction).toLocaleString()}`;
+        }
+
+        // Initialize with default values
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('revenue-per-customer').value = businessAssumptions.revenuePerCustomer;
+            document.getElementById('cost-per-lost-customer').value = businessAssumptions.costPerLostCustomer;
+            document.getElementById('revenue-per-lead').value = businessAssumptions.revenuePerLead;
+            document.getElementById('average-order-value').value = businessAssumptions.averageOrderValue;
+        });
+    </script>
+</body>
+</html>

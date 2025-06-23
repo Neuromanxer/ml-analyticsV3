@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MLAnalytics | Machine Learning Models</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,200&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
+    />
+    <style>
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+          font-family: 'Poppins', sans-serif;
+        }
+    
+        body {
+          background: #e6f7ff; /* Light blue background */
+        }
+    
+        h1 {
+          font-weight: 600;
+          margin: 0;
+          color: #0066cc;
+        }
+    
+        h2 {
+          text-align: center;
+        }
+    
+        p {
+          font-size: 14px;
+          font-weight: 300;
+          line-height: 20px;
+          letter-spacing: 0.5px;
+          margin: 20px 0 30px;
+        }
+    
+        span {
+          font-size: 12px;
+          color: #555;
+          margin: 15px 0;
+        }
+    
+        a {
+          color: #0099ff;
+          font-size: 14px;
+          text-decoration: none;
+          margin: 15px 0;
+          transition: 0.3s ease;
+        }
+    
+        a:hover {
+          color: #0066cc;
+        }
+    
+        button {
+          border-radius: 20px;
+          border: 1px solid #0099ff;
+          background-color: #0099ff;
+          color: #FFFFFF;
+          font-size: 12px;
+          font-weight: bold;
+          padding: 12px 45px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          transition: transform 80ms ease-in;
+          cursor: pointer;
+        }
+    
+        button:active {
+          transform: scale(0.95);
+        }
+    
+        button:focus {
+          outline: none;
+        }
+    
+        .container {
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 25px;
+        }
+    
+        .header {
+          background: #e6f7ff;
+          padding: 20px 0;
+        }
+    
+        .navbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 0;
+        }
+    
+        .logo {
+          cursor: pointer;
+        }
+        
+        .logo h1 {
+          font-size: 32px;
+          color: #0099ff;
+          margin: 0;
+        }
+        
+        .logo span {
+          color: #0066cc;
+        }
+    
+        nav {
+          flex: 1;
+          text-align: right;
+        }
+    
+        nav ul {
+          display: inline-block;
+          list-style-type: none;
+        }
+    
+        nav ul li {
+          display: inline-block;
+          margin-right: 20px;
+        }
+    
+        nav ul li a {
+          text-decoration: none;
+          color: #555;
+          font-weight: 500;
+        }
+    
+        nav ul li a:hover {
+          color: #0099ff;
+        }
+    
+        .menu-icon {
+          display: none;
+          cursor: pointer;
+        }
+    
+        .row {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: space-around;
+          margin: 50px 0;
+        }
+    
+        .small-container {
+          max-width: 1080px;
+          margin: auto;
+          padding-left: 25px;
+          padding-right: 25px;
+        }
+    
+        .model-card {
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+          padding: 30px;
+          margin-bottom: 30px;
+          transition: transform 0.3s;
+        }
+        
+        .model-card:hover {
+          transform: translateY(-5px);
+        }
+        
+        .model-card h3 {
+          color: #0066cc;
+          margin-bottom: 10px;
+        }
+        
+        .model-card p {
+          color: #555;
+          margin-bottom: 15px;
+        }
+        
+        .model-card .model-stats {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 20px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+        }
+        
+        .model-card .model-stats div {
+          text-align: center;
+        }
+        
+        .model-card .model-stats p {
+          margin: 5px 0;
+          font-weight: 600;
+        }
+        
+        .model-card .model-stats span {
+          font-size: 12px;
+          color: #888;
+        }
+        
+        .model-card .tags {
+          display: flex;
+          flex-wrap: wrap;
+          margin: 15px 0;
+        }
+        
+        .model-card .tag {
+          background: #e6f7ff;
+          color: #0099ff;
+          padding: 5px 10px;
+          border-radius: 20px;
+          margin-right: 10px;
+          margin-bottom: 10px;
+          font-size: 12px;
+        }
+        
+        .model-card .model-actions {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 20px;
+        }
+        
+        .model-card .model-actions button {
+          padding: 8px 20px;
+          font-size: 12px;
+        }
+        
+        .model-card .model-actions button.secondary {
+          background: transparent;
+          color: #0099ff;
+          border: 1px solid #0099ff;
+        }
+        
+        .page-header {
+          text-align: center;
+          margin: 50px 0;
+        }
+        
+        .page-header h1 {
+          font-size: 36px;
+          color: #0066cc;
+        }
+        
+        .page-header p {
+          font-size: 16px;
+          color: #555;
+          max-width: 600px;
+          margin: 20px auto;
+        }
+        
+        .filter-options {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 30px;
+          background: #f8f9fa;
+          padding: 15px;
+          border-radius: 8px;
+        }
+        
+        .filter-options select {
+          padding: 8px 15px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          outline: none;
+        }
+        
+        .filter-options input {
+          padding: 8px 15px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          outline: none;
+          width: 200px;
+        }
+        
+        .progress-container {
+          width: 100%;
+          background-color: #e1e4e8;
+          border-radius: 10px;
+          margin: 5px 0;
+        }
+        
+        .progress-bar {
+          height: 6px;
+          border-radius: 10px;
+          background-color: #0099ff;
+        }
+        
+        .model-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+          .model-grid {
+            grid-template-columns: 1fr;
+          }
+          
+          .filter-options {
+            flex-direction: column;
+            gap: 10px;
+          }
+        }
+        
+        .title {
+          position: relative;
+          text-align: center;
+          color: #0066cc;
+          margin: 50px auto 30px;
+          line-height: 60px;
+        }
+    
+        .title::after {
+          content: '';
+          background: #0099ff;
+          width: 80px;
+          height: 5px;
+          border-radius: 5px;
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+    
+        .footer {
+          background: #0066cc;
+          color: #fff;
+          font-size: 14px;
+          padding: 60px 0 20px;
+        }
+    
+        .footer p {
+          color: #fff;
+        }
+    
+        .footer h3 {
+          color: #fff;
+          margin-bottom: 20px;
+        }
+    
+        .footer-col-1, .footer-col-2, .footer-col-3, .footer-col-4 {
+          min-width: 250px;
+          margin-bottom: 20px;
+        }
+    
+        .footer-col-1 {
+          flex-basis: 30%;
+        }
+    
+        .footer-col-2 {
+          flex: 1;
+          text-align: center;
+        }
+    
+        .footer-col-3, .footer-col-4 {
+          flex-basis: 12%;
+          text-align: center;
+        }
+    
+        ul {
+          list-style-type: none;
+        }
+    
+        .app-logo {
+          margin-top: 20px;
+        }
+    
+        .app-logo img {
+          width: 140px;
+          margin-right: 10px;
+        }
+    
+        .footer hr {
+          border: none;
+          background: #b5b5b5;
+          height: 1px;
+          margin: 20px 0;
+        }
+    
+        .copyright {
+          text-align: center;
+        }
+    
+        /* Media Queries */
+        @media only screen and (max-width: 800px) {
+          nav ul {
+            position: absolute;
+            top: 70px;
+            left: 0;
+            background: #fff;
+            width: 100%;
+            overflow: hidden;
+            transition: max-height 0.5s;
+            max-height: 0;
+            z-index: 1000;
+          }
+          nav ul li {
+            display: block;
+            margin-right: 50px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+          }
+          nav ul li a {
+            color: #333;
+          }
+          .menu-icon {
+            display: block;
+            width: 28px;
+            margin-left: 20px;
+          }
+        }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="container">
+        <div class="navbar">
+          <div class="logo">
+            <a href="platform.html">
+              <h1>ML<span>Analytics</span></h1>
+            </a>
+          </div>
+          <nav>
+            <ul id="MenuItems">
+                <li><a href="platform.html">Home</a></li>
+                <li><a href="models.html">Models</a></li>
+                <li><a href="pricing.html">Pricing</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="api.html">API</a></li>
+                <li><a href="account.html">Account</a></li>
+                <li><a href= "login.html">Login</a></li>
+                <li><a href= "login.html">Sign Up</a></li>
+            </ul>
+          </nav>
+          <a href="signup.html">
+            <img src="./assets/images/user-icon.png" alt="Sign Up" width="30px" height="30px" />
+          </a>
+          <img
+            src="./assets/images/menu.png"
+            alt="Menu"
+            class="menu-icon"
+            onclick="menutoggle()"
+          />
+        </div>
+      </div>
+    </div>
+    
+    <div class="small-container">
+      <div class="page-header">
+        <h1>Machine Learning Models</h1>
+        <p>Explore our collection of pre-trained machine learning models designed for various data analysis needs. These models are ready to use with minimal configuration.</p>
+      </div>
+      
+      <div class="filter-options">
+        <select name="category" id="category">
+          <option value="">All Categories</option>
+          <option value="classification">Classification</option>
+          <option value="regression">Regression</option>
+          <option value="clustering">Clustering</option>
+          <option value="nlp">Natural Language Processing</option>
+          <option value="timeseries">Time Series</option>
+        </select>
+        
+        <select name="industry" id="industry">
+          <option value="">All Industries</option>
+          <option value="finance">Finance</option>
+          <option value="healthcare">Healthcare</option>
+          <option value="retail">Retail</option>
+          <option value="manufacturing">Manufacturing</option>
+        </select>
+        
+        <input type="text" placeholder="Search models..." />
+        
+        <select name="sort" id="sort">
+          <option value="popular">Most Popular</option>
+          <option value="recent">Recently Added</option>
+          <option value="accuracy">Highest Accuracy</option>
+        </select>
+      </div>
+      
+      <h2 class="title">Popular Models</h2>
+      
+      <div class="model-grid">
+        <!-- Model 1 -->
+        <div class="model-card">
+          <h3>Customer Churn Predictor</h3>
+          <div class="tags">
+            <span class="tag">Classification</span>
+            <span class="tag">Finance</span>
+            <span class="tag">Retail</span>
+          </div>
+          <p>Predict customer churn probability based on behavioral data and transaction history.</p>
+          
+          <div class="model-stats">
+            <div>
+              <p>95.2%</p>
+              <span>Accuracy</span>
+            </div>
+            <div>
+              <p>2,500+</p>
+              <span>Uses</span>
+            </div>
+            <div>
+              <p>4.8/5</p>
+              <span>Rating</span>
+            </div>
+          </div>
+          
+          <div class="model-actions">
+            <button class="secondary">View Details</button>
+            <button>Deploy Model</button>
+          </div>
+        </div>
+        
+        <!-- Model 2 -->
+        <div class="model-card">
+          <h3>Sales Forecaster</h3>
+          <div class="tags">

@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Success - MLAnalytics</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            padding: 0;
+        }
+
+        /* Mobile Toggle Button */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            margin-bottom: 40px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 1.8rem;
+            color: #0099ff;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.6rem;
+            margin: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 0 25px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu-item {
+            margin: 0 15px 8px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+            transform: translateX(3px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+            transform: translateX(0);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
+
+        .sidebar-footer-item {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            padding: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .success-container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px 50px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .success-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            animation: successPulse 2s ease-in-out infinite;
+        }
+
+        .success-icon i {
+            font-size: 2.5rem;
+            color: white;
+        }
+
+        @keyframes successPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .success-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .success-subtitle {
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+
+        .token-info {
+            background: linear-gradient(135deg, #f8f9ff, #e6f7ff);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border: 2px solid rgba(0, 153, 255, 0.1);
+        }
+
+        .token-amount {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .token-label {
+            font-size: 1.1rem;
+            color: #0099ff;
+            font-weight: 600;
+        }
+
+        .success-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+
+        .detail-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #0099ff;
+        }
+
+        .detail-label {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .detail-value {
+            font-size: 1.1rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 153, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 153, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #666;
+            border: 2px solid #e9ecef;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            color: #333;
+            transform: translateY(-2px);
+        }
+
+        .loading-spinner {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0099ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .mobile-toggle {
+                display: block;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 40px;
+            }
+
+            .success-container {
+                padding: 40px 30px;
+            }
+
+            .success-title {
+                font-size: 2rem;
+            }
+
+            .token-amount {
+                font-size: 2.5rem;
+            }
+
+            .success-details {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Toggle Button -->
+    <button class="mobile-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="wizard.html">
+                      <i class="fas fa-rocket"></i>
+                      Run New Experiment
+                    </a>
+                  </li>
+                <li class="sidebar-menu-item">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="gallery.html">
+                        <i class="fas fa-project-diagram"></i>
+                        Gallery
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="datasets.html">
+                        <i class="fas fa-database"></i>
+                        Datasets
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item active">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <div>
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </div>
+                </li>
+            </ul>
+        </div>
+         
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="success-container">
+            <div class="success-icon">
+                <i class="fas fa-check"></i>
+            </div>
+            
+            <h1 class="success-title">Payment Successful!</h1>
+            <p class="success-subtitle">Your tokens have been added to your account and are ready to use.</p>
+            
+            <div class="token-info">
+                <div class="token-amount" id="tokenAmount">Loading...</div>
+                <div class="token-label">Tokens Added</div>
+            </div>
+
+            <div class="loading-spinner" id="loadingSpinner">
+                <div class="spinner"></div>
+            </div>
+
+            <div class="success-details" id="successDetails" style="display: none;">
+                <div class="detail-item">
+                    <div class="detail-label">Transaction ID</div>
+                    <div class="detail-value" id="transactionId">-</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Amount Charged</div>
+                    <div class="detail-value" id="amountCharged">-</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="dashboard.html" class="btn btn-primary">
+                    <i class="fas fa-home"></i>
+                    Go to Dashboard
+                </a>
+                <a href="wizard.html" class="btn btn-secondary">
+                    <i class="fas fa-rocket"></i>
+                    Start Experiment
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+        // Get session ID from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+
+        // Mobile sidebar toggle
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('show');
+        }
+        function getAuthHeader() {
+      const token = localStorage.getItem("access_token");
+      return token ? { "Authorization": `Bearer ${token}` } : {};
+    }
+    async function verifyPayment() {
+    // 1) Pull session_id and clean URL
+    const params    = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (sessionId) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // grab your UI elements
+    const spinner    = document.getElementById("loadingSpinner");
+    const details    = document.getElementById("successDetails");
+    const tokenAmtEl = document.getElementById("tokenAmount");
+    const txIdEl     = document.getElementById("transactionId");
+    const amtEl      = document.getElementById("amountCharged");
+    const addedParam= params.get("added");
+    let tokensAdded = 0;
+    let txId        = "-";
+    let charged     = 0;
+    if (sessionId || addedParam) {
+      // clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    if (sessionId) {
+      try {
+        const vres = await fetch(
+          `${API_BASE_URL}/verify-payment?session_id=${sessionId}`,
+          { headers: getAuthHeader() }
+        );
+        if (!vres.ok) throw new Error(`HTTP ${vres.status}`);
+        const vp = await vres.json();
+        tokensAdded = vp.amount;
+        txId        = vp.payment_intent;
+        charged     = vp.amount_charged;
+      } catch (e) {
+        console.warn("Could not verify session:", e);
+      }
+    }
+    else if (addedParam) {
+      // admin/dev path
+      tokensAdded = parseInt(addedParam, 10) || 0;
+    }
+    // 2) Get the refreshed token balance (optional)
+    let balance = null;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: {
+          ...getAuthHeader(),
+          "Content-Type": "application/json"
+        }
+      });
+      if (res.ok) {
+        const { tokens } = await res.json();
+        balance = tokens;
+      }
+    } catch (e) {
+      console.error("Could not refresh balance:", e);
+    }
+
+    // 3) Populate and show
+    if (spinner) spinner.style.display = "none";
+    if (details) details.style.display = "block";
+
+    if (tokenAmtEl)    tokenAmtEl.textContent    = tokensAdded;
+    if (txIdEl)        txIdEl.textContent        = txId;
+    if (amtEl)         amtEl.textContent         = `$${charged.toFixed(2)}`;
+
+    // (If you also want to show the new balance somewhere, do it here)
+  }
+        document.addEventListener('DOMContentLoaded', function() {
+            verifyPayment();
+            
+            // Add click outside to close sidebar on mobile
+            document.addEventListener('click', function(event) {
+                const sidebar = document.getElementById('sidebar');
+                const toggle = document.querySelector('.mobile-toggle');
+                
+                if (window.innerWidth <= 768 && 
+                    !sidebar.contains(event.target) && 
+                    !toggle.contains(event.target) && 
+                    sidebar.classList.contains('show')) {
+                    sidebar.classList.remove('show');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

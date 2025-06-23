@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Insights - Dataset Guide</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+       * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    body {
+      background-color: #e6f7ff;
+      color: #333;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #e8f4fd 0%, #f0f8ff 100%);
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      padding: 30px 25px;
+      margin-bottom: 20px;
+    }
+    
+    .sidebar-logo i {
+      font-size: 2rem;
+      color: #2196F3;
+      margin-right: 12px;
+    }
+    
+    .sidebar-logo h1 {
+      color: #2196F3;
+      font-weight: 700;
+      font-size: 1.8rem;
+      letter-spacing: -0.5px;
+    }
+    
+    .sidebar-section {
+      margin-bottom: 30px;
+      padding: 0 25px;
+    }
+    
+    .sidebar-section-title {
+      font-size: 0.75rem;
+      color: #9E9E9E;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 15px;
+      font-weight: 600;
+    }
+    
+    .sidebar-menu {
+      list-style: none;
+    }
+    
+    .sidebar-menu-item {
+      margin-bottom: 8px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .sidebar-menu-item a,
+    .sidebar-menu-item > div {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      color: #616161;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      font-size: 0.95rem;
+      text-decoration: none;
+    }
+    
+    .sidebar-menu-item:hover a,
+    .sidebar-menu-item:hover > div {
+      background-color: rgba(33, 150, 243, 0.1);
+      color: #2196F3;
+      transform: translateX(4px);
+    }
+    
+    .sidebar-menu-item.active a,
+    .sidebar-menu-item.active > div {
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+      color: white;
+      box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+    }
+    
+    .sidebar-menu-item i {
+      margin-right: 14px;
+      width: 22px;
+      text-align: center;
+      font-size: 1.1rem;
+    }
+    
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 25px;
+    }
+    
+    .sidebar-footer-item {
+      display: flex;
+      align-items: center;
+      color: #757575;
+      cursor: pointer;
+      font-weight: 500;
+      padding: 12px 18px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    
+    .sidebar-footer-item:hover {
+      background-color: rgba(244, 67, 54, 0.1);
+      color: #f44336;
+    }
+    
+    .sidebar-footer-item i {
+      margin-right: 14px;
+      font-size: 1.1rem;
+    }
+
+    /* Main Content Styles */
+    .main-content {
+        margin-left: 0px;
+        flex: 1;
+        min-height: 100vh;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        margin: 20px;
+    }
+
+    .header {
+        background: linear-gradient(135deg, #1e88e5, #1565c0);
+        color: white;
+        padding: 40px;
+        text-align: center;
+    }
+
+    .header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 15px;
+    }
+
+    .header p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+    }
+
+    .content {
+        padding: 40px;
+    }
+
+    .section {
+        margin-bottom: 50px;
+    }
+
+    .section h2 {
+        color: #1e88e5;
+        font-size: 1.8rem;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 3px solid #e3f2fd;
+    }
+
+    .section h3 {
+        color: #333;
+        font-size: 1.3rem;
+        margin: 25px 0 15px 0;
+    }
+
+    .section p {
+        color: #555;
+        line-height: 1.7;
+        margin-bottom: 15px;
+        font-size: 1rem;
+    }
+
+    .example-box {
+        background: #f8f9fa;
+        border-left: 4px solid #1e88e5;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 0 8px 8px 0;
+    }
+
+    .example-box h4 {
+        color: #1e88e5;
+        font-size: 1.1rem;
+        margin-bottom: 10px;
+    }
+
+    .code-snippet {
+        background: #263238;
+        color: #ffffff;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: 'Courier New', monospace;
+        margin: 15px 0;
+        overflow-x: auto;
+    }
+
+    .tip-box {
+        background: linear-gradient(135deg, #e8f5e8, #f1f8e9);
+        border: 1px solid #4caf50;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 25px 0;
+    }
+
+    .tip-box::before {
+        content: "💡 ";
+        font-size: 1.2rem;
+    }
+
+    .warning-box {
+        background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+        border: 1px solid #ff9800;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 25px 0;
+    }
+
+    .warning-box::before {
+        content: "⚠️ ";
+        font-size: 1.2rem;
+    }
+
+    .dataset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 25px;
+        margin: 30px 0;
+    }
+
+    .dataset-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 15px;
+        padding: 25px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    }
+
+    .dataset-card:hover {
+        border-color: #1e88e5;
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+
+    .dataset-card h4 {
+        color: #1e88e5;
+        font-size: 1.2rem;
+        margin-bottom: 15px;
+    }
+
+    .dataset-card .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 15px 0;
+    }
+
+    .tag {
+        background: #e3f2fd;
+        color: #1565c0;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    .checklist {
+        background: #f5f5f5;
+        border-radius: 12px;
+        padding: 25px;
+        margin: 25px 0;
+    }
+
+    .checklist ul {
+        list-style: none;
+        padding: 0;
+    }
+
+    .checklist li {
+        padding: 8px 0;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .checklist li:last-child {
+        border-bottom: none;
+    }
+
+    .checklist li::before {
+        content: "✓ ";
+        color: #4caf50;
+        font-weight: bold;
+        margin-right: 10px;
+    }
+
+
+
+    .btn {
+        background: linear-gradient(135deg, #1e88e5, #1565c0);
+        color: white;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 25px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(30, 136, 229, 0.3);
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin: 30px 0;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #1565c0;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        color: #666;
+        margin-top: 5px;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        .sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .main-content {
+            margin-left: 0;
+        }
+
+        .mobile-toggle {
+            display: block;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+    }
+
+    .mobile-toggle {
+        display: none;
+    }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item active">
+                    <a href="guide.html">
+                        <i class="fas fa-question-circle"></i>
+                        How to Use
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="gallery.html">
+                        <i class="fas fa-project-diagram"></i>
+                        Gallery
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="datasets.html">
+                        <i class="fas fa-database"></i>
+                        Datasets
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="pricing.html">
+                        <i class="fas fa-dollar-sign"></i>
+                        Pricing
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <div>
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </div>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="container">
+            <div class="header">
+                <h1>📊 ML Insights Dataset Guide</h1>
+                <p>Master the art of preparing high-quality datasets for machine learning success</p>
+            </div>
+
+            <div class="content">
+                <div class="section">
+                    <h2>🎯 Understanding Target Variables</h2>
+                    <p>The target variable is the cornerstone of supervised machine learning. It's what your model will learn to predict, and choosing the right target variable is crucial for meaningful insights.</p>
+                    
+                    <h3>What Makes a Good Target Variable?</h3>
+                    <div class="example-box">
+                        <h4>✅ Good Target Variables</h4>
+                        <ul style="margin-left: 20px; color: #555;">
+                            <li>Customer purchase decision (Yes/No)</li>
+                            <li>House price ($150,000, $200,000, etc.)</li>
+                            <li>Risk category (Low, Medium, High)</li>
+                            <li>Customer lifetime value (numerical)</li>
+                        </ul>
+                    </div>
+
+                    <div class="warning-box">
+                        <strong>Avoid These Common Mistakes:</strong><br>
+                        • Using unique identifiers (customer ID, timestamp) as targets<br>
+                        • Choosing variables with too many missing values<br>
+                        • Using future information that wouldn't be available at prediction time
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>⚖️ The Importance of Balanced Datasets</h2>
+                    <p>A balanced dataset ensures your model learns patterns from all classes equally, preventing bias toward majority classes.</p>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number">70:30</div>
+                            <div class="stat-label">Ideal ratio for binary classification</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">80:20</div>
+                            <div class="stat-label">Maximum imbalance recommended</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">95:5</div>
+                            <div class="stat-label">Requires special techniques</div>
+                        </div>
+                    </div>
+
+                    <div class="tip-box">
+                        <strong>Balancing Techniques:</strong><br>
+                        • Oversample minority classes<br>
+                        • Undersample majority classes<br>
+                        • Use synthetic data generation (SMOTE)<br>
+                        • Collect more data for underrepresented classes
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>📈 Data Volume Requirements</h2>
+                    <p>The amount of data you need depends on your problem complexity, but here are general guidelines for different scenarios.</p>
+
+                    <h3>Minimum Data Requirements</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number">1,000+</div>
+                            <div class="stat-label">Simple binary classification</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">5,000+</div>
+                            <div class="stat-label">Multi-class problems</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">10,000+</div>
+                            <div class="stat-label">Complex regression tasks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">50,000+</div>
+                            <div class="stat-label">Deep learning applications</div>
+                        </div>
+                    </div>
+
+                    <div class="example-box">
+                        <h4>Rule of Thumb</h4>
+                        <p>For each feature in your dataset, aim for at least 10-20 samples per feature. If you have 50 features, target 500-1,000 samples minimum.</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>🔧 Data Quality Essentials</h2>
+                    <p>High-quality data is more valuable than large quantities of poor data. Focus on these key aspects:</p>
+
+                    <div class="checklist">
+                        <h3>Data Quality Checklist</h3>
+                        <ul>
+                            <li>Missing values handled appropriately (< 20% missing per column)</li>
+                            <li>No duplicate records or near-duplicates</li>
+                            <li>Consistent data types and formats</li>
+                            <li>Outliers identified and addressed</li>
+                            <li>Feature values are meaningful and not corrupted</li>
+                            <li>Temporal consistency (if time-series data)</li>
+                            <li>No data leakage from future information</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>📋 Example Datasets</h2>
+                    <p>Here are well-structured example datasets that demonstrate best practices for different types of machine learning problems:</p>
+
+                    <div class="dataset-grid">
+                        <div class="dataset-card">
+                            <h4>🏠 Real Estate Prediction</h4>
+                            <p>Predict house prices based on location, size, and amenities.</p>
+                            <div class="tags">
+                                <span class="tag">Regression</span>
+                                <span class="tag">Numerical Target</span>
+                                <span class="tag">Mixed Features</span>
+                            </div>
+                            <div class="code-snippet">
+Features: bedrooms, bathrooms, sqft, location, age
+Target: price
+Samples: 5,000+
+Balance: N/A (continuous)</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>📧 Email Spam Detection</h4>
+                            <p>Classify emails as spam or legitimate based on content features.</p>
+                            <div class="tags">
+                                <span class="tag">Classification</span>
+                                <span class="tag">Binary Target</span>
+                                <span class="tag">Text Features</span>
+                            </div>
+                            <div class="code-snippet">
+Features: word_count, special_chars, sender_reputation
+Target: is_spam (0/1)
+Samples: 10,000+
+Balance: 60% ham, 40% spam</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>🛒 Customer Segmentation</h4>
+                            <p>Group customers based on purchasing behavior and demographics.</p>
+                            <div class="tags">
+                                <span class="tag">Clustering</span>
+                                <span class="tag">No Target</span>
+                                <span class="tag">Behavioral Data</span>
+                            </div>
+                            <div class="code-snippet">
+Features: age, income, purchase_frequency, avg_order
+Target: None (unsupervised)
+Samples: 3,000+
+Balance: Natural distribution</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>🏥 Medical Diagnosis</h4>
+                            <p>Predict disease risk based on patient symptoms and test results.</p>
+                            <div class="tags">
+                                <span class="tag">Classification</span>
+                                <span class="tag">Multi-class</span>
+                                <span class="tag">Critical Domain</span>
+                            </div>
+                            <div class="code-snippet">
+Features: symptoms, lab_results, age, history
+Target: diagnosis (Low/Medium/High risk)
+Samples: 8,000+
+Balance: 40% Low, 35% Medium, 25% High</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>🚀 Optimization Tips for Better Accuracy</h2>
+                    <p>Follow these advanced strategies to maximize your model's performance:</p>
+
+                    <h3>Feature Engineering</h3>
+                    <div class="tip-box">
+                        <strong>Create Meaningful Features:</strong><br>
+                        • Combine existing features (e.g., price per square foot)<br>
+                        • Extract date components (month, day of week, season)<br>
+                        • Use domain knowledge to create ratio features<br>
+                        • Apply mathematical transformations (log, square root)
+                    </div>
+
+                    <h3>Data Preprocessing</h3>
+                    <div class="example-box">
+                        <h4>Essential Preprocessing Steps</h4>
+                        <ol style="margin-left: 20px; color: #555;">
+                            <li>Handle missing values with appropriate strategies</li>
+                            <li>Encode categorical variables properly</li>
+                            <li>Scale numerical features when necessary</li>
+                            <li>Remove or cap extreme outliers</li>
+                            <li>Create train/validation/test splits</li>
+                        </ol>
+                    </div>
+
+                    <h3>Validation Strategy</h3>
+                    <div class="warning-box">
+                        <strong>Avoid Overfitting:</strong><br>
+                        Always use proper validation techniques like cross-validation or hold-out sets. Never evaluate your model on the same data you used for training!
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>📊 Common Dataset Problems</h2>
+                    <p>Learn to identify and solve these frequent issues that can hurt model performance:</p>
+
+                    <div class="dataset-grid">
+                        <div class="dataset-card">
+                            <h4>⚠️ Data Leakage</h4>
+                            <p>When future information accidentally influences your model.</p>
+                            <div class="code-snippet">
+Problem: Using next month's sales to predict this month
+Solution: Only use historical data available at prediction time</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>📉 Insufficient Variation</h4>
+                            <p>When your features don't capture enough diversity.</p>
+                            <div class="code-snippet">
+Problem: All samples from same geographic region
+Solution: Collect data across different regions and time periods</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>🎭 Selection Bias</h4>
+                            <p>When your sample doesn't represent the true population.</p>
+                            <div class="code-snippet">
+Problem: Survey only sent to satisfied customers
+Solution: Use random sampling or stratified sampling methods</div>
+                        </div>
+
+                        <div class="dataset-card">
+                            <h4>🔄 Multicollinearity</h4>
+                            <p>When features are highly correlated with each other.</p>
+                            <div class="code-snippet">
+Problem: Using both 'income' and 'salary' as features
+Solution: Remove redundant features or use dimensionality reduction</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize sidebar functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Make sidebar menu items clickable
+             // Make sidebar menu items clickable and activate the correct one
+    const menuItems = document.querySelectorAll('.sidebar-menu-item');
+    
+    menuItems.forEach(item => {
+        item.addEventListener('click', function () {
+            // Remove 'active' class from all menu items
+            menuItems.forEach(mi => mi.classList.remove('active'));
+            // Add 'active' class to the clicked one
+            this.classList.add('active');
+        });
+    });
+
+                // Handle clicks on links
+                const link = item.querySelector('a');
+                if (link) {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        // Remove active class from all items
+                        menuItems.forEach(mi => mi.classList.remove('active'));
+                        // Add active class to clicked item's parent
+                        item.classList.add('active');
+                    });
+                }
+            });
+
+            // Handle sign out
+            const signOutBtn = document.querySelector('.sidebar-footer-item');
+            if (signOutBtn) {
+                signOutBtn.addEventListener('click', function() {
+                    if (confirm('Are you sure you want to sign out?')) {
+                        // Add sign out logic here
+                        alert('Signing out...');
+                    }
+                });
+            }
+
+
+        // Mobile sidebar toggle
+        function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('open');
+    }
+    window.toggleSidebar = toggleSidebar; // Make it accessible in inline onclick
+
+
+          // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', function (e) {
+        const sidebar = document.getElementById('sidebar');
+        const toggleBtn = document.querySelector('.mobile-toggle');
+
+        if (window.innerWidth <= 768 &&
+            !sidebar.contains(e.target) &&
+            !toggleBtn.contains(e.target) &&
+            sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+        }
+    });
+        // Auto close sidebar on window resize if width > 768px
+    window.addEventListener('resize', function () {
+        const sidebar = document.getElementById('sidebar');
+        if (window.innerWidth > 768) {
+            sidebar.classList.remove('open');
+        }
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Cancelled - MLAnalytics</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            padding: 0;
+        }
+
+        /* Mobile Toggle Button */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            margin-bottom: 40px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 1.8rem;
+            color: #0099ff;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.6rem;
+            margin: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 0 25px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu-item {
+            margin: 0 15px 8px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+            transform: translateX(3px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+            transform: translateX(0);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
+
+        .sidebar-footer-item {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            padding: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        /* Cancel Container */
+        .cancel-container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cancel-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+        }
+
+        .cancel-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            color: white;
+            font-size: 2.5rem;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.3);
+        }
+
+        .cancel-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+            line-height: 1.2;
+        }
+
+        .cancel-subtitle {
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .cancel-message {
+            background: #fff5f5;
+            border: 2px solid #fed7d7;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+
+        .cancel-message h3 {
+            color: #c53030;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .cancel-message h3 i {
+            margin-right: 8px;
+        }
+
+        .cancel-message p {
+            color: #744210;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .cancel-message ul {
+            color: #744210;
+            padding-left: 20px;
+            margin-top: 10px;
+        }
+
+        .cancel-message li {
+            margin-bottom: 5px;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 160px;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 153, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 153, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #666;
+            border: 2px solid #e9ecef;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            border-color: #dee2e6;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #0099ff;
+            border: 2px solid #0099ff;
+        }
+
+        .btn-outline:hover {
+            background: #0099ff;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .mobile-toggle {
+                display: block;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 20px;
+            }
+
+            .cancel-container {
+                padding: 40px 30px;
+            }
+
+            .cancel-title {
+                font-size: 2rem;
+            }
+
+            .cancel-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Toggle Button -->
+    <button class="mobile-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="wizard.html">
+                      <i class="fas fa-rocket"></i>
+                      Run New Experiment
+                    </a>
+                  </li>
+                <li class="sidebar-menu-item active">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="gallery.html">
+                        <i class="fas fa-project-diagram"></i>
+                        Gallery
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="datasets.html">
+                        <i class="fas fa-database"></i>
+                        Datasets
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <div>
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </div>
+                </li>
+            </ul>
+        </div>
+         
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="cancel-container">
+            <div class="cancel-icon">
+                <i class="fas fa-times"></i>
+            </div>
+            
+            <h1 class="cancel-title">Purchase Cancelled</h1>
+            <p class="cancel-subtitle">Your token purchase has been cancelled and no payment was processed.</p>
+            
+            <div class="cancel-message">
+                <h3><i class="fas fa-info-circle"></i>What happened?</h3>
+                <p>You chose to cancel your token purchase during checkout. This is completely normal and happens for various reasons:</p>
+                <ul>
+                    <li>Changed your mind about the purchase</li>
+                    <li>Want to review your token needs</li>
+                    <li>Prefer to purchase at a different time</li>
+                    <li>Had questions about the pricing</li>
+                </ul>
+                <p><strong>No charges were made to your account.</strong></p>
+            </div>
+
+            <div class="action-buttons">
+                <a href="account.html" class="btn btn-primary">
+                    <i class="fas fa-credit-card"></i>
+                    Try Again
+                </a>
+                <a href="dashboard.html" class="btn btn-outline">
+                    <i class="fas fa-home"></i>
+                    Back to Dashboard
+                </a>
+                <a href="mailto:support@mlanalytics.com" class="btn btn-secondary">
+                    <i class="fas fa-question-circle"></i>
+                    Get Help
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('show');
+        }
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.querySelector('.mobile-toggle');
+            
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                !toggle.contains(event.target) && 
+                sidebar.classList.contains('show')) {
+                sidebar.classList.remove('show');
+            }
+        });
+
+        // Handle URL parameters for analytics
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id');
+            
+            // Log cancellation for analytics if needed
+            if (sessionId) {
+                console.log('Checkout session cancelled:', sessionId);
+                // You can send this to your analytics service
+            }
+        });
+    </script>
+</body>
+</html>
