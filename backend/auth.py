@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import LargeBinary, DateTime, ForeignKey
 from datetime import datetime
 from sqlalchemy import BigInteger, Float
+from pydantic import BaseModel, Field, EmailStr
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -37,11 +38,16 @@ logger = logging.getLogger(__name__)
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "ethanhong")
-POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "securepassword")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "printing")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
 # Master database for user management
 MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/master_ml_insights"
+
 master_engine = create_engine(MASTER_DB_URL)
+
+SUPERUSER_DB_URL = f"postgresql://postgres:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
+superuser_engine = create_engine(SUPERUSER_DB_URL, isolation_level="AUTOCOMMIT")
+
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
 
 # Dictionary to store user-specific engines and sessionmakers
@@ -49,7 +55,7 @@ user_engines = {}
 user_sessionmakers: dict[str, sessionmaker] = {}
 
 Base = declarative_base()
-
+Base.metadata.create_all(bind=master_engine)
 IMAGES_DIR = "images"
 # Auth configuration - move to environment variables in production
 SECRET_KEY = "printing"  # CHANGE THIS IN PRODUCTION!
@@ -65,7 +71,40 @@ def password(self):
     return self.hashed_password
 # Router setup
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+class Dataset(Base):
+    """
+    Dataset model representing a CSV dataset.
+    This class is used for ORM mapping in user-specific databases.
+    """
+    __tablename__ = "datasets"
 
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(Text, nullable=True)
+    table_name = Column(String, unique=True, index=True)  # Actual table name in the DB
+    file_path = Column(String)  # Path to the original CSV file
+    row_count = Column(Integer)
+    column_count = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Schema information stored as JSON
+    schema = Column(JSONB)
+    
+    def __repr__(self):
+        return f"Dataset(id={self.id}, name={self.name}, table_name={self.table_name})"
+class DatasetResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    created_by: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+class DatasetCreate(BaseModel):
+    name: str = Field(..., max_length=100, description="Name of the dataset")
+    description: str | None = Field(None, description="Optional description of the dataset")
+    
 # Models
 class TokenData(BaseModel):
     email: Optional[str] = None
@@ -113,7 +152,8 @@ class User(Base):
     is_active         = Column(Boolean, default=True)
     created_at        = Column(DateTime, default=datetime.utcnow)
     db_name           = Column(String, unique=True, nullable=False)
-
+    db_user           = Column(String, unique=True, nullable=False)
+    db_password       = Column(String, unique=True, nullable=False)
     # ───────── Profile fields ─────────
     first_name        = Column(String, nullable=True)
     last_name         = Column(String, nullable=True)
@@ -255,6 +295,27 @@ def authenticate_user(email: str, password: str, db: Session):
         return False
     return user
 
+
+
+# def create_user_database(user_email: str) -> str:
+#     """Create a dedicated PostgreSQL database for a user."""
+#     clean_name = ''.join(c for c in user_email.split('@')[0] if c.isalnum() or c == '_')
+#     db_name = f"ml_user_{clean_name}_{int(datetime.now().timestamp())}"
+
+#     with psycopg2.connect(
+#         dbname='postgres',
+#         user=POSTGRES_USER,
+#         hashed_password=POSTGRES_PASSWORD,
+#         host=POSTGRES_HOST,
+#         port=POSTGRES_PORT
+#     ) as conn:
+#         conn.autocommit = True
+#         with conn.cursor() as cursor:
+#             cursor.execute(f"CREATE DATABASE {db_name}")
+    
+#     logger.info(f"Created new database '{db_name}' for user {user_email}")
+#     return db_name
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt import ExpiredSignatureError, PyJWTError
@@ -305,7 +366,10 @@ async def get_current_user(
         raise credentials_exception
 
     return user
-
+async def get_current_active_user(current_user: User = Depends(get_current_user),) -> User:
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
 def create_password_reset_token(email: str) -> str:
     expire = datetime.utcnow() + timedelta(hours=1)  # 1 hour validity
     to_encode = {"sub": email, "exp": expire}
@@ -378,17 +442,7 @@ async def register_user_endpoint(user: UserCreate, db: Session = Depends(get_mas
         # Register the user and create a new user database/schema
         db_user = register_user(user.name, user.email, hashed_password, db)
 
-        # 🔒 GRANT privileges on the shared `datasets` table
-        try:
-            with master_engine.connect() as conn:
-                conn.execute(
-                    text(f"GRANT INSERT, SELECT ON TABLE datasets TO {db_user.db_name}")
-                )
-                logger.info(f"Granted INSERT, SELECT privileges on 'datasets' to user {db_user.db_name}")
-        except Exception as priv_err:
-            logger.error(f"Failed to grant privileges to {db_user.db_name}: {priv_err}")
-            raise HTTPException(status_code=500, detail="User created, but failed to grant dataset permissions.")
-
+      
         # Create access and refresh tokens for the user
         access_token = create_access_token(data={"sub": db_user.email})
         refresh_token = create_refresh_token(data={"sub": db_user.email})
@@ -401,6 +455,7 @@ async def register_user_endpoint(user: UserCreate, db: Session = Depends(get_mas
                 email=db_user.email,
                 is_active=db_user.is_active,
                 created_at=db_user.created_at,
+                tokens=db_user.tokens  # <-- this fixes it
             ),
             token=AuthTokenResponse(
                 access_token=access_token,
@@ -412,10 +467,6 @@ async def register_user_endpoint(user: UserCreate, db: Session = Depends(get_mas
         logger.error(f"Error during registration: {str(e)}")
         raise HTTPException(status_code=500, detail="Registration failed.")
 
-async def get_current_active_user(current_user: User = Depends(get_current_user),) -> User:
-    if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return UserResponse(
@@ -699,7 +750,7 @@ def register_user(name: str, email: str, hashed_password: str, db: Session) -> U
 
         # Step 2: Register user in the master DB
         user = User(
-            name=name,
+            first_name=name,
             email=email,
             hashed_password=hashed_password,
             db_name=db_name,
@@ -708,7 +759,7 @@ def register_user(name: str, email: str, hashed_password: str, db: Session) -> U
         )
         db.add(user)
         db.flush()  # To assign user.id before commit
-
+        db.refresh(user)
         # Step 3: Grant INSERT and SELECT on 'datasets' to the user's role
         grant_sql = f"""
         DO $$
@@ -722,6 +773,7 @@ def register_user(name: str, email: str, hashed_password: str, db: Session) -> U
             GRANT INSERT, SELECT ON TABLE datasets TO "{db_user}";
         END $$;
         """
+
 
         try:
             # Execute the SQL for role creation and granting privileges
@@ -785,3 +837,281 @@ def delete_user(user_email: str) -> bool:
 
     logger.info(f"User {user_email} and database {db_name} deleted successfully")
     return True
+
+def create_user_database(email: str) -> str:
+    """Create a new database for the user and return the database name."""
+
+    # Sanitize email into valid DB name
+    safe_email = email.replace('@', '_at_').replace('.', '_dot_')
+    db_name = f"ml_user_{safe_email}"
+
+    # Connect to the postgres system database using superuser privileges
+    with superuser_engine.connect() as conn:
+        # Check if database already exists
+        result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'"))
+        if result.fetchone():
+            logger.info(f"Database {db_name} already exists")
+        else:
+            conn.execute(text(f"CREATE DATABASE {db_name}"))
+            logger.info(f"✅ Successfully created database: {db_name}")
+
+    return db_name
+
+def get_dataset_by_id(
+    user_email: str,
+    dataset_id: int
+) -> Optional[Dataset]:
+    """
+    Master-DB lookup to find the User, then per-user DB lookup for the Dataset.
+    """
+    # 1) Master-DB lookup for the User
+    with master_db_cm() as master_db:
+        user: User = get_user_by_email(master_db, user_email)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {user_email} not found")
+
+    # 2) Per-user lookup
+    with get_user_db(user) as user_db:
+        return (
+            user_db
+            .query(Dataset)
+            .filter(Dataset.id == dataset_id)
+            .first()
+        )
+def get_dataset_data(
+    user_email: str,
+    dataset_id: int,
+    limit: int = 100
+) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve up to `limit` rows from a user's dataset table.
+    Returns a dict with:
+      - "dataset": the Dataset object
+      - "columns": list of column names
+      - "data": list of row-dicts
+    """
+    # 1) Look up User in the master DB
+    with get_master_db_session() as master_db:
+        user = get_user_by_email(master_db, user_email)
+        if not user:
+            raise ValueError(f"User {user_email} not found")
+
+    try:
+        # 2) Session to user's DB
+        with get_user_session(user.db_name) as db:
+            dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            if not dataset:
+                return None
+
+        # 3) Use the user-specific engine to SELECT * from their table
+        engine = get_user_engine(user)
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT * FROM {dataset.table_name} LIMIT :limit"),
+                {"limit": limit}
+            )
+            cols = result.keys()
+            rows = result.fetchall()
+
+        return {
+            "dataset": dataset,
+            "columns": cols,
+            "data": [dict(zip(cols, row)) for row in rows],
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving dataset data: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving dataset data: {e}"
+        )
+def delete_dataset_crud(
+    user_email: str,
+    dataset_id: int
+) -> Optional[Dataset]:
+    # 1) Find user in the *master* DB
+    with MasterSessionLocal() as master_db:
+        user: User = get_user_by_email(master_db, user_email)
+        if not user:
+            logger.warning(f"User {user_email} not found")
+            raise HTTPException(404, f"User {user_email} not found")
+        db_name = user.db_name
+
+    # 2) Build or retrieve the per‐user SessionLocal
+    engine = get_user_engine(user)
+    SessionLocal = user_sessionmakers.get(db_name)
+    if SessionLocal is None:
+        from sqlalchemy.orm import sessionmaker
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        user_sessionmakers[db_name] = SessionLocal
+
+    # 3) Use a real SQLAlchemy Session context manager
+    try:
+        with SessionLocal() as db:
+            ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            if not ds:
+                return None
+
+            # Drop the actual data table
+            with engine.connect() as conn:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{ds.table_name}"'))
+
+            # Copy what we need to return
+            deleted = Dataset(id=ds.id, name=ds.name, created_at=ds.created_at)
+
+            # Delete the record
+            db.delete(ds)
+            db.commit()
+
+            logger.info(f"Deleted dataset {dataset_id} for user {user_email}")
+            return deleted
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting dataset {dataset_id}: {e}")
+        raise HTTPException(500, f"Error deleting dataset: {e}")
+def query_dataset(
+    user_email: str,
+    dataset_id: int,
+    query: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Run a custom SELECT query against a dataset in the user's database.
+    Returns a dict with keys "dataset", "columns", "data", "row_count",
+    or None if the dataset doesn't exist.
+    """
+    # 1) Master‐DB lookup
+    with get_master_db_session() as master_db:
+        user = get_user_by_email(master_db, user_email)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {user_email} not found")
+
+    # 2) Validate and fetch Dataset record
+    with get_user_session(user.db_name) as db:
+        dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        if not dataset:
+            return None
+
+    # 3) Only allow SELECT statements
+    sql = query.strip()
+    if not sql.lower().startswith("select"):
+        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+
+    try:
+        # 4) Execute on the user's engine
+        engine = get_user_engine(user)
+        with engine.connect() as conn:
+            result = conn.execute(text(sql))
+            cols = result.keys()
+            rows = result.fetchall()
+
+        return {
+            "dataset": dataset,
+            "columns": cols,
+            "data": [dict(zip(cols, row)) for row in rows],
+            "row_count": len(rows)
+        }
+
+    except Exception as e:
+        logger.error(f"Error executing query on dataset {dataset_id} for user {user_email}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error executing query: {e}")
+def register_dataset(
+    db: Session,
+    name: str,
+    description: str,
+    table_name: str,
+    file_path: str,
+    row_count: int,
+    column_count: int,
+    schema: dict,
+    overwrite_existing: bool = False
+) -> Dataset:
+    try:
+        existing = db.query(Dataset).filter(Dataset.table_name == table_name).first()
+
+        if existing:
+            if not overwrite_existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Dataset '{table_name}' already exists. Use `overwrite_existing=true` to replace it."
+                )
+
+            # 🔁 Clean up table and metadata
+            logger.info(f"Overwriting dataset '{table_name}'")
+            db.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
+            db.delete(existing)
+            db.flush()
+
+        dataset = Dataset(
+            name=name,
+            description=description,
+            table_name=table_name,
+            file_path=file_path,
+            row_count=row_count,
+            column_count=column_count,
+            schema=schema
+        )
+        db.add(dataset)
+        db.flush()
+
+        logger.info(f"✅ Dataset '{name}' registered with ID {dataset.id}")
+        return dataset
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"SQLAlchemy error: {e}")
+        raise HTTPException(status_code=500, detail="Error registering dataset.")
+
+from sqlalchemy import text
+
+@router.get(
+    "/{dataset_id}/download",
+    response_class=FileResponse,
+    status_code=status.HTTP_200_OK
+)
+async def download_dataset(
+    dataset_id: int = Path(..., gt=0),
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Stream the raw CSV file for a user's dataset.
+    """
+    try:
+        # 1) Look up the Dataset in the user's DB
+        with get_user_db(current_user) as db:
+            ds = (
+                db
+                .query(Dataset)
+                .filter(Dataset.id == dataset_id)
+                .first()
+            )
+            if not ds:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Dataset not found"
+                )
+
+        # 2) Verify the file exists on disk
+        if not ds.file_path or not os.path.isfile(ds.file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="CSV file not found on server"
+            )
+
+        # 3) Return the file for download
+        return FileResponse(
+            path=ds.file_path,
+            filename=f"{ds.name}.csv",
+            media_type="text/csv"
+        )
+
+    except HTTPException:
+        # Re-raise 404 or auth errors
+        raise
+    except Exception as e:
+        logger.error(f"Error in download_dataset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error while preparing download"
+        )

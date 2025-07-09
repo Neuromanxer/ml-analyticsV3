@@ -1,0 +1,52 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+aiofiles
+
+# Backend utilities
+python-dotenv
+passlib[bcrypt]
+pydantic
+sqlalchemy
+databases[postgresql]
+alembic
+psycopg2-binary
+
+# Authentication
+pyjwt
+dice-ml
+# Machine Learning libraries
+pandas
+numpy
+scikit-learn
+lightgbm
+xgboost
+catboost
+joblib
+shap
+matplotlib
+statsmodels
+seaborn
+stripe
+# Clustering
+scipy
+openai
+# Anomaly detection (you might be using it for your train_best_anomaly_detection function)
+pyod
+
+# Task queue
+celery
+redis
+lifelines
+# AWS ECS launcher
+boto3
+
+# Time series forecasting
+statsmodels
+# Optional utilities
+python-multipart
+pydantic[email]
+python-jose
+
+# Ensure latest pip installer used
+pip

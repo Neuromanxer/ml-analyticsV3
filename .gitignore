@@ -1,0 +1,14 @@
+# Virtual Environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Folders to ignore
+catboost_info/
+data/
+models/
+uploads/
+user_uploads/

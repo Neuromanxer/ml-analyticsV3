@@ -5,6 +5,7 @@ import joblib
 import pandas as pd
 import os
 import jwt
+import uvicorn
 import shutil
 import numpy as np
 from dotenv import load_dotenv
@@ -14,9 +15,10 @@ from pathlib import Path as PathL
 import json
 import aiofiles
 from ai import generate_insights
-from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters 
-from worker import run_regression, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
 from ecs_launcher import launch_job_on_ecs
+from worker import make_json_safe
 from starlette.middleware.base import BaseHTTPMiddleware
 from sklearn.model_selection import train_test_split
 
@@ -48,19 +50,10 @@ from pydantic import EmailStr
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
 from datasets import (
     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
-    Dataset,
-    DatasetResponse,
-    DatasetCreate,
     get_user_db,
-    register_dataset,
-    create_user_database,
-    get_dataset_by_id,
-    get_dataset_data,
-    delete_dataset_crud,
-    query_dataset,
-    init_db as init_dataset_master_db,
-    d_router
+
 )
+from datasets import init_db as init_dataset_master_db
 from starlette.concurrency import run_in_threadpool
 from activity import router as activity_router
 from account import router as a_router
@@ -72,15 +65,23 @@ from auth import (
     get_current_user,
     create_access_token,
     authenticate_user,
-
+    Dataset,
     # Pydantic schemas for auth
     UserCreate,
     UserResponse,
     Token,
     AuthTokenResponse,
     RegisterResponse,
-
+    
     # Database/session helpers
+    DatasetResponse,
+    DatasetCreate,
+    register_dataset,
+    create_user_database,
+    get_dataset_by_id,
+    get_dataset_data,
+    delete_dataset_crud,
+    query_dataset,
     get_user_session,
     get_user_session_direct,
     get_user_engine,
@@ -94,6 +95,7 @@ from auth import (
 from auth import router as auth_router
 from tokens import router as token_router
 from sqlalchemy.ext.declarative import declarative_base
+from fastapi.staticfiles import StaticFiles
 import uuid, os, io
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
@@ -162,6 +164,9 @@ app.add_middleware(
 
 # Load environment variables
 load_dotenv()
+# Serve the frontend folder as static files
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 print("Loaded environment:")
 print("POSTGRES_USER:", os.getenv("POSTGRES_USER"))
@@ -169,6 +174,37 @@ print("POSTGRES_PASSWORD:", os.getenv("POSTGRES_PASSWORD"))
 print("POSTGRES_HOST:", os.getenv("POSTGRES_HOST"))
 print("POSTGRES_PORT:", os.getenv("POSTGRES_PORT"))
 
+from io import StringIO
+
+@app.post("/dataset/profile")
+async def dataset_profile(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        df = pd.read_csv(StringIO(contents.decode("utf-8")))
+        profile = profile_dataset(df)
+        return JSONResponse(content=profile)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to profile dataset: {str(e)}")
+        import pandas as pd
+
+def profile_dataset(df: pd.DataFrame) -> dict:
+    profile = {
+        "row_count": len(df),
+        "column_count": len(df.columns),
+        "missing_values": (df.isnull().sum() / len(df) * 100).round(2).to_dict(),
+        "data_types": df.dtypes.apply(lambda dt: str(dt)).to_dict(),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "outliers": {},
+    }
+
+    for col in df.select_dtypes(include="number").columns:
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
+        iqr = q3 - q1
+        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        profile["outliers"][col] = int(((df[col] < lower) | (df[col] > upper)).sum())
+
+    return profile
 
 # Middleware for logging requests and responses
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -176,12 +212,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         body = await request.body()
 
-        logger.info(f"📥 Request: {request.method} {request.url} - Body: {body.decode('utf-8')}")
+        logger.info(f" Request: {request.method} {request.url} - Body: {body.decode('utf-8')}")
         
         response = await call_next(request)
         process_time = time.time() - start_time
 
-        logger.info(f"📤 Response: {response.status_code} - Time: {process_time:.4f}s")
+        logger.info(f"Response: {response.status_code} - Time: {process_time:.4f}s")
         
         return response
 from fastapi.security.utils import get_authorization_scheme_param
@@ -228,13 +264,28 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         duration = time.monotonic() - start
 
-        tracked_paths = ["/classification/", "/regression/", "/clustering/", "/forecast/", "/segment_analysis/", "/survival/", "/counterfactual"]
+        tracked_paths = [
+            "/classification/",
+            "/regression/",
+            "/clustering/",
+            "/forecast/",
+            "/segment_analysis/",
+            "/survival/",
+            "/counterfactual/",
+            "/visualize/",
+            "/feature_impact/",
+            "/risk_analysis/",
+            "/decision_paths/",
+            "/classification/predict/",
+            "/regression/predict/",
+        ]
+
         if request.url.path not in tracked_paths:
             return response
 
         # Pricing
-        PRICE_PER_MB = 0.02
-        PRICE_PER_SECOND = 0.05
+        PRICE_PER_MB = 0.25     # $0.25 per megabyte
+        PRICE_PER_SECOND = 0.50 # $0.50 per second of compute time
         OVERDRAFT_LIMIT = -1.0
 
         # Estimate or pull actual size
@@ -282,7 +333,88 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
             print(f"DB session error: {db_err}")
 
         return response
+from fastapi import Request, HTTPException
+import time
+import openai
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request, HTTPException
+import time
 
+class AITokenBillingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        tracked_path = "/api/ai_insights"
+
+        if not request.url.path.startswith(tracked_path):
+            return await call_next(request)
+
+        # ─── Run the request and time it ─────────────────────
+        start_time = time.monotonic()
+        response = await call_next(request)
+        duration = time.monotonic() - start_time
+
+        try:
+            db_gen = get_master_db_session()
+            db = next(db_gen)
+
+            # Pull current user
+            user = await get_current_active_user(request)
+            if not user:
+                return response
+
+            # ─── Pull token usage (if any) from OpenAI call ─────
+            openai_tokens_used = getattr(request.state, "openai_tokens_used", 0)
+
+            # OpenAI Pricing (e.g., GPT-4 Vision or GPT-4o)
+            OPENAI_COST_PER_1K = 0.04  # your actual OpenAI rate
+            MARKUP = 4.0               # 4x markup for profit
+
+            ai_cost_usd = (openai_tokens_used / 1000) * OPENAI_COST_PER_1K
+            ai_charge = round(ai_cost_usd * MARKUP, 3)
+
+            # ─── Add time-based and size-based charges ─────────
+            PRICE_PER_MB = 0.25
+            PRICE_PER_SECOND = 0.50
+
+            content_length = request.headers.get("content-length")
+            bytes_processed = int(content_length) if content_length and content_length.isdigit() else 0
+            mb_used = bytes_processed / (1024 * 1024)
+
+            time_charge = duration * PRICE_PER_SECOND
+            size_charge = mb_used * PRICE_PER_MB
+
+            additional_charge = round(time_charge + size_charge, 3)
+
+            # ─── Total Charge Calculation ─────────────
+            total_charge_tokens = round(ai_charge + additional_charge, 3)
+
+            if user.tokens is None:
+                user.tokens = 0.0
+
+            user.tokens -= total_charge_tokens
+
+            if user.tokens < -1.0:
+                db.rollback()
+                raise HTTPException(403, detail=f"🚫 Token balance exceeded. Required: {total_charge_tokens}, Available: {user.tokens:.2f}. Please top up.")
+
+            # Tracking
+            user.total_ai_tokens_used += openai_tokens_used
+            user.total_bytes_processed += bytes_processed
+            user.total_compute_seconds += duration
+            user.total_cost_dollars += (ai_cost_usd + additional_charge)
+
+            db.commit()
+
+        except Exception as e:
+            print("⚠️ Billing Middleware Error:", e)
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+
+        return response
+
+app.add_middleware(AITokenBillingMiddleware)
 app.add_middleware(UsageTrackerMiddleware)
 app.add_middleware(LoggingMiddleware)
 
@@ -290,7 +422,6 @@ app.add_middleware(LoggingMiddleware)
 # Include Routers
 app.include_router(auth_router)
 app.include_router(activity_router)
-app.include_router(d_router)
 app.include_router(a_router)
 app.include_router(token_router)
 # Dataset models
@@ -307,7 +438,10 @@ class DatasetQuery(BaseModel):
 def startup_event():
     """Initialize database on startup"""
     init_dataset_master_db()
+    from auth import Base, master_engine  # (make sure you import Base from wherever your User model lives)
+    Base.metadata.create_all(bind=master_engine)
     logger.info("Application started and database initialized")
+    
 
 # Root endpoint
 @app.get("/")
@@ -595,48 +729,6 @@ async def query_dataset(
         logger.error(f"Error executing query on dataset {dataset_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error executing query: {str(e)}")
 
-
-
-@app.delete("/datasets/{dataset_id}")
-async def delete_dataset_endpoint(
-    dataset_id: int,
-    current_user = Depends(get_current_active_user)
-):
-    """
-    Delete a dataset and its associated data table.
-    """
-    try:
-        # Call the CRUD helper (not the endpoint itself)
-        deleted = delete_dataset_crud(current_user.email, dataset_id)
-
-        # If your helper returns a coroutine, await it:
-        # if asyncio.iscoroutine(deleted):
-        #     deleted = await deleted
-
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        created_at = (
-            deleted.created_at.strftime("%Y-%m-%d")
-            if deleted.created_at else
-            "Unknown date"
-        )
-
-        return {
-            "message": "Dataset deleted successfully",
-            "dataset": {
-                "id": deleted.id,
-                "name": deleted.name,
-                "created_at": created_at
-            }
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting dataset: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting dataset: {e}")
-
 # Helper function to fetch preview data
 def fetch_preview_data(file_path: str):
     """
@@ -786,15 +878,114 @@ async def classification(
     else:
         # Free users = Celery worker
         task = run_classification.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
+@app.post("/classification/predict/")
+async def classification_predict(
+    file: UploadFile = File(...),
+    drop_columns: str = Form(""),
+    output_predictions: bool = Form(True),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    FastAPI endpoint for making predictions using a previously trained classification model.
+    
+    Args:
+        prediction_file: CSV file containing new data for predictions
+        drop_columns: Comma-separated column names to drop before prediction
+        output_predictions: Whether to save predictions to a CSV file
+        current_user: Current authenticated user
+    
+    Returns:
+        Dictionary containing predictions and metadata
+    """
+    # ───────── Token check ───────────
+    MINIMUM_TOKENS = 0.05  # Lower cost for prediction vs training
+    if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
+        raise HTTPException(403, "Insufficient token balance to begin processing.")
+
+    user_id = current_user.id
+    user_dir = PathL("user_uploads") / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    # ───────── Validate that a trained model exists ───────────
+    model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
+    if not model_path.exists():
+        raise HTTPException(404, "No trained classification model found. Please train a model first.")
+
+    # ───────── Handle file upload ───────────
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(400, "Prediction file must be a CSV file.")
+    
+    file_path = os.path.join(user_dir, f"predict_{file.filename}")
+    async with aiofiles.open(file_path, "wb") as out:
+        await out.write(await file.read())
+
+    # ───────── Choose execution mode ───────────
+    if current_user.subscription in ["Pro", "Enterprise"]:
+        # Premium = fully isolated ECS job (you would need to implement this)
+        # For now, falling back to Celery for all users
+        task = run_classification_predict.delay(
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            drop_columns=drop_columns,
+            output_predictions=output_predictions
+        )
+        response_data = await run_in_threadpool(task.get)
+        
+        # Optional: Implement ECS job launching for premium users
+        # response = launch_prediction_job_on_ecs(
+        #     user_id=user_id,
+        #     prediction_file_path=prediction_file_path,
+        #     drop_columns=drop_columns,
+        #     output_predictions=output_predictions
+        # )
+        # return {"status": "queued_on_ecs", "ecs_response": response}
+        
+    else:
+        # Free users = Celery worker
+        task = run_classification_predict.delay(
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            drop_columns=drop_columns,
+            output_predictions=output_predictions
+        )
+        response_data = await run_in_threadpool(task.get)
+
+    # ───────── Deduct tokens on successful completion ───────────
+    if response_data.get("status") == "success":
+        try:
+            # Deduct tokens based on data size or fixed rate
+            tokens_to_deduct = min(MINIMUM_TOKENS, current_user.tokens)
+            current_user.tokens -= tokens_to_deduct
+            # You would typically save this to your database here
+            # db.commit()
+        except Exception as token_error:
+            print(f"[⚠️] Token deduction failed: {token_error}")
+
+    return response_data
 @app.post("/cluster/")
 async def clustering(
     file: Optional[UploadFile] = File(None),
@@ -855,6 +1046,11 @@ async def clustering(
         task = run_clustering.delay(
             user_id=user_id,
             file_path=file_path,   # might be None
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             train_path=train_path, # might be None
             test_path=test_path,   # might be None
             target_column=target_column,
@@ -918,17 +1114,22 @@ async def segment_analysis(
         return {"status": "queued_on_ecs", "ecs_response": response}
 
     else:
-        # Free users = Celery worker
-        task = run_segment_analysis.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns
+      task = run_segment_analysis.delay(
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 @app.post("/label_clusters/")
 async def label_clusters(
     file: UploadFile = File(None),
@@ -984,11 +1185,16 @@ async def label_clusters(
     else:
         # Free users = Celery worker
         task = run_label_clusters.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            feature_columns
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            feature_columns=feature_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
@@ -1060,15 +1266,20 @@ async def regression(
         return {"status": "queued_on_ecs", "ecs_response": response}
 
     else:
-        # Free users -> Celery worker
         task = run_regression.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },  # if `current_user` is a Pydantic model
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
+
         response_data = await run_in_threadpool(task.get)
         return response_data
 
@@ -1127,6 +1338,11 @@ async def regression_predict(
         # Free users = Celery worker
         task = run_regression_predict.delay(
             user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             file_path=file_path,
             train_path=train_path,
             test_path=test_path,
@@ -1157,65 +1373,86 @@ class VisualizationResponse(BaseModel):
 class VisualizationListResponse(BaseModel):
     visualizations: List[VisualizationResponse]
     total: int
+from worker import _load_metadata, _save_metadata
+
+
+# Additional utility functions you might need
+
+@app.delete("/visualizations/{visualization_id}")
+async def delete_visualization(
+    visualization_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a specific visualization."""
+    try:
+        metadata = _load_metadata(current_user.id)
+        
+        # Find and remove the visualization
+        original_count = len(metadata)
+        metadata = [item for item in metadata if item.get('id') != visualization_id]
+        
+        if len(metadata) == original_count:
+            raise HTTPException(status_code=404, detail="Visualization not found")
+        
+        # Save updated metadata
+        _save_metadata(current_user.id, metadata)
+        
+        return {"message": "Visualization deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error deleting visualization: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error deleting visualization")
+
+
+@app.get("/visualizations/{visualization_id}")
+async def get_visualization(
+    visualization_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get a specific visualization."""
+    try:
+        metadata = _load_metadata(current_user.id)
+        
+        # Find the visualization
+        for item in metadata:
+            if item.get('id') == visualization_id:
+                return item
+        
+        raise HTTPException(status_code=404, detail="Visualization not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting visualization: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving visualization")
 
 @app.get("/visualizations")
 async def list_visualizations(
     current_user: User = Depends(get_current_active_user),
     override_id: Optional[str] = Query(None),
-):
+) -> List[Dict[str, Any]]:
     try:
         logging.info(f"Fetching visualizations for user: {current_user.id}")
         
         user_id = current_user.id
         if override_id:
             user_id = override_id
-            
-        # Ensure directory exists
-        #  ↓ change from Path("data", "visualizations") to either of the two options below
-        meta_dir = PathL("data") / "visualizations"
-        # meta_dir = Path("data/visualizations")
-        meta_dir.mkdir(parents=True, exist_ok=True)
         
-        # Sanitize user_id for safe filename
-        safe_user_id = str(user_id).replace('/', '_').replace('\\', '_')
-        meta_file = meta_dir / f"{safe_user_id}.json"
+        # Load metadata using the helper function
+        metadata = _load_metadata(user_id)
         
-        logging.info(f"Looking for file: {meta_file}")
+        logging.info(f"Found {len(metadata)} visualizations for user {user_id}")
+        return metadata
         
-        if not meta_file.exists():
-            logging.info("No visualization file found, returning empty list")
-            return []
-            
-        content = meta_file.read_text()
-        logging.info(f"File content length: {len(content)}")
-        
-        return json.loads(content)
-        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like from _load_metadata)
+        raise
     except Exception as e:
         logging.error(f"Error in list_visualizations: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-def _get_meta_path(user_id: str) -> Path:
-    meta_dir = PathL("data") / "visualizations"
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    safe_user_id = str(user_id).replace("/", "_").replace("\\", "_")
-    return meta_dir / f"{safe_user_id}.json"
-
-def _load_metadata(user_id: str) -> List[dict]:
-    meta_path = _get_meta_path(user_id)
-    if not meta_path.exists():
-        return []
-    try:
-        return json.loads(meta_path.read_text())
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Could not parse metadata.json")
-
-def _save_metadata(user_id: str, data: List[dict]):
-    meta_path = _get_meta_path(user_id)
-    meta_path.write_text(json.dumps(data, indent=2))
-
-from fastapi.responses import FileResponse, StreamingResponse
-from io import BytesIO
 
 @app.get("/visualizations/{viz_id}/download")
 async def download_visualization(
@@ -1296,13 +1533,17 @@ async def delete_visualization(
     _try_remove("feature_importance_detailed")
 
     _save_metadata(user_id, meta)
-
 @app.post("/segment_analysis/")
 async def segment_analysis(
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),
+    train_file: UploadFile = File(None),
+    test_file: UploadFile = File(None),
     target_column: str = Form(None),
+    drop_columns: str = Form(""),
     current_user: User = Depends(get_current_active_user),
 ):
+    """FastAPI endpoint for segmentation analysis"""
+    
     # ───────── Token check ───────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
@@ -1314,17 +1555,44 @@ async def segment_analysis(
     PathL("models").mkdir(exist_ok=True)
     PathL("data").mkdir(exist_ok=True)
 
-    # ───────── Handle file upload ───────────
-    file_path = os.path.join(user_dir, file.filename)
-    async with aiofiles.open(file_path, "wb") as out:
-        await out.write(await file.read())
+    file_path = None
+    train_path = None
+    test_path = None
 
-    # ───────── Choose execution mode ───────────
+    # ───────── Handle file uploads ───────────
+    if file:
+        file_path = user_dir / file.filename
+        async with aiofiles.open(file_path, "wb") as out:
+            await out.write(await file.read())
+        file_path = str(file_path)
+
+    elif train_file and test_file:
+        train_path = user_dir / train_file.filename
+        async with aiofiles.open(train_path, "wb") as out:
+            await out.write(await train_file.read())
+        train_path = str(train_path)
+
+        test_path = user_dir / test_file.filename
+        async with aiofiles.open(test_path, "wb") as out:
+            await out.write(await test_file.read())
+        test_path = str(test_path)
+
+    else:
+        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+
+    # ───────── Prepare user data ─────────────
+    user_data = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "subscription": current_user.subscription
+    }
+
+    # ───────── Choose execution mode ─────────────
     if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium plan = external ECS job (optional future deployment)
+        # Premium plan = external ECS job
         response = launch_job_on_ecs(
             user_id=user_id,
-            file_path=file_path,
+            file_path=file_path or train_path,
             target_column=target_column
         )
         return {"status": "queued_on_ecs", "ecs_response": response}
@@ -1333,8 +1601,12 @@ async def segment_analysis(
         # Free users = run on Celery worker
         task = run_segment_analysis.delay(
             user_id=user_id,
+            current_user=user_data,
             file_path=file_path,
-            target_column=target_column
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
@@ -1396,6 +1668,11 @@ async def visualize(
         # Free users -> Celery worker
         task = run_visualization.delay(
             user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             file_path=file_path,
             train_path=train_path,
             test_path=test_path,
@@ -1404,6 +1681,7 @@ async def visualize(
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
+# Also fix the API endpoint to handle the desired_outcome parameter properly
 @app.post("/counterfactual/")
 async def counterfactual(
     file: UploadFile = File(None),
@@ -1414,6 +1692,10 @@ async def counterfactual(
     sample_id: int = Form(None),
     sample_strategy: str = Form("random"),
     num_samples: int = Form(1),
+    desired_outcome: str = Form(None),
+    editable_features: str = Form(None),
+    max_changes: int = Form(3),
+    proximity_metric: str = Form("euclidean"),
     current_user: User = Depends(get_current_active_user),
 ):
     # ───────── Token check ───────────
@@ -1447,9 +1729,44 @@ async def counterfactual(
     else:
         raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
+    # ───────── Convert input types ───────────
+    # Parse desired_outcome properly
+    parsed_desired = None
+    if desired_outcome:
+        try:
+            # Try to parse as JSON first
+            parsed_desired = json.loads(desired_outcome)
+        except json.JSONDecodeError:
+            # If not JSON, try to parse as number
+            try:
+                parsed_desired = float(desired_outcome)
+                # Convert to int if it's a whole number
+                if parsed_desired.is_integer():
+                    parsed_desired = int(parsed_desired)
+            except ValueError:
+                # Keep as string if it's not a number
+                parsed_desired = desired_outcome
+
+    # Parse editable_features
+    editable_features_list = None
+    if editable_features:
+        try:
+            editable_features_list = json.loads(editable_features)
+        except json.JSONDecodeError:
+            editable_features_list = [f.strip() for f in editable_features.split(",")]
+
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium users -> ECS job
+        extra_params = {
+            "sample_id": sample_id,
+            "sample_strategy": sample_strategy,
+            "num_samples": num_samples,
+            "desired_outcome": parsed_desired,
+            "editable_features": editable_features_list,
+            "max_changes": max_changes,
+            "proximity_metric": proximity_metric,
+        }
+        
         response = launch_job_on_ecs(
             user_id=user_id,
             file_path=file_path,
@@ -1458,30 +1775,39 @@ async def counterfactual(
             target_column=target_column,
             drop_columns=drop_columns,
             job_type="counterfactual",
-            extra_params={  # pass additional params if ECS handler supports
-                "sample_id": sample_id,
-                "sample_strategy": sample_strategy,
-                "num_samples": num_samples
-            }
+            extra_params=extra_params
         )
         return {"status": "queued_on_ecs", "ecs_response": response}
-
     else:
-        # Free users -> Celery worker
-        task = run_counterfactual.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns,
-            sample_id,
-            sample_strategy,
-            num_samples
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+        # Ensure all parameters are JSON-serializable
+        sanitized_params = {
+            "user_id": str(user_id),
+            "current_user": {
+                "id": str(current_user.id),
+                "email": str(current_user.email),
+                "subscription": str(current_user.subscription)
+            },
+            "file_path": file_path,
+            "train_path": train_path,
+            "test_path": test_path,
+            "target_column": str(target_column),
+            "drop_columns": str(drop_columns),
+            "sample_id": int(sample_id) if sample_id is not None else None,
+            "sample_strategy": str(sample_strategy),
+            "num_samples": int(num_samples),
+            "desired_outcome": parsed_desired,  # Already processed above
+            "editable_features": editable_features_list,  # Already processed above
+            "max_changes": int(max_changes),
+            "proximity_metric": str(proximity_metric),
+        }
 
+        # Apply additional JSON safety check
+        sanitized_params = make_json_safe(sanitized_params)
+        
+        task = run_counterfactual.delay(**sanitized_params)
+        response_data = await run_in_threadpool(task.get)
+        
+        return response_data
 @app.post("/survival/")
 async def survival(
     file: UploadFile = File(None),
@@ -1546,6 +1872,11 @@ async def survival(
     else:
         kwargs = {
             "user_id": user_id,
+            "current_user": {
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             "time_col": time_col,
             "event_col": event_col,
             "drop_cols": drop_cols,
@@ -1621,13 +1952,18 @@ async def what_if_analysis(
     else:
         # Free users -> Celery worker
         task = run_what_if.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            sample_id,
-            target_column,
-            feature_changes
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path= file_path,
+            train_path=train_path,
+            test_path=test_path,
+            sample_id= sample_id,
+            target_column= target_column,
+            feature_changes=feature_changes
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
@@ -1721,12 +2057,17 @@ async def risk_analysis(
 
     else:
         task = run_risk_analysis.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
@@ -1785,12 +2126,17 @@ async def decision_paths(
 
     else:
         task = run_decision_paths.delay(
-            user_id,
-            file_path,
-            train_path,
-            test_path,
-            target_column,
-            drop_columns
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path = train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
@@ -1798,7 +2144,7 @@ async def decision_paths(
 import matplotlib.pyplot as plt
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from pmdarima import auto_arima
+
 @app.post("/forecast/")
 async def forecast_time_series(
     file: UploadFile = File(...),
@@ -1808,6 +2154,8 @@ async def forecast_time_series(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if periods is None or isinstance(periods, str):
+            raise HTTPException(status_code=422, detail="Invalid value for periods")
         # ─── Token check ───
         MINIMUM_TOKENS = 0.1
         if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
@@ -1827,6 +2175,11 @@ async def forecast_time_series(
         results = run_forecast(
             user_id=user_id,
             file_path=file_path,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             target_column=target_column,
             drop_columns=drop_columns,
             periods=periods
@@ -1840,7 +2193,37 @@ async def forecast_time_series(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Time series forecast failed: {str(e)}")
 
+class DownloadRequest(BaseModel):
+    file_path: str
+    file_name: str
 
+@app.post("/api/prediction-download")
+async def download_file(request: DownloadRequest):
+    # Define the allowed base directory
+    base_dir = PathL("user_uploads").resolve()
+    
+    # Build the requested file path safely
+    requested_path = (PathL(request.file_path)).resolve()
+
+    print(f"[🔍] Checking if file exists at: {requested_path}")
+
+    # ❌ Deny access if someone tries to escape the allowed folder
+    if not str(requested_path).startswith(str(base_dir)):
+        print("[🚫] Attempted access outside allowed directory")
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # ❌ File doesn't exist
+    if not requested_path.exists():
+        print("[❌] File not found.")
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # ✅ File exists and is inside allowed user directory
+    print("[✅] File found. Sending response.")
+    return FileResponse(
+        path=requested_path,
+        filename=request.file_name,
+        media_type='application/octet-stream'
+    )
 app.include_router(auth_router)
 if __name__ == "__main__":
     for route in app.routes:

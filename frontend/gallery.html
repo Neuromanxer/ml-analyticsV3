@@ -1,0 +1,3310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Insights - Visualization Gallery</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+    --primary-color: #2196F3;
+    --primary-dark: #1976D2;
+    --primary-light: #BBDEFB;
+    --accent-color: #E3F2FD;
+    --secondary-color: #03DAC6;
+    --medium-gray: #E0E0E0;
+    --dark-gray: #757575;
+    --danger-color: #F44336;
+    --success-color: #4CAF50;
+    --warning-color: #FF9800;
+    --surface-color: #FAFAFA;
+    --gradient-primary: linear-gradient(135deg, #2196F3 0%, #21CBF3 100%);
+    --gradient-secondary: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    --shadow-soft: 0 4px 20px rgba(33, 150, 243, 0.1);
+    --shadow-medium: 0 8px 32px rgba(33, 150, 243, 0.15);
+    --shadow-strong: 0 12px 40px rgba(33, 150, 243, 0.2);
+    --border-radius: 12px;
+    --border-radius-small: 8px;
+    --border-radius-large: 16px;
+    --transition-fast: 0.2s ease;
+    --transition-medium: 0.3s ease;
+    --transition-slow: 0.4s ease;
+}
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e8f4fd 0%, #f0f8ff 100%);
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 30px 25px;
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 2rem;
+            color: #2196F3;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #2196F3;
+            font-weight: 700;
+            font-size: 1.8rem;
+            letter-spacing: -0.5px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+            padding: 0 25px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #9E9E9E;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+        }
+        
+        .sidebar-menu-item {
+            margin-bottom: 8px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #616161;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-decoration: none;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(33, 150, 243, 0.1);
+            color: #2196F3;
+            transform: translateX(4px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 14px;
+            width: 22px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 25px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #757575;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 18px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 14px;
+            font-size: 1.1rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* Page Header */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            background-color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .page-header h1 {
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+
+    /* Search Box */
+.search-box {
+    position: relative;
+    width: 300px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 14px 20px 14px 50px;
+    border: 2px solid var(--medium-gray);
+    border-radius: 50px;
+    font-size: 15px;
+    background: white;
+    transition: all var(--transition-medium);
+    box-shadow: var(--shadow-soft);
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.1), var(--shadow-medium);
+    transform: translateY(-2px);
+}
+
+.search-box input::placeholder {
+    color: var(--dark-gray);
+    opacity: 0.7;
+}
+
+.search-box i {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--primary-color);
+    font-size: 16px;
+    transition: color var(--transition-medium);
+}
+
+.search-box:hover i {
+    color: var(--primary-dark);
+}
+
+/* Filters */
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 24px;
+    background: var(--gradient-secondary);
+    padding: 20px 24px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-medium);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.filter-group label {
+    font-weight: 600;
+    color: var(--primary-dark);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.filter-group select {
+    padding: 10px 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-small);
+    font-size: 14px;
+    min-width: 160px;
+    background: white;
+    color: var(--primary-dark);
+    transition: all var(--transition-medium);
+    box-shadow: var(--shadow-soft);
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1), var(--shadow-medium);
+}
+
+.filter-group select:hover {
+    border-color: var(--primary-light);
+    transform: translateY(-1px);
+}
+
+/* Gallery Grid */
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 28px;
+    padding: 8px;
+}
+
+.gallery-item {
+    background: white;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+    transition: all var(--transition-medium);
+    cursor: pointer;
+    border: 1px solid rgba(33, 150, 243, 0.1);
+    position: relative;
+}
+
+.gallery-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient-primary);
+    opacity: 0;
+    transition: opacity var(--transition-medium);
+}
+
+.gallery-item:hover::before {
+    opacity: 1;
+}
+
+.gallery-item:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-strong);
+    border-color: var(--primary-light);
+}
+
+.gallery-image {
+    width: 100%;
+    height: 220px;
+    background: var(--gradient-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 28px;
+    position: relative;
+    overflow: hidden;
+}
+
+.gallery-image::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+}
+
+.gallery-item:hover .gallery-image::after {
+    left: 100%;
+}
+
+.gallery-content {
+    padding: 20px;
+}
+
+.gallery-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--primary-dark);
+    line-height: 1.4;
+}
+
+.gallery-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: var(--dark-gray);
+    margin-bottom: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--accent-color);
+}
+
+.gallery-dataset {
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--primary-dark);
+    font-weight: 500;
+}
+
+.gallery-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.gallery-tag {
+    background: var(--gradient-secondary);
+    color: var(--primary-dark);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--primary-light);
+    transition: all var(--transition-fast);
+}
+
+.gallery-tag:hover {
+    background: var(--primary-light);
+    transform: scale(1.05);
+}
+
+.gallery-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--accent-color);
+    padding-top: 16px;
+    gap: 12px;
+}
+.ai-insight {
+    background: #fefefe;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-top: 15px;
+}
+
+/* Enhanced Buttons */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 50px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-medium);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 14px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+.btn i {
+    margin-right: 8px;
+    font-size: 16px;
+}
+
+.btn-primary {
+    background: var(--gradient-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-strong);
+}
+
+.btn-outline {
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+    background: white;
+}
+
+.btn-outline:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-outline-danger {
+    color: var(--danger-color);
+    border: 2px solid var(--danger-color);
+    background: white;
+}
+
+.btn-outline-danger:hover {
+    background: var(--danger-color);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-insights {
+    background: var(--gradient-primary);
+    color: white;
+    padding: 12px 24px;
+    font-weight: 700;
+    font-size: 15px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-medium);
+    transition: all var(--transition-medium);
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-insights i {
+    margin-right: 10px;
+    font-size: 18px;
+}
+
+.btn-insights:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-strong);
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 40px;
+    gap: 8px;
+}
+
+.page-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--border-radius-small);
+    cursor: pointer;
+    transition: all var(--transition-medium);
+    border: 2px solid var(--medium-gray);
+    background: white;
+    color: var(--primary-dark);
+    font-weight: 600;
+    box-shadow: var(--shadow-soft);
+}
+
+.page-item:hover {
+    background: var(--accent-color);
+    border-color: var(--primary-light);
+    transform: translateY(-2px);
+}
+
+.page-item.active {
+    background: var(--gradient-primary);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-medium);
+}
+
+/* Loader */
+.loader {
+    display: none;
+    width: 60px;
+    height: 60px;
+    border: 6px solid var(--accent-color);
+    border-top: 6px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 30px auto;
+    box-shadow: var(--shadow-soft);
+}
+
+/* Assumptions Form */
+.assumptions-form {
+    background: var(--gradient-secondary);
+    padding: 36px;
+    border-radius: var(--border-radius-large);
+    border: 2px solid var(--primary-light);
+    box-shadow: var(--shadow-medium);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    margin-bottom: 36px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--primary-dark);
+    font-size: 15px;
+}
+
+.form-group input {
+    padding: 14px 18px;
+    border: 2px solid var(--medium-gray);
+    border-radius: var(--border-radius-small);
+    font-size: 15px;
+    background: white;
+    transition: all var(--transition-medium);
+    box-shadow: var(--shadow-soft);
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.1), var(--shadow-medium);
+    transform: translateY(-2px);
+}
+
+.form-note {
+    font-size: 13px;
+    color: var(--dark-gray);
+    margin-top: 8px;
+    font-style: italic;
+}
+
+.save-btn {
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    padding: 18px 36px;
+    border-radius: var(--border-radius-small);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--transition-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.save-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-strong);
+}
+
+/* Insights Cards */
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 28px;
+}
+
+.insight-card {
+    background: white;
+    padding: 32px;
+    border-radius: var(--border-radius-large);
+    box-shadow: var(--shadow-medium);
+    border-left: 6px solid var(--primary-color);
+    transition: all var(--transition-medium);
+    position: relative;
+    overflow: hidden;
+}
+
+.insight-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 100px;
+    height: 100px;
+    background: var(--gradient-secondary);
+    border-radius: 50%;
+    transform: translate(50%, -50%);
+    opacity: 0.3;
+}
+
+.insight-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-strong);
+    border-left-color: var(--secondary-color);
+}
+
+.insight-card h3 {
+    color: var(--primary-color);
+    font-size: 20px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    font-weight: 700;
+}
+
+.insight-card h3::before {
+    content: "🔵";
+    margin-right: 12px;
+    font-size: 24px;
+}
+
+.insight-card p {
+    color: var(--dark-gray);
+    line-height: 1.7;
+    font-size: 15px;
+}
+
+.impact-value {
+    font-weight: 800;
+    color: var(--primary-color);
+    font-size: 20px;
+    display: inline-block;
+    padding: 4px 8px;
+    background: var(--accent-color);
+    border-radius: 6px;
+}
+
+/* Historical Impact Table */
+.impact-table {
+    background: white;
+    border-radius: var(--border-radius-large);
+    overflow: hidden;
+    box-shadow: var(--shadow-medium);
+    margin-top: 32px;
+    border: 1px solid var(--primary-light);
+}
+
+.impact-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.impact-table th {
+    background: var(--gradient-primary);
+    color: white;
+    padding: 20px 24px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 15px;
+    position: relative;
+}
+
+.impact-table th::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-dark);
+}
+
+.impact-table td {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--accent-color);
+    color: var(--primary-dark);
+    transition: background-color var(--transition-fast);
+}
+
+.impact-table tr:hover td {
+    background: var(--accent-color);
+}
+
+.impact-table .revenue-cell {
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 16px;
+}
+
+.revenue-cell {
+    font-weight: 700;
+    color: var(--primary-color);
+    background: var(--accent-color);
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+/* Future Predictions */
+.prediction-card {
+    background: var(--gradient-primary);
+    color: white;
+    padding: 36px;
+    border-radius: var(--border-radius-large);
+    text-align: center;
+    box-shadow: var(--shadow-strong);
+    position: relative;
+    overflow: hidden;
+}
+
+.prediction-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    animation: pulse 3s ease-in-out infinite;
+}
+
+.prediction-card h3 {
+    font-size: 24px;
+    margin-bottom: 20px;
+    font-weight: 700;
+    position: relative;
+    z-index: 1;
+}
+
+.prediction-value {
+    font-size: 48px;
+    font-weight: 800;
+    margin: 24px 0;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1;
+}
+
+.prediction-note {
+    opacity: 0.9;
+    font-size: 16px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Status Messages */
+.status-message {
+    padding: 18px 24px;
+    border-radius: var(--border-radius);
+    margin-bottom: 24px;
+    font-weight: 600;
+    box-shadow: var(--shadow-soft);
+}
+
+.status-success {
+    background: linear-gradient(135deg, #E8F5E8 0%, #C8E6C8 100%);
+    color: var(--success-color);
+    border: 2px solid var(--success-color);
+}
+
+.status-info {
+    background: var(--gradient-secondary);
+    color: var(--primary-dark);
+    border: 2px solid var(--primary-light);
+}
+
+/* Mobile Menu Toggle */
+.mobile-menu-toggle {
+    display: none;
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    z-index: 1000;
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: var(--border-radius-small);
+    cursor: pointer;
+    box-shadow: var(--shadow-medium);
+    transition: all var(--transition-medium);
+}
+
+.mobile-menu-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-strong);
+}
+
+/* AI Business Impact Form */
+.impact-form {
+    background: white;
+    border-radius: var(--border-radius-large);
+    padding: 32px 36px;
+    box-shadow: var(--shadow-medium);
+    margin-top: 32px;
+    max-width: 800x;
+    width: 100%;
+    border: 2px solid var(--primary-light);
+}
+
+.impact-form h3 {
+    font-size: 20px;
+    margin-bottom: 24px;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+.impact-form label {
+    display: block;
+    margin: 16px 0 8px;
+    font-weight: 600;
+    color: var(--primary-dark);
+    font-size: 15px;
+}
+
+.impact-form input {
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: var(--border-radius-small);
+    border: 2px solid var(--medium-gray);
+    font-size: 15px;
+    background: white;
+    transition: all var(--transition-medium);
+    box-shadow: var(--shadow-soft);
+}
+
+.impact-form input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.1), var(--shadow-medium);
+    transform: translateY(-2px);
+}
+
+.impact-form .btn {
+    margin-top: 24px;
+    width: 100%;
+    font-size: 16px;
+    padding: 16px 24px;
+    font-weight: 700;
+}
+
+/* Animations */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.05); }
+}
+
+/* Empty state */
+.no-visualizations {
+    text-align: center;
+    padding: 60px 40px;
+    background: var(--gradient-secondary);
+    border-radius: var(--border-radius-large);
+    box-shadow: var(--shadow-medium);
+    border: 2px solid var(--primary-light);
+}
+
+.no-visualizations i {
+    font-size: 64px;
+    color: var(--primary-color);
+    margin-bottom: 24px;
+    opacity: 0.7;
+}
+
+.no-visualizations h2 {
+    font-size: 24px;
+    margin-bottom: 16px;
+    color: var(--primary-dark);
+    font-weight: 700;
+}
+
+.no-visualizations p {
+    color: var(--dark-gray);
+    margin-bottom: 24px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(33, 150, 243, 0.1);
+    backdrop-filter: blur(10px);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    padding: 32px;
+    border-radius: var(--border-radius-large);
+    width: 85%;
+    max-width: 960px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: var(--shadow-strong);
+    border: 2px solid var(--primary-light);
+}
+
+.modal-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--dark-gray);
+    transition: all var(--transition-medium);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-color);
+}
+
+.modal-close:hover {
+    color: var(--danger-color);
+    background: white;
+    transform: scale(1.1);
+}
+
+.modal-header {
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--accent-color);
+    margin-bottom: 24px;
+}
+
+.modal-header .modal-title {
+    color: var(--primary-dark);
+    font-weight: 700;
+    font-size: 24px;
+}
+
+.visualization-large {
+    width: 100%;
+    max-height: 520px;
+    background: var(--gradient-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 56px;
+    margin-bottom: 24px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-medium);
+    position: relative;
+    overflow: hidden;
+}
+
+.visualization-info {
+    margin-bottom: 24px;
+}
+
+.viz-card.highlighted {
+    border: 3px solid var(--primary-color);
+    background: var(--accent-color);
+    box-shadow: var(--shadow-strong);
+    transform: translateY(-4px);
+}
+
+.viz-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.viz-detail-row {
+    display: flex;
+    margin-bottom: 14px;
+    align-items: center;
+}
+
+.viz-detail-label {
+    font-weight: 600;
+    width: 140px;
+    color: var(--primary-dark);
+    font-size: 14px;
+}
+
+.section-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--primary-dark);
+    border-bottom: 3px solid var(--primary-color);
+    padding-bottom: 8px;
+    display: inline-block;
+}
+
+/* Messages */
+.message {
+    padding: 16px 20px;
+    border-radius: var(--border-radius);
+    margin: 16px 0;
+    display: none;
+    font-weight: 600;
+    box-shadow: var(--shadow-soft);
+}
+
+.error-message {
+    background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+    color: var(--danger-color);
+    border-left: 6px solid var(--danger-color);
+}
+
+.success-message {
+    background: linear-gradient(135deg, #E8F5E8 0%, #C8E6C8 100%);
+    color: var(--success-color);
+    border-left: 6px solid var(--success-color);
+}
+
+.viz-card.attention {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4); }
+    50% { box-shadow: 0 0 20px 8px rgba(33, 150, 243, 0.2); }
+    100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4); }
+}
+
+.generate-insights-wrapper {
+    margin-top: 32px;
+    text-align: center;
+}
+
+.generate-insights-wrapper .btn {
+    font-size: 16px;
+    padding: 16px 32px;
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    font-weight: 700;
+    box-shadow: var(--shadow-medium);
+    transition: all var(--transition-medium);
+}
+
+.generate-insights-wrapper .btn:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-strong);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        min-height: auto;
+    }
+    
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+    }
+    
+    .gallery-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .search-box {
+        width: 100%;
+    }
+    
+    .filters {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .filter-group {
+        width: 100%;
+    }
+    
+    .filter-group select {
+        width: 100%;
+    }
+    
+    .viz-details {
+        grid-template-columns: 1fr;
+    }
+    
+    .insights-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        width: 95%;
+        padding: 24px;
+    }
+    
+    .mobile-menu-toggle {
+        display: block;
+    }
+}
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i>
+            <h1>MLAnalytics</h1>
+        </div>
+        
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">MAIN</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="wizard.html">
+                      <i class="fas fa-rocket"></i>
+                      Run New Experiment
+                    </a>
+                  </li>
+                <li class="sidebar-menu-item">
+                    <a href="dashboard.html">
+                        <i class="fas fa-home"></i>
+                        Dashboard
+                    </a>
+                </li>
+                
+            </ul>
+        </div>
+        
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">STORAGE</div>
+        <ul class="sidebar-menu">
+          <li class="sidebar-menu-item">
+            <a href="gallery.html">
+                <i class="fas fa-project-diagram"></i>
+                Gallery
+            </a>
+        </li>
+        
+        <li class="sidebar-menu-item">
+            <a href="datasets.html">
+                <i class="fas fa-database"></i>
+                Datasets
+            </a>
+        </li>
+      </ul>
+    </div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">SETTINGS</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="pricing.html">
+                        <i class="fas fa-dollar-sign"></i>
+                        Pricing
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="account.html">
+                        <i class="fas fa-user"></i>
+                        Account
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">COMMUNITY</div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item">
+                    <a href="contact.html">
+                        <i class="fas fa-users"></i>
+                        Contact
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-item" onclick="signOutUser()">
+                <i class="fas fa-sign-out-alt"></i>
+                Sign out
+            </div>
+        </div>
+        
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="page-header">
+            <h1>Visualization Gallery</h1>
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="search-input" placeholder="Search visualizations...">
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="dataset-filter">Dataset:</label>
+                <select id="dataset-filter">
+                    <option value="all">All Datasets</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="type-filter">Type:</label>
+                <select id="type-filter">
+                    <option value="all">All Types</option>
+                    <option value="regression">Regression</option>
+                    <option value="classification">Classification</option>
+                    <option value="clustering">Clustering</option>
+                    <option value="feature-impact">Feature Impact</option>
+                    <option value="counterfactual">Counterfactual</option>
+                    <option value="segments">Segments</option>
+                    <option value="risk">Risk Analysis</option>
+                    <option value="decision-paths">Decision Paths</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="date-filter">Date:</label>
+                <select id="date-filter">
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="message-container"></div>
+        <div id="loader" class="loader"></div>
+         <!-- Section 1: Financial Assumptions -->
+         <div class="section">
+            <h2 class="section-title">Financial Assumptions</h2>
+            <div class="assumptions-form">
+                <div id="statusMessage"></div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="revenue-per-customer">Estimated Revenue per Customer</label>
+                        <input type="number" id="revenue-per-customer" placeholder="1200" step="0.01">
+                        <div class="form-note">e.g. $1,200</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="cost-per-lost-customer">Cost per Lost Customer</label>
+                        <input type="number" id="cost-per-lost-customer" placeholder="800" step="0.01">
+                        <div class="form-note">e.g. $800</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="revenue-per-lead">Revenue per Lead</label>
+                        <input type="number" id="revenue-per-lead" placeholder="100" step="0.01">
+                        <div class="form-note">e.g. $100</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="average-order-value">Average Order Value</label>
+                        <input type="number" id="average-order-value" placeholder="60" step="0.01">
+                        <div class="form-note">e.g. $60</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <div id="gallery-container" class="gallery-grid">
+            <!-- Gallery items will be populated here -->
+        </div>
+        <div class="generate-insights-wrapper">
+            <button class="btn btn-primary" onclick="saveAssumptions()">
+                🚀 Generate Insights
+            </button>
+        </div>
+        
+        <div id="no-visualizations" class="no-visualizations" style="display: none;">
+            <i class="fas fa-chart-area"></i>
+            <h2>No visualizations found</h2>
+            <p>Create your first visualization to see it appear here</p>
+            <button class="btn btn-primary" onclick="window.location.href='dashboard.html'">Create Visualization</button>
+        </div>
+
+        <div class="pagination" id="pagination">
+            <!-- Pagination will be populated here -->
+        </div>
+        
+                <!-- Section 2: AI Actionable Insights -->
+                <div class="section">
+                    <h2 class="section-title">AI Actionable Insights</h2>
+                    <div id="insights-container">
+                        <div class="status-message status-info">
+                            Please save your financial assumptions above to view personalized business impact insights.
+                        </div>
+                    </div>
+                </div>
+                <form class="impact-form">
+                    <h3>📅 Time Period</h3>
+                    <label>Month:</label>
+                    <input type="month" id="impact-month" required>
+                  
+                    <h3>💵 Estimated Financial Gains</h3>
+                    <label>Revenue Saved:</label>
+                    <input type="number" id="impact-revenue-saved" placeholder="e.g., 4800" required>
+                  
+                    <label>New Revenue:</label>
+                    <input type="number" id="impact-new-revenue" placeholder="e.g., 2600" required>
+                  
+                    <label>Cost Reduction:</label>
+                    <input type="number" id="impact-cost-reduction" placeholder="e.g., 1500" required>
+                  
+                    <h3>📈 Contextual Business Metrics</h3>
+                    <label>Conversion Rate (%):</label>
+                    <input type="number" id="impact-conversion-rate" placeholder="e.g., 12" step="0.01">
+                  
+                    <label>Retention Rate (%):</label>
+                    <input type="number" id="impact-retention-rate" placeholder="e.g., 80" step="0.01">
+                  
+                    <label>Cost Per Lead ($):</label>
+                    <input type="number" id="impact-cost-per-lead" placeholder="e.g., 50" step="0.01">
+                  
+                    <button type="submit" class="btn btn-primary">➕ Add to Impact Log</button>
+                  </form>
+                  
+                <div class="section">
+                    <h2 class="section-title">Historical Impact Log</h2>
+                    <div class="impact-table" id="impact-history-container" style="display:none;">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Month</th>
+                            <th>Revenue Saved</th>
+                            <th>New Revenue</th>
+                            <th>Cost Reduction</th>
+                            <th>Total Impact</th>
+                          </tr>
+                        </thead>
+                        <tbody id="impact-history-body">
+                          <!-- Dynamic rows go here -->
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  
+                <div class="section">
+                    <h2 class="section-title">Future Predictions</h2>
+                    <div class="prediction-card">
+                        <h3>Projected Impact Next Quarter</h3>
+                        <div class="prediction-value" id="future-prediction">$0</div>
+                        <div class="prediction-note">Based on current retention rates and model performance trends</div>
+                    </div>
+                </div>
+    </div>
+    <div id="modalVariantTabs" class="variant-tabs" style="margin-bottom: 10px;"></div>
+<!-- Visualization Detail Modal -->
+<div id="visualization-modal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" id="modal-close">&times;</span>
+        <div class="modal-header">
+            <h2 id="modal-title">Visualization Details</h2>
+        </div>
+        <img id="modal-image" class="visualization-large" src="" alt="Visualization">
+        
+        <div class="visualization-info">
+            <div class="viz-details">
+                <div class="section-title">General Information</div>
+                <div class="viz-detail-row">
+                    <div class="viz-detail-label">Dataset:</div>
+                    <div id="modal-dataset">--</div>
+                </div>
+                <div class="viz-detail-row">
+                    <div class="viz-detail-label">Type:</div>
+                    <div id="modal-type">--</div>
+                </div>
+                <div class="viz-detail-row">
+                    <div class="viz-detail-label">Created:</div>
+                    <div id="modal-date">--</div>
+                </div>
+                <div class="viz-detail-row">
+                    <div class="viz-detail-label">Target:</div>
+                    <div id="modal-target">--</div>
+                </div>
+                <div class="viz-detail-row">
+                    <div class="viz-detail-label">Parameters:</div>
+                    <div id="modal-params">--</div>
+                </div>
+            </div>
+            
+            <div class="metrics-section">
+                <div class="section-title">Performance Metrics</div>
+                <div id="test-scores-container"></div>
+                <div id="cv-scores-container"></div>
+            </div>
+        </div>
+        
+        <div class="features-section" style="margin: 20px 0;">
+            <div class="section-title">Top Features</div>
+            <div id="top-features-container" class="features-grid"></div>
+        </div>
+        
+        <div class="gallery-actions">
+            <button class="btn btn-primary" id="btn-download">
+                <i class="fas fa-download"></i> Download
+            </button>
+            <button class="btn btn-outline-danger" id="btn-delete">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+            <button class="btn btn-insights" id="btn-insights" onclick="sendMetadataForInsights(currentVizId)">
+                <i class="fas fa-lightbulb"></i> Generate Insights
+            </button>
+        </div>
+    </div>
+</div>
+        <script>
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
+// DOM refs
+const galleryContainer     = document.getElementById('gallery-container');
+const noVisualizationsDiv  = document.getElementById('no-visualizations');
+const loaderElement        = document.getElementById('loader');
+const datasetFilter        = document.getElementById('dataset-filter');
+const typeFilter           = document.getElementById('type-filter');
+const dateFilter           = document.getElementById('date-filter');
+const searchInput          = document.getElementById('search-input');
+const paginationElement    = document.getElementById('pagination');
+const userInitials         = document.getElementById('user-initials');
+const userName             = document.getElementById('user-name');
+const messageContainer     = document.getElementById('message-container');
+
+// Modal refs
+const visualizationModal   = document.getElementById('visualization-modal');
+const modalClose           = document.getElementById('modal-close');
+const modalTitle           = document.getElementById('modal-title');
+const modalImage           = document.getElementById('modal-image');
+const modalDataset         = document.getElementById('modal-dataset');
+const modalType            = document.getElementById('modal-type');
+const modalDate            = document.getElementById('modal-date');
+const modalParams          = document.getElementById('modal-params');
+const btnDownload          = document.getElementById('btn-download');
+const btnDelete            = document.getElementById('btn-delete');
+
+const itemsPerPage        = 12;
+let allVisualizations     = [];
+let filteredVisualizations= [];
+let currentVisualizations = [];
+let currentPage = 1;
+let currentVizId = null; // Store current visualization ID for modal actions
+let highlightedVizId = null;
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/login.html"; // Adjust the path if needed
+}
+
+// Helper function to handle authentication errors
+function handleAuthError(error) {
+  console.error('Authentication error:', error);
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html?next=gallery.html&reason=Session expired, please log in again';
+}
+
+// Helper function to make authenticated requests
+async function authenticatedFetch(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    throw new Error('No token available');
+  }
+
+  const defaultOptions = {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  };
+
+  const response = await fetch(url, { ...options, headers: defaultOptions.headers });
+  
+  if (response.status === 401) {
+    handleAuthError(new Error('Token expired or invalid'));
+    return;
+  }
+  
+  return response;
+}
+
+// Helper: is JWT expired?
+function isTokenExpired(token) {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!payload.exp) return false;
+      return (Math.floor(Date.now()/1000) + 30) >= payload.exp;
+    } catch (err) {
+      console.error('Error parsing token:', err);
+      return true;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Add delay to prevent race conditions with login process
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  const token = localStorage.getItem('access_token');
+  const userLoggedIn = localStorage.getItem('userLoggedIn');
+  
+  console.log('Gallery auth check:', {
+    token: token ? 'Present' : 'Missing',
+    userLoggedIn: userLoggedIn,
+    tokenExpired: token ? isTokenExpired(token) : 'No token'
+  });
+  
+  // Enhanced authentication check
+  if (!token || userLoggedIn !== 'true' || (token && isTokenExpired(token))) {
+    console.log('Authentication failed, redirecting to login...');
+    // Clear potentially corrupted auth state
+    const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail', 'user_id', 'user'];
+    keys.forEach(key => localStorage.removeItem(key));
+    
+    window.location.href = 'login.html?next=gallery.html&reason=Please log in';
+    return;
+  }
+
+  // Try to get user_id from localStorage
+  let userId = localStorage.getItem('user_id');
+
+  // If we don't have it yet, hit the /me endpoint
+  if (!userId) {
+    try {
+      const resp = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+      if (!resp || !resp.ok) {
+        throw new Error('Profile fetch failed');
+      }
+      const profile = await resp.json();
+      userId = profile.id;
+      localStorage.setItem('user_id', userId);
+      // also stash the rest of the user for setUserInfo
+      localStorage.setItem('user', JSON.stringify(profile));
+    } catch (err) {
+      console.error('Could not fetch profile:', err);
+      handleAuthError(err);
+      return;
+    }
+  }
+
+  // If we made it this far, we have a valid token & user_id
+  setUserInfo();
+  loadVisualizations();
+
+  // Event listeners
+  if (modalClose) {
+    modalClose.addEventListener('click', function() {
+      visualizationModal.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('click', function(event) {
+    const modal = document.getElementById('visualization-modal');
+    if (event.target === modal) {
+        modal.style.display = 'none';
+    }
+  });
+
+  // wire up UI
+  if (datasetFilter) datasetFilter.addEventListener('change', applyFilters);
+  if (typeFilter) typeFilter.addEventListener('change', applyFilters);
+  if (dateFilter) dateFilter.addEventListener('change', applyFilters);
+  if (searchInput) searchInput.addEventListener('input', applyFilters);
+  if (modalClose) modalClose.addEventListener('click', () => visualizationModal.style.display = 'none');
+  
+  window.addEventListener('click', e => { 
+    if (e.target === visualizationModal) visualizationModal.style.display = 'none'; 
+  });
+  
+  if (btnDownload) btnDownload.addEventListener('click', handleDownload);
+  if (btnDelete) btnDelete.addEventListener('click', handleDelete);
+});
+const savedLog = localStorage.getItem("impactLog");
+  if (savedLog) {
+    impactLog = JSON.parse(savedLog);
+    renderImpactTable();
+    updateFuturePrediction();
+  }
+// Sidebar highlighting
+const menuItems = document.querySelectorAll('.sidebar-menu-item');
+const currentPageName = 'gallery.html';
+menuItems.forEach(item => {
+  const a = item.querySelector('a');
+  if (a && a.getAttribute('href').toLowerCase().includes('gallery')) {
+    item.classList.add('active');
+  }
+});
+
+const maxPageButtons = 5; 
+let currentPageNum = 1;
+
+function renderPagination() {
+  const totalPages = Math.ceil(filteredVisualizations.length / itemsPerPage);
+  if (paginationElement) {
+    paginationElement.innerHTML = "";
+  }
+
+  if (totalPages <= 1) return;
+
+  // helper to build a button
+  function makeBtn(label, page, disabled=false, active=false) {
+    const btn = document.createElement('div');
+    btn.className = ['page-item',
+                     disabled ? 'disabled' : '',
+                     active   ? 'active'   : '']
+                     .filter(Boolean).join(' ');
+    btn.textContent = label;
+    if (!disabled && !active) {
+      btn.addEventListener('click', () => {
+        currentPageNum = page;
+        renderVisualizations();
+        renderPagination();
+      });
+    }
+    return btn;
+  }
+
+  // Prev
+  if (paginationElement) {
+    paginationElement.appendChild(
+      makeBtn('‹ Prev', currentPageNum - 1, currentPageNum === 1)
+    );
+
+    // compute window
+    const half = Math.floor(maxPageButtons / 2);
+    let startPage = Math.max(1, currentPageNum - half);
+    let endPage = startPage + maxPageButtons - 1;
+    if (endPage > totalPages) {
+      endPage = totalPages;
+      startPage = Math.max(1, endPage - maxPageButtons + 1);
+    }
+
+    // numbered
+    for (let i = startPage; i <= endPage; i++) {
+      paginationElement.appendChild(
+        makeBtn(i, i, false, i === currentPageNum)
+      );
+    }
+
+    // Next
+    paginationElement.appendChild(
+      makeBtn('Next ›', currentPageNum + 1, currentPageNum === totalPages)
+    );
+  }
+}
+let impactLog = [];
+document.querySelector(".impact-form").addEventListener("submit", function (e) {
+  e.preventDefault();
+
+  const monthInput = document.getElementById("impact-month").value;
+  const revenueSaved = parseFloat(document.getElementById("impact-revenue-saved").value) || 0;
+  const newRevenue = parseFloat(document.getElementById("impact-new-revenue").value) || 0;
+  const costReduction = parseFloat(document.getElementById("impact-cost-reduction").value) || 0;
+
+  const conversionRate = parseFloat(document.getElementById("impact-conversion-rate").value) || 0;
+  const retentionRate = parseFloat(document.getElementById("impact-retention-rate").value) || 0;
+  const costPerLead = parseFloat(document.getElementById("impact-cost-per-lead").value) || 0;
+
+  const formattedMonth = new Date(monthInput + "-01").toLocaleString("default", {
+    year: "numeric",
+    month: "long"
+  });
+
+  // Optional: Adjust values using context inputs
+  const adjustedNewRevenue = newRevenue * (conversionRate / 100 || 1);  // scale by conversion
+  const adjustedRetentionValue = revenueSaved * (retentionRate / 100 || 1);  // scale by retention
+  const costSavings = costReduction - costPerLead;  // reduce by CPL if applicable
+
+  const total = adjustedNewRevenue + adjustedRetentionValue + costSavings;
+
+  impactLog.push({
+    month: formattedMonth,
+    saved: adjustedRetentionValue,
+    newRev: adjustedNewRevenue,
+    reduced: costSavings,
+    total,
+    rawInput: {
+      revenueSaved,
+      newRevenue,
+      costReduction,
+      conversionRate,
+      retentionRate,
+      costPerLead
+    }
+  });
+
+  renderImpactTable();
+  updateFuturePrediction();
+});
+
+
+function renderImpactTable() {
+  const tbody = document.getElementById("impact-history-body");
+  const container = document.getElementById("impact-history-container");
+
+  tbody.innerHTML = "";
+
+  impactLog.forEach(entry => {
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td>${entry.month}</td>
+      <td>$${entry.saved.toLocaleString()}</td>
+      <td>$${entry.newRev.toLocaleString()}</td>
+      <td>$${entry.reduced.toLocaleString()}</td>
+      <td><strong>$${entry.total.toLocaleString()}</strong></td>
+    `;
+
+    tbody.appendChild(row);
+  });
+
+  container.style.display = "block";
+  localStorage.setItem("impactLog", JSON.stringify(impactLog));
+
+}
+
+function updateFuturePrediction() {
+  const totalImpact = impactLog.reduce((sum, e) => sum + e.total, 0);
+  const projection = totalImpact; // Optional: scale factor for next quarter
+  document.getElementById("future-prediction").textContent = `$${projection.toLocaleString()}`;
+}
+
+
+function setUserInfo() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (userName) userName.textContent = user.name || 'Data Scientist';
+  if (userInitials && user.name) {
+    const parts = user.name.split(' ');
+    const initials = parts.length > 1
+      ? parts[0][0] + parts[parts.length-1][0]
+      : parts[0].slice(0,2);
+    userInitials.textContent = initials.toUpperCase();
+  }
+}
+async function checkUserVisualizationLimit() {
+  try {
+    const response = await authenticatedFetch(`${API_BASE_URL}/user/plan`);
+    if (!response.ok) throw new Error("Failed to fetch user plan.");
+
+    const data = await response.json();
+    const { subscription, visualization_count } = data;
+
+    console.log("📦 User Plan Check:", { subscription, visualization_count });
+
+    if (subscription === "Free" && visualization_count >= 3) {
+      showMessage("Free users can store up to 3 visualizations. Upgrade for more.", "warning");
+      return false;
+    }
+
+    return true; // They are allowed to add more
+  } catch (err) {
+    console.error("❌ Error checking user plan:", err);
+    showMessage("Unable to check plan. Please try again.", "error");
+    return false;
+  }
+}
+
+function openVisualization(vizId) {
+  currentVizId = vizId;
+  const viz = allVisualizations.find(v => v.id === vizId);
+  if (!viz) {
+    showMessage('Visualization not found', 'error');
+    return;
+  }
+  
+  // Set the data-id for the modal buttons
+  if (btnDownload) btnDownload.dataset.id = vizId;
+  if (btnDelete) btnDelete.dataset.id = vizId;
+  
+  openModal(viz);
+}
+function displayMetrics(scores, containerId, title) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  if (!scores || Object.keys(scores).length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = `<div style="margin-bottom: 15px;"><strong>${title}</strong></div>`;
+
+  // 🔢 Decision Tree Metrics (Flat Table)
+  if (Array.isArray(scores.metrics)) {
+    const headers = scores.metrics_headers || ["Metric", "Value"];
+    html += `<div><strong>📈 Decision Tree Metrics</strong>${renderFlatTable(headers, scores.metrics)}</div>`;
+  }
+
+  // 📊 Summary Stats (Flat Table)
+  if (Array.isArray(scores.summary_stats)) {
+    const headers = scores.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"];
+    html += `<div style="margin-top: 10px;"><strong>📊 Summary Stats</strong>${renderFlatTable(headers, scores.summary_stats)}</div>`;
+  }
+
+  // 🧪 Other General Scores (key-value display)
+  for (const [metric, value] of Object.entries(scores)) {
+    if (
+      ["metrics", "metrics_headers", "summary_stats", "summary_stats_headers", "decision_rules"].includes(metric)
+    ) continue;
+
+    const displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+    html += `
+      <div class="metric-row">
+        <div class="metric-label">${metric.replace(/_/g, ' ').toUpperCase()}:</div>
+        <div class="metric-value">${displayValue}</div>
+      </div>
+    `;
+  }
+
+  // 📜 Decision Rules Preview
+  if (Array.isArray(scores.decision_rules) && scores.decision_rules.length > 0) {
+    html += `
+      <div class="metric-subsection">
+        <strong>📜 Decision Rules (preview)</strong>
+        <pre class="decision-rules">${scores.decision_rules.slice(0, 10).join('\n')}</pre>
+        ${scores.decision_rules.length > 10 ? `<div>...and ${scores.decision_rules.length - 10} more rules</div>` : ''}
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+// Replace your applyFilters function with this:
+function applyFilters() {
+  console.log('🔧 Applying filters...');
+  console.log('🔧 allVisualizations before filter:', allVisualizations);
+  
+  const ds = datasetFilter ? datasetFilter.value : 'all';
+  const tp = typeFilter ? typeFilter.value : 'all';
+  const dv = dateFilter ? dateFilter.value : 'all';
+  const sv = searchInput ? searchInput.value.toLowerCase() : '';
+
+  console.log('🔧 Filter values:', { ds, tp, dv, sv });
+
+  filteredVisualizations = allVisualizations.filter(viz => {
+    console.log('🔧 Checking viz:', viz.id, viz);
+    
+    if (ds !== 'all' && viz.dataset !== ds) {
+      console.log('❌ Failed dataset filter:', viz.dataset, 'vs', ds);
+      return false;
+    }
+    if (tp !== 'all' && viz.type !== tp) {
+      console.log('❌ Failed type filter:', viz.type, 'vs', tp);
+      return false;
+    }
+
+    if (dv !== 'all') {
+      const vizDate = new Date(viz.created_at);
+      const today = new Date();
+      console.log('🔧 Date check:', viz.created_at, vizDate, 'vs today:', today);
+      
+      if (dv === 'today' && vizDate.toDateString() !== today.toDateString()) {
+        console.log('❌ Failed today filter');
+        return false;
+      }
+      if (dv === 'week') {
+        const start = new Date(today); 
+        start.setDate(today.getDate() - today.getDay());
+        if (vizDate < start) {
+          console.log('❌ Failed week filter');
+          return false;
+        }
+      }
+      if (dv === 'month') {
+        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        if (vizDate < start) {
+          console.log('❌ Failed month filter');
+          return false;
+        }
+      }
+    }
+
+    if (sv) {
+      const inTitle = (viz.title || '').toLowerCase().includes(sv);
+      const inDataset = viz.dataset.toLowerCase().includes(sv);
+      const inType = viz.type.toLowerCase().includes(sv);
+      console.log('🔧 Search check:', { inTitle, inDataset, inType });
+      if (!inTitle && !inDataset && !inType) {
+        console.log('❌ Failed search filter');
+        return false;
+      }
+    }
+    
+    console.log('✅ Viz passed all filters');
+    return true;
+  });
+
+  console.log('🔧 filteredVisualizations result:', filteredVisualizations);
+  console.log('🔧 Filtered count:', filteredVisualizations.length);
+
+  currentPageNum = 1;
+  renderVisualizations();
+  renderPagination();
+}
+function formatKeyValObject(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  return Object.entries(obj)
+    .map(([k, v]) => {
+      const val = typeof v === "number" ? v.toFixed(3) : v;
+      return `<strong>${k.replace(/_/g, " ")}:</strong> ${val}`;
+    })
+    .join(" | ");
+}
+
+function formatArray(arr) {
+  return Array.isArray(arr) ? arr.map(v => `<code>${v}</code>`).join(", ") : "N/A";
+}
+
+function getTypeIcon(type) {
+  const iconMap = {
+    'classification': 'fa-chart-pie',
+    'forecast': 'fa-chart-line',
+    'decision_paths': 'fa-sitemap',
+    'regression': 'fa-chart-scatter',
+    'clustering': 'fa-th',
+    'default': 'fa-chart-bar'
+  };
+  
+  return iconMap[type] || iconMap['default'];
+}
+
+function formatRecords(records) {
+  if (!Array.isArray(records)) return "";
+  return records.map((rec, i) => `<div><strong>Segment ${i + 1}:</strong> ${formatKeyValObject(rec)}</div>`).join("");
+}
+// Replace your loadVisualizations function with this:
+async function loadVisualizations() {
+  showLoader();
+  
+  // Add debug logging
+  console.log('🔍 Starting loadVisualizations...');
+  console.log('API_BASE_URL:', API_BASE_URL);
+  
+  try {
+    console.log('📡 Making API call to:', `${API_BASE_URL}/visualizations`);
+    
+    const response = await authenticatedFetch(`${API_BASE_URL}/visualizations`);
+    
+    console.log('📥 Response received:', {
+      ok: response?.ok,
+      status: response?.status,
+      statusText: response?.statusText
+    });
+    
+    if (!response || !response.ok) {
+      console.error('❌ API Response not OK:', response);
+      throw new Error(`Failed to load visualizations: ${response?.status} ${response?.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('📊 Raw data received:', data);
+    console.log('📊 Data type:', typeof data);
+    console.log('📊 Is array:', Array.isArray(data));
+    console.log('📊 Data length:', data?.length);
+    
+    // Process the data to flatten nested structures
+    let processedData = [];
+    
+    if (Array.isArray(data)) {
+      processedData = data.map(item => {
+        // Create a flattened version of the item
+        const processed = {
+          id: item.id,
+          type: item.type,
+          dataset: item.dataset,
+          created_at: item.created_at,
+          target_column: item.target_column,
+          parameters: item.parameters || {},
+          test_scores: item.test_scores || {},
+          cv_scores: item.cv_scores || {},
+          top_features: item.top_features || [],
+          model_info: item.model_info || {},
+          visualizations: item.visualizations || {},
+          title: item.title || item.dataset || 'Untitled'
+        };
+        
+        // Handle image data - prioritize thumbnailData, then imageData, then visualizations
+        if (item.thumbnailData) {
+          processed.thumbnailData = item.thumbnailData;
+          processed.imageData = item.imageData || item.thumbnailData;
+        } else if (item.imageData) {
+          processed.imageData = item.imageData;
+          processed.thumbnailData = item.imageData;
+        } else if (item.visualizations) {
+          // If we have visualizations object, use the first available image
+          const vizKeys = Object.keys(item.visualizations);
+          if (vizKeys.length > 0) {
+            processed.imageData = item.visualizations[vizKeys[0]];
+            processed.thumbnailData = item.visualizations[vizKeys[0]];
+          }
+          // Store all visualizations for modal display
+          processed.visualizations = item.visualizations;
+        }
+        
+        return processed;
+      });
+    } else {
+      console.error('❌ Expected array but got:', typeof data);
+      processedData = [];
+    }
+    
+    console.log('✅ Processed data:', processedData);
+    
+    if (processedData.length > 0) {
+      console.log('📊 First processed item structure:', processedData[0]);
+      processedData.forEach((item, index) => {
+        console.log(`Processed Item ${index}:`, {
+          id: item.id,
+          type: item.type,
+          dataset: item.dataset,
+          created_at: item.created_at,
+          hasImage: !!(item.thumbnailData || item.imageData),
+          imageType: item.thumbnailData ? 'thumbnail' : item.imageData ? 'image' : 'none'
+        });
+      });
+    }
+    
+    hideLoader();
+    allVisualizations = processedData;
+    
+    console.log('✅ Set allVisualizations:', allVisualizations);
+    
+    populateDatasetOptions(allVisualizations);
+    applyFilters();
+    
+  } catch (err) {
+    hideLoader();
+    console.error('💥 Error in loadVisualizations:', err);
+    console.error('💥 Error stack:', err.stack);
+    console.error('💥 Error message:', err.message);
+    
+    // Don't hide gallery immediately - let's see what we have
+    console.log('🔍 Current allVisualizations state:', allVisualizations);
+    
+    if (err.message.includes('Token') || err.message.includes('401')) {
+      console.log('🔐 Authentication error detected');
+      handleAuthError(err);
+    } else {
+      showMessage(`Failed to load visualizations: ${err.message}`, "error");
+      
+      // Only hide gallery if we have no data at all
+      if (!allVisualizations || allVisualizations.length === 0) {
+        if (galleryContainer) galleryContainer.style.display = "none";
+        if (noVisualizationsDiv) noVisualizationsDiv.style.display = "block";
+        if (paginationElement) paginationElement.style.display = "none";
+      }
+    }
+  }
+}
+
+// Enhanced renderVisualizations function
+function renderVisualizations() {
+  if (!galleryContainer) return;
+  
+  galleryContainer.innerHTML = "";
+
+  if (!filteredVisualizations.length) {
+    galleryContainer.style.display = "none";
+    if (noVisualizationsDiv) noVisualizationsDiv.style.display = "block";
+    if (paginationElement) paginationElement.style.display = "none";
+    return;
+  }
+
+  galleryContainer.style.display = "grid";
+  if (noVisualizationsDiv) noVisualizationsDiv.style.display = "none";
+  if (paginationElement) paginationElement.style.display = "flex";
+
+  const start = (currentPageNum - 1) * itemsPerPage;
+  const pageItems = filteredVisualizations.slice(start, start + itemsPerPage);
+
+  pageItems.forEach(viz => {
+    try {
+      // Enhanced image handling with better fallback
+      let thumbSrc = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg==';
+      
+      if (viz.thumbnailData) {
+        thumbSrc = viz.thumbnailData;
+      } else if (viz.imageData) {
+        thumbSrc = viz.imageData;
+      } else if (viz.visualizations) {
+        // Use first available visualization
+        const vizKeys = Object.keys(viz.visualizations);
+        if (vizKeys.length > 0) {
+          thumbSrc = viz.visualizations[vizKeys[0]];
+        }
+      }
+
+      const card = document.createElement("div");
+      card.className = "gallery-item";
+      card.dataset.id = viz.id;
+
+      // Safe date formatting
+      let formattedDate = 'Unknown Date';
+      try {
+        if (viz.created_at) {
+          const date = new Date(viz.created_at);
+          formattedDate = date.toLocaleDateString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric'
+          });
+        }
+      } catch (e) {
+        console.warn('Invalid date:', viz.created_at);
+      }
+
+      const typeIcon = getTypeIcon(viz.type);
+      
+      // Build metrics HTML with enhanced handling
+      let metricsHtml = '<div class="gallery-metrics">';
+      
+      if (viz.test_scores && Object.keys(viz.test_scores).length > 0) {
+        metricsHtml += `<div>🧪 Test Scores: ${formatKeyValObject(viz.test_scores)}</div>`;
+      }
+      
+      if (viz.cv_scores && Object.keys(viz.cv_scores).length > 0) {
+        metricsHtml += `<div>🔁 CV Scores: ${formatKeyValObject(viz.cv_scores)}</div>`;
+      }
+      
+      if (viz.parameters && Object.keys(viz.parameters).length > 0) {
+        metricsHtml += `<div>⚙️ Parameters: ${formatKeyValObject(viz.parameters)}</div>`;
+      }
+      // 📊 Show summary stats if available
+if (viz.summary_stats && viz.summary_stats.feature_summary) {
+  const summaryKeys = Object.keys(viz.summary_stats.feature_summary);
+  if (summaryKeys.length > 0) {
+    metricsHtml += `<div>📊 Summary Stats (sample):</div><ul>`;
+    summaryKeys.slice(0, 3).forEach(key => {
+      const stats = viz.summary_stats.feature_summary[key];
+      metricsHtml += `<li><strong>${key}</strong>: mean=${stats.mean.toFixed(2)}, std=${stats.std.toFixed(2)}</li>`;
+    });
+    if (summaryKeys.length > 3) {
+      metricsHtml += `<li>...and ${summaryKeys.length - 3} more</li>`;
+    }
+    metricsHtml += `</ul>`;
+  }
+}
+
+// 📜 Show decision rules if available
+if (Array.isArray(viz.decision_rules) && viz.decision_rules.length > 0) {
+  metricsHtml += `
+    <div>📜 Decision Rules (preview):</div>
+    <pre class="decision-rules">${viz.decision_rules.slice(0, 10).join('\n')}</pre>
+    ${viz.decision_rules.length > 10 ? `<div>...and ${viz.decision_rules.length - 10} more rules</div>` : ''}
+  `;
+}
+
+      // Add forecast-specific metrics
+      if (viz.model_info && Object.keys(viz.model_info).length > 0) {
+        if (viz.model_info.arima_order) {
+          metricsHtml += `<div>📈 Model: ${viz.model_info.arima_order}</div>`;
+        }
+        if (viz.model_info.forecast_periods) {
+          metricsHtml += `<div>🔮 Periods: ${viz.model_info.forecast_periods}</div>`;
+        }
+      }
+            // Add retention rate metrics
+        if (viz.retention_rates) {
+        metricsHtml += `<div>📊 Retention Rates:</div>`;
+        metricsHtml += `<ul style="margin-left: 1rem;">`;
+        metricsHtml += `<li>1 Month: ${viz.retention_rates["1_month"]}%</li>`;
+        metricsHtml += `<li>3 Months: ${viz.retention_rates["3_months"]}%</li>`;
+        metricsHtml += `<li>6 Months: ${viz.retention_rates["6_months"]}%</li>`;
+        metricsHtml += `</ul>`;
+        }
+
+
+      // Add top features preview for classification
+      if (viz.top_features && Array.isArray(viz.top_features) && viz.top_features.length > 0) {
+        const topFeature = viz.top_features[0];
+        const featureName = topFeature.Feature || topFeature.feature || 'Unknown';
+        const importance = typeof topFeature.Importance === 'number' ? 
+          topFeature.Importance.toFixed(3) : 
+          (typeof topFeature.importance === 'number' ? topFeature.importance.toFixed(3) : 'N/A');
+        metricsHtml += `<div>🎯 Top Feature: ${featureName} (${importance})</div>`;
+      }
+      // 📈 Show conversion rate if available in entry
+        if (viz.conversion_rate && typeof viz.conversion_rate === "number") {
+        metricsHtml += `<div>🔁 Conversion Rate: ${viz.conversion_rate}%</div>`;
+        }
+        // 🧠 Optimal K (Clustering)
+        if (typeof viz.optimal_k === "number") {
+        metricsHtml += `<div>🔍 Optimal K: ${viz.optimal_k}</div>`;
+        }
+
+        // 🧬 Features Used
+        if (Array.isArray(viz.features_used) && viz.features_used.length > 0) {
+        const featureList = viz.features_used.slice(0, 5).join(', ');
+        metricsHtml += `<div>🧬 Features Used: ${featureList}${viz.features_used.length > 5 ? '...' : ''}</div>`;
+        }
+
+        // 📊 Total Records
+        if (typeof viz.total_records === "number") {
+        metricsHtml += `<div>📊 Total Records: ${viz.total_records.toLocaleString()}</div>`;
+        }
+
+      metricsHtml += '</div>';
+
+      card.innerHTML = `
+        <div class="gallery-thumbnail">
+          <img src="${thumbSrc}" alt="${viz.title || viz.dataset || 'Visualization'}" 
+               style="max-width:100%; height: 150px; object-fit: cover;" 
+               onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm9yPC90ZXh0Pjwvc3ZnPg=='" />
+        </div>
+        <div class="gallery-info">
+          <h3>${viz.title || viz.dataset || 'Untitled Visualization'}</h3>
+          <div class="gallery-meta">
+            <span><i class="far fa-calendar-alt"></i> ${formattedDate}</span>
+            <span><i class="fas ${typeIcon}"></i> ${viz.type || 'unknown'}</span>
+          </div>
+          <div class="gallery-dataset">
+            <i class="fas fa-database"></i> ${viz.dataset || 'Unknown Dataset'}
+          </div>
+          ${viz.target_column ? `<div class="gallery-target"><i class="fas fa-bullseye"></i> Target: ${viz.target_column}</div>` : ''}
+          ${metricsHtml}
+        </div>
+      `;
+      card.classList.add("viz-card");  // Make sure this is consistent
+      card.addEventListener("click", () => handleCardClick(viz.id, card));
+
+      galleryContainer.appendChild(card);
+      
+    } catch (error) {
+      console.error('Error rendering visualization card:', error, viz);
+      // Create a simple error card
+      const errorCard = document.createElement("div");
+      errorCard.className = "gallery-item error-item";
+      errorCard.innerHTML = `
+        <div class="gallery-info">
+          <h3>Error Loading Visualization</h3>
+          <div class="gallery-meta">
+            <span>ID: ${viz.id || 'Unknown'}</span>
+            <span>Type: ${viz.type || 'Unknown'}</span>
+          </div>
+          <div class="gallery-dataset">
+            <i class="fas fa-database"></i> ${viz.dataset || 'Unknown Dataset'}
+          </div>
+        </div>
+      `;
+      galleryContainer.appendChild(errorCard);
+    }
+  });
+}
+function handleCardClick(vizId, cardElement) {
+  if (highlightedVizId === vizId) {
+    // Second click = Open visualization modal
+    openVisualization(vizId);
+    highlightedVizId = null;
+
+    // Optional: remove highlight after open
+    cardElement.classList.remove("highlighted");
+
+  } else {
+    // First click = just highlight
+    highlightedVizId = vizId;
+
+    // Clear previous highlights
+    document.querySelectorAll(".viz-card").forEach(card => {
+      card.classList.remove("highlighted");
+    });
+
+    // Add highlight to current card
+    cardElement.classList.add("highlighted");
+  }
+}
+
+// Enhanced displayTopFeatures function
+function displayTopFeatures(features) {
+  const container = document.getElementById('top-features-container');
+  if (!container) return;
+  
+  if (!features || !Array.isArray(features) || features.length === 0) {
+    container.innerHTML = '<div>No feature data available</div>';
+    return;
+  }
+  
+  let html = '';
+  features.forEach((feature, index) => {
+    // Handle both 'Feature'/'Importance' and 'feature'/'importance' naming conventions
+    const featureName = feature.Feature || feature.feature || `Feature ${index + 1}`;
+    const importance = feature.Importance !== undefined ? feature.Importance : 
+                     (feature.importance !== undefined ? feature.importance : 'N/A');
+    
+    const displayImportance = typeof importance === 'number' ? 
+      importance.toFixed(4) : importance;
+    
+    html += `
+      <div class="feature-item">
+        <strong>#${index + 1}</strong><br>
+        ${featureName}<br>
+        <span style="color: #666;">Imp: ${displayImportance}</span>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = html;
+}
+function displayDataPreview(entry) {
+  const previewContainer = document.getElementById('data-preview-container');
+  if (!previewContainer || !entry.data_preview) return;
+  
+  const tableHTML = `
+    <div class="data-preview-section">
+      <h4>Data Preview (First 10 rows)</h4>
+      <div class="table-wrapper">
+        <table class="preview-table">
+          <thead>
+            <tr>
+              ${Object.keys(entry.data_preview[0] || {}).map(col => 
+                `<th>${col}</th>`
+              ).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${entry.data_preview.map(row => 
+              `<tr>
+                ${Object.values(row).map(value => 
+                  `<td>${value}</td>`
+                ).join('')}
+              </tr>`
+            ).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="preview-note">
+        Showing ${entry.data_preview.length} of ${entry.total_rows} rows
+      </p>
+    </div>
+  `;
+  
+  previewContainer.innerHTML = tableHTML;
+}
+function displayPredictionStats(entry) {
+  const statsContainer = document.getElementById('prediction-stats-container');
+  if (!statsContainer || !entry.prediction_statistics) return;
+  
+  const stats = entry.prediction_statistics;
+  const statsHTML = `
+    <div class="prediction-stats-section">
+      <h4>Prediction Statistics</h4>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <label>Mean:</label>
+          <span>${stats.mean?.toFixed(4) || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <label>Median:</label>
+          <span>${stats.median?.toFixed(4) || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <label>Std Dev:</label>
+          <span>${stats.std?.toFixed(4) || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <label>Min:</label>
+          <span>${stats.min?.toFixed(4) || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <label>Max:</label>
+          <span>${stats.max?.toFixed(4) || '--'}</span>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  statsContainer.innerHTML = statsHTML;
+}
+// Enhanced openModal function to display all visualizations
+function openModal(entry) {
+  if (modalTitle) modalTitle.textContent = entry.title || entry.dataset || 'Visualization Details';
+  if (modalDataset) modalDataset.textContent = entry.dataset || '--';
+  if (modalType) modalType.textContent = entry.type || '--';
+  if (modalDate) modalDate.textContent = 
+    entry.created_at ? new Date(entry.created_at).toLocaleString() : '--';
+  
+  const targetElement = document.getElementById('modal-target');
+  if (targetElement) targetElement.textContent = entry.target_column || '--';
+  
+  // Display parameters
+  const params = entry.parameters || {};
+  const paramText = Object.keys(params).length > 0 ? 
+    Object.entries(params).map(([k, v]) => `${k}: ${v}`).join(', ') : '--';
+  if (modalParams) modalParams.textContent = paramText;
+  const downloadContainer = document.getElementById('download-container');
+  if (downloadContainer && entry.output_file) {
+    downloadContainer.innerHTML = `
+      <div class="download-section">
+        <h4>Download Results</h4>
+        <a href="/download/${entry.output_file_name}" 
+           class="download-btn" 
+           download="${entry.output_file_name}">
+          📥 Download Predictions (${entry.output_file_name})
+        </a>
+        <p class="file-info">
+          ${entry.predictions_count} predictions • ${entry.total_rows} total rows
+        </p>
+      </div>
+    `;
+  }
+  // Display metrics
+  displayMetrics(entry.test_scores, 'test-scores-container', 'Test Scores');
+  displayMetrics(entry.cv_scores, 'cv-scores-container', 'Cross-Validation Scores');
+  
+  // Display top features
+  displayTopFeatures(entry.top_features);
+  
+  // Enhanced visualization display - show ALL visualizations
+  displayAllVisualizations(entry);
+  
+  if (visualizationModal) visualizationModal.style.display = 'block';
+}
+
+// Fixed function to display all visualizations
+function displayAllVisualizations(entry) {
+  // Get or create the visualizations container
+  let visualizationsContainer = document.getElementById('modal-visualizations-container');
+  
+  if (!visualizationsContainer) {
+    // If container doesn't exist, create it and replace the single image
+    const modalImage = document.getElementById('modal-image');
+    if (modalImage && modalImage.parentNode) {
+      visualizationsContainer = document.createElement('div');
+      visualizationsContainer.id = 'modal-visualizations-container';
+      visualizationsContainer.className = 'modal-visualizations-container';
+      modalImage.parentNode.replaceChild(visualizationsContainer, modalImage);
+    } else {
+      console.error('Could not find modal image element to replace');
+      return;
+    }
+  }
+  
+  // Clear existing content
+  visualizationsContainer.innerHTML = '';
+  
+  // Collect all available visualizations
+  const visualizations = [];
+  
+  // Add thumbnail if available
+  if (entry.thumbnailData) {
+    visualizations.push({
+      name: 'Thumbnail',
+      data: entry.thumbnailData,
+      type: 'thumbnail'
+    });
+  }
+  
+  // Add main image if different from thumbnail
+  if (entry.imageData && entry.imageData !== entry.thumbnailData) {
+    visualizations.push({
+      name: 'Main Visualization',
+      data: entry.imageData,
+      type: 'main'
+    });
+  }
+  
+  // Add all visualizations from the visualizations object
+  if (entry.visualizations && typeof entry.visualizations === 'object') {
+    Object.entries(entry.visualizations).forEach(([key, value]) => {
+      if (value && typeof value === 'string' && value.startsWith('data:image/')) {
+        // Format the key for display (convert snake_case to Title Case)
+        const displayName = key.split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        
+        visualizations.push({
+          name: displayName,
+          data: value,
+          type: key
+        });
+      }
+    });
+  }
+  
+  // If no visualizations found, show placeholder
+  if (visualizations.length === 0) {
+    visualizationsContainer.innerHTML = `
+      <div class="no-visualizations">
+        <div class="placeholder-image">
+          <i class="fas fa-image" style="font-size: 48px; color: #ccc;"></i>
+          <p>No visualizations available</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  
+  // Create a grid layout for multiple visualizations
+  const gridClass = visualizations.length === 1 ? 'single-viz' : 
+                   visualizations.length === 2 ? 'two-viz' : 'multi-viz';
+  
+  visualizationsContainer.className = `modal-visualizations-container ${gridClass}`;
+  
+  // Create visualization cards
+  visualizations.forEach((viz, index) => {
+    const vizCard = document.createElement('div');
+    vizCard.className = 'visualization-card';
+    
+    // Create the card structure without inline onclick to avoid quote issues
+    vizCard.innerHTML = `
+      <div class="viz-header">
+        <h4>${viz.name}</h4>
+        <button class="expand-btn" title="Expand">
+          <i class="fas fa-expand"></i>
+        </button>
+      </div>
+      <div class="viz-image-container">
+        <img src="${viz.data}" 
+             alt="${viz.name}" 
+             class="viz-image"
+             style="cursor: pointer;"
+             onerror="this.parentNode.innerHTML='<div class=\\'viz-error\\'>Failed to load image</div>'" />
+      </div>
+    `;
+    
+    // Add event listeners properly to avoid quote issues
+    const expandBtn = vizCard.querySelector('.expand-btn');
+    const vizImage = vizCard.querySelector('.viz-image');
+    
+    // Create the click handler function
+    const clickHandler = () => {
+      expandVisualization(viz.data, viz.name);
+    };
+    
+    // Add event listeners
+    expandBtn.addEventListener('click', clickHandler);
+    vizImage.addEventListener('click', clickHandler);
+    
+    visualizationsContainer.appendChild(vizCard);
+  });
+  
+  // Add CSS styles if not already added
+  addVisualizationStyles();
+}
+
+// Helper function to download image
+function downloadImage(imageData, filename) {
+  try {
+    const link = document.createElement('a');
+    link.download = `${filename.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`;
+    link.href = imageData;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.error('Error downloading image:', error);
+    alert('Failed to download image. Please try right-clicking the image and selecting "Save As".');
+  }
+}
+// Function to expand a visualization in a new modal or fullscreen view
+function expandVisualization(imageData, title) {
+  // Create or get the expanded visualization modal
+  let expandedModal = document.getElementById('expanded-viz-modal');
+  
+  if (!expandedModal) {
+    expandedModal = document.createElement('div');
+    expandedModal.id = 'expanded-viz-modal';
+    expandedModal.className = 'expanded-viz-modal';
+    expandedModal.innerHTML = `
+      <div class="expanded-viz-content">
+        <div class="expanded-viz-header">
+          <h3 id="expanded-viz-title"></h3>
+          <button class="close-expanded-btn" onclick="closeExpandedVisualization()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="expanded-viz-image-container">
+          <img id="expanded-viz-image" alt="Expanded visualization" />
+        </div>
+      </div>
+    `;
+    document.body.appendChild(expandedModal);
+  }
+  
+  // Set the content
+  document.getElementById('expanded-viz-title').textContent = title;
+  document.getElementById('expanded-viz-image').src = imageData;
+  
+  // Show the modal
+  expandedModal.style.display = 'flex';
+  
+  // Close on background click
+  expandedModal.onclick = function(e) {
+    if (e.target === expandedModal) {
+      closeExpandedVisualization();
+    }
+  };
+  
+  // Add keyboard support for closing
+  document.addEventListener('keydown', handleExpandedModalKeydown);
+}
+
+// Handle keyboard events for expanded modal
+function handleExpandedModalKeydown(e) {
+  const expandedModal = document.getElementById('expanded-viz-modal');
+  if (expandedModal && expandedModal.style.display === 'flex' && e.key === 'Escape') {
+    closeExpandedVisualization();
+  }
+}
+
+// Function to close the expanded visualization
+function closeExpandedVisualization() {
+  const expandedModal = document.getElementById('expanded-viz-modal');
+  if (expandedModal) {
+    expandedModal.style.display = 'none';
+    // Remove keyboard event listener
+    document.removeEventListener('keydown', handleExpandedModalKeydown);
+  }
+}
+
+// Add required CSS styles
+function addVisualizationStyles() {
+  // Check if styles already added
+  if (document.getElementById('visualization-styles')) {
+    return;
+  }
+  
+  const style = document.createElement('style');
+  style.id = 'visualization-styles';
+  style.textContent = `
+    .modal-visualizations-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 10px 0;
+    }
+    
+    .modal-visualizations-container.single-viz {
+      display: flex;
+      justify-content: center;
+    }
+    
+    .modal-visualizations-container.two-viz {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    .modal-visualizations-container.multi-viz {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 15px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    
+    .visualization-card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .viz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .viz-header h4 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    .expand-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #666;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .expand-btn:hover {
+      background: #e9ecef;
+      color: #333;
+    }
+    
+    .viz-image-container {
+      padding: 10px;
+      text-align: center;
+    }
+    
+    .viz-image {
+      max-width: 100%;
+      max-height: 250px;
+      object-fit: contain;
+      cursor: pointer;
+      transition: transform 0.2s;
+      border-radius: 4px;
+    }
+    
+    .viz-image:hover {
+      transform: scale(1.02);
+    }
+    
+    .viz-error {
+      padding: 20px;
+      color: #666;
+      font-style: italic;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+    
+    .no-visualizations {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    
+    .placeholder-image {
+      color: #999;
+    }
+    
+    .placeholder-image p {
+      margin-top: 10px;
+      font-style: italic;
+    }
+    
+    /* Expanded visualization modal */
+    .expanded-viz-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    }
+    
+    .expanded-viz-content {
+      max-width: 95vw;
+      max-height: 95vh;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .expanded-viz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .expanded-viz-header h3 {
+      margin: 0;
+      color: #333;
+    }
+    
+    .close-expanded-btn {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: #666;
+      padding: 5px 10px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .close-expanded-btn:hover {
+      background: #e9ecef;
+      color: #333;
+    }
+    
+    .expanded-viz-image-container {
+      padding: 20px;
+      text-align: center;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    #expanded-viz-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .modal-visualizations-container.two-viz {
+        grid-template-columns: 1fr;
+      }
+      
+      .modal-visualizations-container.multi-viz {
+        grid-template-columns: 1fr;
+      }
+      
+      .expanded-viz-content {
+        max-width: 98vw;
+        max-height: 98vh;
+        margin: 1vh 1vw;
+      }
+    }
+  `;
+  
+  document.head.appendChild(style);
+}
+async function sendMetadataForInsights(vizId) {
+  try {
+    // 🔍 Find the selected visualization
+    const selectedViz = allVisualizations.find(v => v.id === vizId);
+    if (!selectedViz) {
+      console.error("❌ Visualization not found for ID:", vizId);
+      showMessage("Visualization not found.", "error");
+      return;
+    }
+
+    // 🧮 Collect business inputs from the form
+    const revenuePerCustomer = parseFloat(document.getElementById('revenue-per-customer')?.value) || 0;
+    const costPerLostCustomer = parseFloat(document.getElementById('cost-per-lost-customer')?.value) || 0;
+    const revenuePerLead = parseFloat(document.getElementById('revenue-per-lead')?.value) || 0;
+    const averageOrderValue = parseFloat(document.getElementById('average-order-value')?.value) || 0;
+    // Convert cv_scores from array to dictionary format if needed
+    if (Array.isArray(selectedViz.cv_scores)) {
+    const keys = ["accuracy", "f1", "precision", "recall"];
+    const converted = {};
+    for (const row of selectedViz.cv_scores) {
+        const [model, ...values] = row;
+        converted[model] = {};
+        keys.forEach((key, i) => {
+        converted[model][key] = values[i];
+        });
+    }
+    selectedViz.cv_scores = converted;
+    }
+
+    const payload = {
+      ...selectedViz, // Full visualization metadata
+      business_metrics: {
+        revenue_per_customer: revenuePerCustomer,
+        cost_per_lost_customer: costPerLostCustomer,
+        revenue_per_lead: revenuePerLead,
+        average_order_value: averageOrderValue
+      }
+    };
+
+    // 📡 POST to AI insights endpoint
+    const response = await authenticatedFetch(`${API_BASE_URL}/api/ai_insights`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("❌ AI Insights request failed:", text);
+      showMessage("Failed to generate AI insights.", "error");
+      return;
+    }
+
+    const result = await response.json();
+    console.log("✅ AI Insights Result:", result);
+    displayInsights(result); // You can customize this function to show insights in your UI
+
+  } catch (err) {
+    console.error("💥 Error sending metadata to AI:", err);
+    showMessage("Something went wrong while generating insights.", "error");
+  }
+}
+
+function populateDatasetOptions(visualizations) {
+  if (!datasetFilter) return;
+  
+  // Add this check to ensure visualizations is an array
+  if (!Array.isArray(visualizations)) {
+    console.error('Expected visualizations to be an array, got:', typeof visualizations, visualizations);
+    return;
+  }
+  
+  const datasets = [...new Set(visualizations.map(viz => viz.dataset))].sort();
+  while (datasetFilter.options.length > 1) {
+    datasetFilter.remove(1);
+  }
+  datasets.forEach(dataset => {
+    const option = document.createElement('option');
+    option.value = dataset;
+    option.textContent = dataset;
+    datasetFilter.appendChild(option);
+  });
+}
+// Show loader
+function showLoader() {
+  if (loaderElement) loaderElement.style.display = 'block';
+}
+
+// Hide loader
+function hideLoader() {
+  if (loaderElement) loaderElement.style.display = 'none';
+}
+
+// Handle download
+async function handleDownload() {
+  const vizId = this.dataset.id || currentVizId;
+
+  if (!vizId) {
+    showMessage('Missing visualization ID', 'error');
+    return;
+  }
+
+  showLoader();
+
+  try {
+    const response = await authenticatedFetch(`${API_BASE_URL}/visualizations/${vizId}/download`);
+
+    if (!response || !response.ok) {
+      throw new Error(`Download failed with status ${response?.status || 'unknown'}`);
+    }
+
+    const blob = await response.blob();
+
+    // Create a download link and trigger the file save
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `visualization-${vizId}.png`;
+    document.body.appendChild(a);
+    a.click();
+
+    // Clean up
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    showMessage('Visualization downloaded successfully', 'success');
+  } catch (error) {
+    console.error('Download error:', error);
+    if (error.message.includes('Token') || error.message.includes('401')) {
+      handleAuthError(error);
+    } else {
+      showMessage('Failed to download visualization', 'error');
+    }
+  } finally {
+    hideLoader();
+  }
+}
+
+// Handle delete
+async function handleDelete() {
+  const vizId = this.dataset.id || currentVizId;
+  
+  if (!vizId) {
+    showMessage('Missing visualization ID', 'error');
+    return;
+  }
+  
+  if (!confirm('Are you sure you want to delete this visualization? This action cannot be undone.')) {
+    return;
+  }
+  
+  showLoader();
+  
+  try {
+    const response = await authenticatedFetch(`${API_BASE_URL}/visualizations/${vizId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response || !response.ok) {
+      throw new Error('Failed to delete visualization');
+    }
+    
+    hideLoader();
+    
+    // Close modal
+    if (visualizationModal) visualizationModal.style.display = 'none';
+    
+    await refreshGallery();
+    
+    showMessage('Visualization deleted successfully', 'success');
+  } catch (error) {
+    hideLoader();
+    console.error('Error:', error);
+    if (error.message.includes('Token') || error.message.includes('401')) {
+      handleAuthError(error);
+    } else {
+      showMessage('Failed to delete visualization', 'error');
+    }
+  }
+}
+
+async function refreshGallery() {
+  showLoader();
+  try {
+    const response = await authenticatedFetch(`${API_BASE_URL}/visualizations`);
+    if (!response || !response.ok) {
+      throw new Error("Failed to refresh visualizations");
+    }
+    const data = await response.json();
+    allVisualizations = data;
+
+    // Rebuild dataset filters
+    populateDatasetOptions(allVisualizations);
+
+    // Reapply filters & render
+    applyFilters();
+
+    hideLoader();
+    showMessage("Gallery updated", "success");
+  } catch (err) {
+    hideLoader();
+    console.error("Error refreshing gallery:", err);
+    showMessage("Failed to refresh visualizations", "error");
+  }
+}
+
+// Show message
+function showMessage(text, type = 'error') {
+  if (!messageContainer) return;
+  
+  // Create message element
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${type === 'error' ? 'error-message' : 'success-message'}`;
+  messageDiv.textContent = text;
+  
+  // Clear existing messages
+  messageContainer.innerHTML = '';
+  
+  // Add message
+  messageContainer.appendChild(messageDiv);
+  
+  // Show message
+  messageDiv.style.display = 'block';
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    messageDiv.style.opacity = '0';
+    setTimeout(() => {
+      if (messageContainer.contains(messageDiv)) {
+        messageContainer.removeChild(messageDiv);
+      }
+    }, 300);
+  }, 5000);
+}
+
+// Logout function
+function logout() {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html';
+}
+
+// Prevent form submission on search input
+if (searchInput) {
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyFilters();
+    }
+  });
+}
+
+        // Store business assumptions
+        let businessAssumptions = {
+            revenuePerCustomer: 0,
+            costPerLostCustomer: 0,
+            revenuePerLead: 0,
+            averageOrderValue: 0
+        };
+
+        function saveAssumptions() {
+    const revenuePerCustomer = parseFloat(document.getElementById('revenue-per-customer').value) || 0;
+    const costPerLostCustomer = parseFloat(document.getElementById('cost-per-lost-customer').value) || 0;
+    const revenuePerLead = parseFloat(document.getElementById('revenue-per-lead').value) || 0;
+    const averageOrderValue = parseFloat(document.getElementById('average-order-value').value) || 0;
+
+    if (revenuePerCustomer <= 0 || costPerLostCustomer <= 0 || revenuePerLead <= 0 || averageOrderValue <= 0) {
+        showStatusMessage('Please enter valid positive values for all fields.', 'error');
+        return;
+    }
+
+    if (!highlightedVizId) {
+        showStatusMessage('Please select a visualization before generating insights.', 'error');
+        return;
+    }
+
+    // Save global assumption values (optional if used elsewhere)
+    businessAssumptions = {
+        revenuePerCustomer,
+        costPerLostCustomer,
+        revenuePerLead,
+        averageOrderValue
+    };
+
+    showStatusMessage('Assumptions saved! Generating personalized insights...', 'success');
+
+    setTimeout(() => {
+        sendMetadataForInsights(highlightedVizId);
+    }, 300);
+}
+
+
+        function showStatusMessage(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.innerHTML = `<div class="status-message status-${type === 'error' ? 'info' : 'success'}">${message}</div>`;
+            
+            // Clear message after 5 seconds
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+        function displayInsights(result) {
+            const container = document.getElementById('insights-container');
+
+            if (!result || !result.insights) {
+                container.innerHTML = `
+                    <div class="status-message status-error">
+                        Failed to load insights. Please try again.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="insight-card ai-insight">
+                    <h3>📊 AI Insights Summary</h3>
+                    <p>${result.insights.replace(/\n/g, '<br>')}</p>
+                </div>
+            `;
+        }
+
+
+        function updateFuturePredictions() {
+            // Calculate future prediction based on assumptions
+            const monthlyImpact = (businessAssumptions.revenuePerCustomer * 0.05) + 
+                                 (businessAssumptions.revenuePerLead * 10) + 
+                                 (businessAssumptions.averageOrderValue * 15);
+            
+            const quarterlyPrediction = monthlyImpact * 3;
+            
+            document.getElementById('future-prediction').textContent = `$${quarterlyPrediction.toLocaleString()}`;
+        }
+ 
+        function showSection(sectionName) {
+            // Remove active class from all menu items
+            document.querySelectorAll('.sidebar-menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Add active class to clicked item
+            event.target.closest('.sidebar-menu-item').classList.add('active');
+
+            // For demo purposes, just show an alert
+            if (sectionName !== 'insights') {
+                alert(`Navigating to ${sectionName.charAt(0).toUpperCase() + sectionName.slice(1)} section...`);
+            }
+
+            // Close mobile menu if open
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+        }
+
+        function signOut() {
+            if (confirm('Are you sure you want to sign out?')) {
+                alert('Signed out successfully!');
+            }
+        }
+
+        function toggleMobileMenu() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('open');
+        }
+
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const toggleButton = document.querySelector('.mobile-menu-toggle');
+            
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                !toggleButton.contains(event.target)) {
+                sidebar.classList.remove('open');
+            }
+        });
+
+        // Load saved assumptions on page load (demo data)
+        window.addEventListener('load', function() {
+            // Set some demo values
+            document.getElementById('revenue-per-customer').value = '1200';
+            document.getElementById('cost-per-lost-customer').value = '800';
+            document.getElementById('revenue-per-lead').value = '100';
+            document.getElementById('average-order-value').value = '60';
+            const gallery = document.querySelectorAll('.viz-card');
+            gallery.forEach(card => {
+                card.classList.add('attention');
+
+                setTimeout(() => {
+                card.classList.remove('attention');
+                }, 2000);
+            });
+        });
+</script>
+</body>
+</html>

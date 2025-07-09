@@ -166,9 +166,6 @@ class ModelTrainer:
             models: List of trained models (one per fold)
             oof_predictions: Out-of-fold predictions for the entire dataset
         """
-        print(f"\n=== Training {model_type} ===")
-        
-        # Prepare data
         df = self.data.copy()
         
         # Preprocess the data
@@ -228,11 +225,11 @@ class ModelTrainer:
             models.append(model)
             
             # Calculate fold score
-            fold_rmse = mean_squared_error(y_val_fold, val_preds, squared=False)
+            fold_rmse = mean_squared_error(y_val_fold, val_preds)
             print(f"Fold {fold + 1} RMSE: {fold_rmse:.4f}")
         
         # Calculate overall CV score
-        cv_rmse = mean_squared_error(y, oof_predictions, squared=False)
+        cv_rmse = mean_squared_error(y, oof_predictions)
         cv_mae = mean_absolute_error(y, oof_predictions)
         cv_r2 = r2_score(y, oof_predictions)
         
@@ -336,17 +333,17 @@ def train_regression_models(
     # Calculate CV scores
     cv_scores = {
         "LightGBM": {
-            "rmse": mean_squared_error(y_train, lgb_oof, squared=False),
+            "rmse": mean_squared_error(y_train, lgb_oof),
             "mae": mean_absolute_error(y_train, lgb_oof),
             "r2": r2_score(y_train, lgb_oof)
         },
         "XGBoost": {
-            "rmse": mean_squared_error(y_train, xgb_oof, squared=False),
+            "rmse": mean_squared_error(y_train, xgb_oof),
             "mae": mean_absolute_error(y_train, xgb_oof),
             "r2": r2_score(y_train, xgb_oof)
         },
         "CatBoost": {
-            "rmse": mean_squared_error(y_train, cat_oof, squared=False),
+            "rmse": mean_squared_error(y_train, cat_oof),
             "mae": mean_absolute_error(y_train, cat_oof),
             "r2": r2_score(y_train, cat_oof)
         }
@@ -374,7 +371,7 @@ def train_regression_models(
         
         if has_test_target and y_test is not None:
             test_scores = {
-                "rmse": mean_squared_error(y_test, test_predictions, squared=False),
+                "rmse": mean_squared_error(y_test, test_predictions),
                 "mae": mean_absolute_error(y_test, test_predictions),
                 "r2": r2_score(y_test, test_predictions)
             }

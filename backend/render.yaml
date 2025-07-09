@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: ml-insights-backend
+    runtime: python
+    buildCommand: |
+      pip install -r backend/requirements.txt
+    startCommand: |
+      uvicorn backend.main:app --host 0.0.0.0 --port 10000
+    envVars:
+    - key: OPENAI_API_KEY
+      value: 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
+    - key: REDIS_URL
+      value: redis://ml-insights-redis:6379
+    - key: POSTGRES_HOST
+      value: dpg-d1n0o56uk2gs739cigq0-a.virginia-postgres.render.com
+    - key: POSTGRES_PORT
+      value: 5432
+    - key: POSTGRES_USER
+      value: ethanhong
+    - key: POSTGRES_PASSWORD
+      value: jXGQTW5siqxNNK5YXztrEovd1cJTDMWa
+    - key: DATABASE_URL
+      value: postgresql://ethanhong:jXGQTW5siqxNNK5YXztrEovd1cJTDMWa@dpg-d1n0o56uk2gs739cigq0-a.virginia-postgres.render.com/ml_insights_db
+
+    plan: free
+    region: oregon
+    autoDeploy: true
+    branch: main
+
+  - type: worker
+    name: ml-insights-celery
+    runtime: python
+    buildCommand: |
+      pip install -r backend/requirements.txt
+    startCommand: |
+      watchmedo auto-restart --pattern="*.py" --recursive -- celery -A backend.worker worker --loglevel=info --pool=solo
+    envVars:
+      - key: OPENAI_API_KEY
+        value: your-openai-key-here
+      - key: REDIS_URL
+        value: redis://ml-insights-redis:6379
+      - key: POSTGRES_HOST
+        value: your-postgres-host
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: POSTGRES_USER
+        value: ethanhong
+      - key: POSTGRES_PASSWORD
+        value: printing
+    plan: free
+
+  - type: redis
+    name: ml-insights-redis
+    plan: free

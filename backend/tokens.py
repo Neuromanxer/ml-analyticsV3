@@ -21,6 +21,9 @@ import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class TokenUsageLogResponse(BaseModel):
     endpoint: str
@@ -50,19 +53,24 @@ class TokenUsageLog(Base):
 router = APIRouter(prefix="/tokens", tags=["auth"])
 TOKEN_PRICE_CENTS = 7
 
-FRONTEND_BASE_URL="http://[::]:8080"
+FRONTEND_BASE_URL = "http://127.0.0.1:8080"
 from pydantic import BaseModel, AnyHttpUrl
 
 class CheckoutSessionResponse(BaseModel):
     checkoutUrl: AnyHttpUrl
 class TopUpRequest(BaseModel):
     amount: int
+def log_current_db_user(db: Session):
+    result = db.execute(text("SELECT current_user")).fetchone()
+    logger.info(f"PostgreSQL current_user: {result[0]}")
+
 @router.post("/topup-tokens", response_model=CheckoutSessionResponse)
 def top_up_tokens(
     req: TopUpRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session     = Depends(get_master_db_session),
 ):
+    log_current_db_user(db)
     # —————— Bypass Stripe for admin/dev roles ——————
     if current_user.role in ("admin", "dev"):
         # credit immediately

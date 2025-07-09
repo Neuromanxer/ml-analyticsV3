@@ -235,7 +235,44 @@
     .dashboard-header p {
       color: #555;
     }
-    
+    .prediction-file-info {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 15px;
+  margin: 10px 0;
+}
+
+.download-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.download-btn:hover {
+  background-color: #218838;
+}
+
+.download-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.data-preview-table table {
+  font-size: 12px;
+  border: 1px solid #dee2e6;
+}
+
+.data-preview-table th,
+.data-preview-table td {
+  border: 1px solid #dee2e6;
+  padding: 8px;
+  text-align: left;
+}
     .card {
       background: white;
       border-radius: 10px;
@@ -496,6 +533,17 @@
       background: rgba(39, 174, 96, 0.1);
       display: none;
     }
+    .decision-rules {
+      background: #f7f7f7;
+      padding: 10px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
     /* Mobile Responsiveness */
     @media (max-width: 768px) {
         .sidebar {
@@ -560,22 +608,28 @@
                       Dashboard
                   </a>
               </li>
-              <li class="sidebar-menu-item">
-                  <a href="gallery.html">
-                      <i class="fas fa-project-diagram"></i>
-                      Gallery
-                  </a>
-              </li>
-              
-              <li class="sidebar-menu-item">
-                  <a href="datasets.html">
-                      <i class="fas fa-database"></i>
-                      Datasets
-                  </a>
-              </li>
           </ul>
       </div>
       
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">STORAGE</div>
+        <ul class="sidebar-menu">
+          <li class="sidebar-menu-item">
+            <a href="gallery.html">
+                <i class="fas fa-project-diagram"></i>
+                Gallery
+            </a>
+        </li>
+        
+        <li class="sidebar-menu-item">
+            <a href="datasets.html">
+                <i class="fas fa-database"></i>
+                Datasets
+            </a>
+        </li>
+      </ul>
+    </div>
+    
       <div class="sidebar-section">
           <div class="sidebar-section-title">SETTINGS</div>
           <ul class="sidebar-menu">
@@ -599,13 +653,13 @@
               </li>
           </ul>
       </div>
-      
       <div class="sidebar-footer">
-          <div class="sidebar-footer-item">
-              <i class="fas fa-sign-out-alt"></i>
-              Sign out
-          </div>
-      </div>
+        <div class="sidebar-footer-item" onclick="signOutUser()">
+            <i class="fas fa-sign-out-alt"></i>
+            Sign out
+        </div>
+    </div>    
+      
   </div>
 
   
@@ -676,7 +730,6 @@
             <input type="file" id="full-input" accept=".csv, .txt">
           </label>
         </div>
-      
         <div class="train-test-upload-section">
           <h3><i class="fas fa-file-upload"></i>OR Train & Test Dataset Upload</h3>
           <div class="train-test-upload-boxes">
@@ -715,19 +768,28 @@
           <input type="text" id="target-column" placeholder="e.g., price, class, outcome">
         </div>
         <div class="input-group">
-          <label for="time-column">Time column (only  necessary for survival-analysis)</label>
+          <label for="time-column">Time column (req for Time Series & Forecast)</label>
           <input type="text" id='time-column' placeholder="e.g., event_time, survival(months, years, days, etc)"> 
         </div>
         <div class="input-group">
-          <label for="forecast-periods">Forecast Periods (only for forecast)</label>
+          <label for="forecast-periods">Forecast Periods (req. for forecast)</label>
           <input type="number" id="forecast-periods" min="1" value="" placeholder="e.g., 24">
         </div>        
         
         <div class="input-group">
-          <label for="feature-column">Impactful Features (comma-separated)</label>
+          <label for="feature-column">Impactful Features (comma-separated for visualize)</label>
           <input type="text" id="feature-column" placeholder="e.g., age, income, location">
         </div>
       </div>
+      <div class="input-group">
+        <label for="desired-outcome">Desired Outcome (for counterfactual)</label>
+        <input type="text" id="desired-outcome" name="desired_outcome" placeholder="e.g., 0 (no churn), 1 (purchase), 250 (revenue target)">
+      </div>
+      <div class="input-group">
+        <label for="editable-features">Editable Features (comma-separated for counterfactual)</label>
+        <input type="text" id="editable-features" name="editable_features" placeholder="Which inputs are you willing to change to influence the outcome?">
+      </div>
+      
       
       <div id="data-preview" class="card" style="display: none;">
         <h2><i class="fas fa-table"></i> Data Preview</h2>
@@ -769,13 +831,22 @@
           <button id="btn-feature-impact" class="btn"><i class="fas fa-chart-pie"></i> Feature Impact Analysis</button>
           <button id="btn-counterfactual" class="btn"><i class="fas fa-random"></i> Counterfactual Analysis</button>
           <button id="btn-segments" class="btn"><i class="fas fa-users"></i> Customer Segments</button>
-          <button id="btn-risk" class="btn"><i class="fas fa-exclamation-triangle"></i> Risk Analysis</button>
           <button id="btn-decision-paths" class="btn"><i class="fas fa-project-diagram"></i> Optimal Decision Paths</button>
           <button id="btn-time-series-analysis" class="btn"><i class="fas fa-chart-line"></i>Time Series Analysis</button>
           <button id="btn-survival" class="btn">
             <i class="fas fa-heartbeat"></i> Survival Analysis
           </button>
+          <button id="btn-classification-predict" class="btn">
+            <i class="fas fa-magic"></i> Predict (Classification)
+          </button>
+          
+          <button id="btn-regression-predict" class="btn">
+            <i class="fas fa-chart-bar"></i> Predict (Regression)
+          </button>
+          
         </div>
+
+
         <!-- wrap all TS-specific controls in a container -->
 <div id="ts-params" style="display: none; margin-top: 1em;">
   <label for="arima-order">ARIMA Order (p,d,q):</label>
@@ -854,6 +925,77 @@
       return true;
     }
   }
+  async function downloadPredictionFile(event, filePath, fileName) {
+  try {
+    // Get the button that triggered the event
+    const button = event?.target || document.activeElement;
+    const originalText = button.textContent;
+
+    // Show loading state
+    button.textContent = '⏳ Downloading...';
+    button.disabled = true;
+
+    // Make API call to download file
+    const response = await fetch(`${API_BASE_URL}/api/prediction-download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        file_path: filePath,
+        file_name: fileName
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.statusText}`);
+    }
+
+    // Create blob and trigger browser download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    // Show success feedback
+    button.textContent = '✅ Downloaded';
+    setTimeout(() => {
+      button.textContent = originalText;
+      button.disabled = false;
+    }, 2000);
+
+  } catch (error) {
+    console.error('Download error:', error);
+
+    // Error feedback
+    const button = event?.target || document.activeElement;
+    button.textContent = '❌ Error';
+    setTimeout(() => {
+      button.textContent = '📥 Download Predictions';
+      button.disabled = false;
+    }, 2000);
+
+    alert('Failed to download file. Please try again.');
+  }
+}
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/login.html"; // Adjust the path if needed
+}
+
   document.addEventListener('DOMContentLoaded', function() {
     // Inputs & preview elements
     const fullInput  = document.getElementById('full-input');
@@ -892,6 +1034,18 @@
     function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
     function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
     function clearTable(tbl){ tbl.innerHTML = ''; }
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/login.html"; // Adjust the path if needed
+}
 
     // Core parser + previewer
     function parseAndPreview(file, nameEl, previewEl, tableEl) {
@@ -1014,6 +1168,76 @@
 
     parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
   });
+  
+ 
+  function formatKeyValObject(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  return Object.entries(obj)
+    .map(([k, v]) => {
+      const val = typeof v === "number" ? v.toFixed(4) : v;
+      return `<strong>${k.replace(/_/g, " ")}:</strong> ${val}`;
+    })
+    .join(" | ");
+}
+
+function formatArray(arr) {
+  return Array.isArray(arr) ? arr.map(v => `<code>${v}</code>`).join(", ") : "N/A";
+}
+
+function formatRecords(records) {
+  if (!Array.isArray(records)) return "";
+  return records.map((rec, i) => `<div><strong>Segment ${i + 1}:</strong> ${formatKeyValObject(rec)}</div>`).join("");
+}
+function renderFlatTable(headers, rows) {
+  if (!Array.isArray(headers) || !Array.isArray(rows)) return '';
+
+  let html = '<table class="metrics-table"><thead><tr>';
+  headers.forEach(h => html += `<th>${h}</th>`);
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(row => {
+    html += '<tr>';
+    row.forEach(cell => html += `<td>${cell}</td>`);
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  return html;
+}
+  function buildMetricsHtml(data) {
+    return `
+      <div class="gallery-metrics">
+        ${data.metrics ? `<div>📈 Decision Tree Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
+        ${data.parameters ? `<div>⚙️ Parameters: ${formatKeyValObject(data.parameters)}</div>` : ""}
+        ${data.summary_stats ? `<div>📊 Summary Stats: ${renderFlatTable(data.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"], data.summary_stats)}</div>` : ""}
+        ${data.decision_rules ? `
+          <div>📜 Decision Rules:
+            <pre class="decision-rules">${Array.isArray(data.decision_rules) ? data.decision_rules.join('\n') : data.decision_rules}</pre>
+          </div>` : ""}
+          
+        ${data.test_scores ? `<div>🧪 Test Scores: ${formatKeyValObject(data.test_scores)}</div>` : ""}
+        ${data.cv_scores ? `<div>🔁 CV Scores: ${formatKeyValObject(data.cv_scores)}</div>` : ""}
+        ${data.cluster_stats ? `<div>📦 Cluster Stats: ${formatKeyValObject(data.cluster_stats)}</div>` : ""}
+        ${data.cluster_feature_differences ? `<div>🧠 Feature Differences: ${formatKeyValObject(data.cluster_feature_differences)}</div>` : ""}
+        ${data.cluster_counts ? `<div>🔢 Cluster Counts: ${formatKeyValObject(data.cluster_counts)}</div>` : ""}
+        ${data.segments_summary ? `<div>👥 Segment Summary: ${formatRecords(data.segments_summary)}</div>` : ""}
+        ${data.model_order ? `<div>🔧 ARIMA Order: ${formatKeyValObject(data.model_order)}</div>` : ""}
+        ${data.adf_test ? `<div>🧪 ADF Test: ${formatKeyValObject(data.adf_test)}</div>` : ""}
+        ${data.forecast_periods ? `<div>📆 Forecast Periods: ${data.forecast_periods}</div>` : ""}
+        ${data.forecast_values ? `<div>📉 Forecast Values: ${formatArray(data.forecast_values)}</div>` : ""}
+        ${data.confidence_intervals ? `
+          <div>🔒 Confidence Intervals:
+            <div><strong>Lower:</strong> ${formatArray(data.confidence_intervals.lower)}</div>
+            <div><strong>Upper:</strong> ${formatArray(data.confidence_intervals.upper)}</div>
+          </div>` : ""}
+        
+        ${data.optimal_k ? `<div>🔍 Optimal K: ${data.optimal_k}</div>` : ""}
+        ${data.features_used ? `<div>🧬 Features Used: ${formatArray(data.features_used)}</div>` : ""}
+        ${data.total_records ? `<div>📊 Total Records: ${data.total_records}</div>` : ""}
+      </div>
+    `;
+  }
+
 
 // Function for displaying results from any analysis endpoint
 function displayResults(endpoint, data) {
@@ -1039,28 +1263,8 @@ function displayResults(endpoint, data) {
 
   switch (endpoint) {
     case 'regression':
-      // Show regression metrics - check for both test_scores and cv_scores
-      const testMetrics = data.test_scores;
-      if (testMetrics) {
-        metricsDetails.innerHTML = '<h4>Test Set Performance</h4><ul>';
-        for (const [metric, value] of Object.entries(testMetrics)) {
-          metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${value.toFixed(4)}</li>`;
-        }
-        metricsDetails.innerHTML += '</ul>';
-      }
-      
-      // Show CV scores if available
-      if (data.cv_scores) {
-        metricsDetails.innerHTML += '<h4>Cross-Validation Scores</h4>';
-        for (const [model, scores] of Object.entries(data.cv_scores)) {
-          metricsDetails.innerHTML += `<h5>${model}</h5><ul>`;
-          for (const [metric, value] of Object.entries(scores)) {
-            metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${value.toFixed(4)}</li>`;
-          }
-          metricsDetails.innerHTML += '</ul>';
-        }
-      }
-      
+      metricsDetails.innerHTML = buildMetricsHtml(data);
+
       // Show best model
       if (data.best_model) {
         modelDetails.innerHTML += `<p>Best Model: <strong>${data.best_model}</strong></p>`;
@@ -1069,11 +1273,6 @@ function displayResults(endpoint, data) {
       // Show feature count if available
       if (data.feature_count) {
         modelDetails.innerHTML += `<p>Features Used: <strong>${data.feature_count}</strong></p>`;
-      }
-      
-      // If no metrics available, show fallback message
-      if (!testMetrics && !data.cv_scores) {
-        metricsDetails.innerHTML = '<p>No metrics available</p>';
       }
       
       if (data.visualizations) {
@@ -1097,36 +1296,8 @@ function displayResults(endpoint, data) {
       break;
 
     case 'classification':
-      // Show classification metrics - check for both accuracy_scores and test_scores
-      const metrics = data.test_scores || data.accuracy_scores;
-      if (metrics) {
-        metricsDetails.innerHTML = '<h4>Test Set Performance</h4><ul>';
-        for (const [metric, value] of Object.entries(metrics)) {
-          const displayValue = metric === 'accuracy' ? (value * 100).toFixed(2) + '%' : value.toFixed(4);
-          metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${displayValue}</li>`;
-        }
-        metricsDetails.innerHTML += '</ul>';
-        
-        // Also show CV scores if available
-        if (data.cv_scores) {
-          metricsDetails.innerHTML += '<h4>Cross-Validation Scores</h4>';
-          for (const [model, scores] of Object.entries(data.cv_scores)) {
-            metricsDetails.innerHTML += `<h5>${model}</h5><ul>`;
-            for (const [metric, value] of Object.entries(scores)) {
-              const displayValue = metric === 'accuracy' ? (value * 100).toFixed(2) + '%' : value.toFixed(4);
-              metricsDetails.innerHTML += `<li>${metric.charAt(0).toUpperCase() + metric.slice(1)}: ${displayValue}</li>`;
-            }
-            metricsDetails.innerHTML += '</ul>';
-          }
-        }
-        
-        // Show best model
-        if (data.best_model) {
-          modelDetails.innerHTML += `<p>Best Model: <strong>${data.best_model}</strong></p>`;
-        }
-      } else {
-        metricsDetails.innerHTML = '<p>No metrics available</p>';
-      }
+      metricsDetails.innerHTML = buildMetricsHtml(data);
+
       
       // Feature importance visualization
       if (data.visualizations && data.visualizations.feature_importance) {
@@ -1138,6 +1309,7 @@ function displayResults(endpoint, data) {
       break;
 
       case 'clustering':
+      metricsDetails.innerHTML = buildMetricsHtml(data);
         // Handle clustering response with visualizations object
         if (data.visualizations) {
           // Add cluster visualization
@@ -1169,66 +1341,295 @@ function displayResults(endpoint, data) {
         break;
     case 'visualize':
       // Scatter and PDP plots
-      if (data.scatter_plot) {
-        addVisualization('Scatter Plot', data.scatter_plot);
+      if (data.visualizations.scatter_plot) {
+        addVisualization('Scatter Plot', data.visualizations.scatter_plot);
       }
-      if (data.pdp_plot) {
-        addVisualization('Partial Dependence Plot', data.pdp_plot);
+      if (data.visualizations.pdp_plot) {
+        addVisualization('Partial Dependence Plot', data.visualizations.pdp_plot);
       }
       break;
 
     case 'feature-impact':
-      if (data.visualization) {
+    metricsDetails.innerHTML = buildMetricsHtml(data);
+      if (data.visualizations) {
         addVisualization('Feature Impact', data.visualization);
       }
       break;
 
     case 'counterfactual':
-      if (data.counterfactual_plot) {
-        addVisualization('Counterfactual Explanation', data.counterfactual_plot);
+    metricsDetails.innerHTML = buildMetricsHtml(data);
+      if (data.visualizations.counterfactual_1) {
+        addVisualization('Counterfactual Explanation', data.visualizations.counterfactual_1);
+      }
+      if (data.visualizations.counterfactual_2) {
+        addVisualization('Counterfactual Explanation', data.counterfactual_2);
+      }
+      if (data.visualizations.counterfactual_3) {
+        addVisualization('Counterfactual Explanation', data.counterfactual_3);
       }
       break;
 
     case 'segments':
+      
+      metricsDetails.innerHTML = buildMetricsHtml(data);
       if (data.segments) {
         createSegmentTable(data.segments);
       } else {
         metricsDetails.innerHTML = '<p>No segmentation data available</p>';
       }
+   
+      if (data.visualizations.cluster_plot) {
+      addVisualization('Cluster Plot', data.visualizations.cluster_plot);  // ✅ Correct
+    }
+    if (data.visualizations.elbow_method) {
+      addVisualization('Elbow Method', data.visualizations.elbow_method);
+    }
+
       break;
 
     case 'risk':
+      metricsDetails.innerHTML = buildMetricsHtml(data);
       if (data.risk_plot) {
         addVisualization('Risk Analysis', data.risk_plot);
       }
       break;
 
     case 'decision-paths':
-      if (data.decision_paths) {
-        addVisualization('Decision Paths', data.decision_paths);
+      
+      metricsDetails.innerHTML = buildMetricsHtml(data);
+
+            
+      if (data.visualizations?.decision_paths) {
+      addVisualization('Decision Paths', data.visualizations.decision_paths);
       }
+  
       break;
+      case 'classification_predict': {
+    // Display basic metrics
+    metricsDetails.innerHTML = buildMetricsHtml(data.statistics || data.metrics);
+
+    // Show model metadata
+    if (data.best_model) {
+      modelDetails.innerHTML += `<p>Best Model: <strong>${data.best_model}</strong></p>`;
+    }
+
+    if (data.feature_count) {
+      modelDetails.innerHTML += `<p>Features Used: <strong>${data.feature_count}</strong></p>`;
+    }
+
+    if (data.output_file) {
+  const filePath = data.output_file.replace(/'/g, "\\'");
+  const fileName = (data.output_file_name || 'predictions.csv').replace(/'/g, "\\'");
+
+  modelDetails.innerHTML += `
+    <div class="prediction-file-info">
+      <h4>📄 Prediction Results</h4>
+      <p>File: <strong>${fileName}</strong></p>
+      <p>Total Rows: <strong>${data.total_rows || 'N/A'}</strong></p>
+      <p>Columns Added: <strong>${(data.columns_added || []).join(', ')}</strong></p>
+      <button onclick="downloadPredictionFile(event, '${filePath}', '${fileName}')">
+        📥 Download Predictions
+      </button>
+    </div>
+  `;
+}
+
+    // Show data preview if available
+    if (data.data_preview && Array.isArray(data.data_preview)) {
+      const previewHtml = createDataPreviewTable(data.data_preview);
+      modelDetails.innerHTML += `
+        <details><summary>👀 Data Preview (First 10 rows)</summary>
+          ${previewHtml}
+        </details>
+      `;
+    }
+
+    // Show legacy predictions if still using old format
+    if (data.predictions && !data.output_file) {
+      if (Array.isArray(data.predictions)) {
+        modelDetails.innerHTML += `<p>Predictions Generated: <strong>${data.predictions.length}</strong></p>`;
+      } else {
+        modelDetails.innerHTML += `<p>${data.predictions}</p>`;
+      }
+    }
+
+    // Show conversion rate if available (classification)
+    if (data.conversion_rate !== null && typeof data.conversion_rate === 'number') {
+      modelDetails.innerHTML += `<p>🔁 Conversion Rate: <strong>${data.conversion_rate.toFixed(2)}%</strong></p>`;
+    }
+
+    // Feature alignment check
+    if (data.feature_alignment) {
+      const fa = data.feature_alignment;
+      modelDetails.innerHTML += `
+        <details><summary>🧩 Feature Alignment</summary>
+          <ul>
+            <li>Training Features: ${fa.training_features}</li>
+            <li>Prediction Features: ${fa.prediction_features}</li>
+            <li>Missing Features Added: ${fa.missing_features_added.join(', ') || 'None'}</li>
+            <li>Extra Features Removed: ${fa.extra_features_removed.join(', ') || 'None'}</li>
+          </ul>
+        </details>
+      `;
+    }
+
+    // Visualizations
+    if (data.visualizations) {
+      if (data.visualizations.confidence_distribution) {
+        const vis = data.visualizations.confidence_distribution;
+        addVisualization('Confidence Distribution', vis);
+      }
+
+      if (data.visualizations.prediction_distribution) {
+        const visDetailed = data.visualizations.prediction_distribution;
+        addVisualization('Prediction Distribution', visDetailed);
+      }
+
+      if (data.visualizations.residual_plot) {
+        addVisualization('Residual Plot', data.visualizations.residual_plot);
+      }
+
+      if (data.visualizations.prediction_vs_actual) {
+        addVisualization('Prediction vs Actual', data.visualizations.prediction_vs_actual);
+      }
+    }
+
+    break;
+  }
+
+  case 'regression_predict': {
+    // Show regression prediction statistics
+    if (data.prediction_statistics) {
+      metricsDetails.innerHTML = buildMetricsHtml(data.prediction_statistics);
+    }
+
+
+    if (data.output_file) {
+  const filePath = data.output_file.replace(/'/g, "\\'");
+  const fileName = (data.output_file_name || 'predictions.csv').replace(/'/g, "\\'");
+
+  modelDetails.innerHTML += `
+    <div class="prediction-file-info">
+      <h4>📄 Prediction Results</h4>
+      <p>File: <strong>${fileName}</strong></p>
+      <p>Total Rows: <strong>${data.total_rows || 'N/A'}</strong></p>
+      <p>Columns Added: <strong>${(data.columns_added || []).join(', ')}</strong></p>
+      <button onclick="downloadPredictionFile(event, '${filePath}', '${fileName}')">
+        📥 Download Predictions
+      </button>
+    </div>
+  `;
+}
+
+
+
+    // Show data preview if available
+    if (data.data_preview && Array.isArray(data.data_preview)) {
+      const previewHtml = createDataPreviewTable(data.data_preview);
+      modelDetails.innerHTML += `
+        <details><summary>👀 Data Preview (First 10 rows)</summary>
+          ${previewHtml}
+        </details>
+      `;
+    }
+
+    // Show legacy predictions count if still using old format
+    if (typeof data.predictions_count === 'number' && !data.output_file) {
+      modelDetails.innerHTML += `<p>Predictions Generated: <strong>${data.predictions_count}</strong></p>`;
+    }
+
+    // Show model info
+    if (data.model_info) {
+      modelDetails.innerHTML += `<p>Model Type: <strong>${data.model_info.model_type}</strong></p>`;
+      if (data.model_info.feature_count !== null) {
+        modelDetails.innerHTML += `<p>Features Used: <strong>${data.model_info.feature_count}</strong></p>`;
+      }
+    }
+
+    // Show original vs processed data shape
+    if (data.original_data_shape && data.processed_data_shape) {
+      modelDetails.innerHTML += `<details><summary>📊 Data Shape Info</summary>
+        <ul>
+          <li>Original Shape: ${data.original_data_shape.join(' × ')}</li>
+          <li>Processed Shape: ${data.processed_data_shape.join(' × ')}</li>
+        </ul>
+      </details>`;
+    }
+
+    // Show insights if available
+    if (data.insights && Array.isArray(data.insights)) {
+      const insightHtml = data.insights.map(i => `<li>${i}</li>`).join('');
+      modelDetails.innerHTML += `<details><summary>🧠 Insights</summary><ul>${insightHtml}</ul></details>`;
+    }
+
+    // Visualizations
+    if (data.visualizations) {
+      if (data.visualizations.prediction_distribution) {
+        addVisualization('Prediction Distribution', data.visualizations.prediction_distribution);
+      }
+
+      if (data.visualizations.feature_relationships) {
+        for (const [feature, img] of Object.entries(data.visualizations.feature_relationships)) {
+          addVisualization(`Relationship: ${feature}`, img);
+        }
+      }
+    }
+
+    break;
+  }
+
 
     case 'time-series-analysis':
-      if (data.result && data.result.adf_test && data.result.model_order) {
-        metricsDetails.innerHTML = `<h4>Time Series Model</h4>
-          <ul>
-            <li>ADF Statistic: ${data.result.adf_test.statistic.toFixed(4)}</li>
-            <li>p-value: ${data.result.adf_test.p_value.toFixed(4)}</li>
-            <li>Is Stationary: ${data.result.adf_test.is_stationary ? 'Yes' : 'No'}</li>
-            <li>Order: p=${data.result.model_order.p}, d=${data.result.model_order.d}, q=${data.result.model_order.q}</li>
-          </ul>`;
+      metricsDetails.innerHTML = buildMetricsHtml(data);
+      console.log('displayResults called with:', JSON.stringify(data, null, 2));
+
+      // Safety checks
+      if (!data) {
+        console.error('No data provided to displayResults');
+        return;
       }
 
-      // Now correctly access visualizations inside result
-      if (data.result.visualizations) {
-        if (data.result.visualizations.forecast) {
-          addVisualization('Forecast Plot', data.result.visualizations.forecast);
+      if (!data.result) {
+        console.error('No result property in data:', data);
+        if (data.status === 'error') {
+          console.error('Task failed with error:', data.error);
+          // Optionally show error to user here
         }
-        if (data.result.visualizations.acf_pacf) {
-          addVisualization('ACF/PACF Plot', data.result.visualizations.acf_pacf);
-        }
+        return;
       }
+
+      const result = data.result;
+
+      // 🧪 Display Time Series Metrics
+      if (result.adf_test && result.model_order) {
+        const { statistic, p_value, is_stationary } = result.adf_test;
+        const { p, d, q } = result.model_order;
+
+        metricsDetails.innerHTML = `
+          <h4>📊 Time Series Model Summary</h4>
+          <ul>
+            <li><strong>ADF Statistic:</strong> ${statistic.toFixed(4)}</li>
+            <li><strong>p-value:</strong> ${p_value.toFixed(4)}</li>
+            <li><strong>Stationarity:</strong> ${is_stationary ? 'Yes' : 'No'}</li>
+            <li><strong>ARIMA Order:</strong> (p=${p}, d=${d}, q=${q})</li>
+          </ul>
+        `;
+      } else {
+        metricsDetails.innerHTML = `<p>No model metrics found.</p>`;
+      }
+
+      // 🖼️ Display Forecast Visualizations
+      if (result.visualizations) {
+        if (result.visualizations.forecast) {
+          addVisualization('📈 Forecast Plot', result.visualizations.forecast);
+        }
+        if (result.visualizations.acf_pacf) {
+          addVisualization('📊 ACF/PACF Plot', result.visualizations.acf_pacf);
+        }
+      } else {
+        console.log('No visualizations found in result');
+      }
+
       break;
 
 
@@ -1268,6 +1669,38 @@ function displayResults(endpoint, data) {
   }
     // Scroll to the results for user convenience
     resultsContainer.scrollIntoView({ behavior: 'smooth' });
+}
+function createDataPreviewTable(data) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return '<p>No preview data available</p>';
+  }
+
+  const headers = Object.keys(data[0]);
+  const headerHtml = headers.map(h => `<th>${h}</th>`).join('');
+  const rowsHtml = data.map(row => {
+    const cellsHtml = headers.map(h => {
+      let value = row[h];
+      // Format numbers to 3 decimal places if they're floats
+      if (typeof value === 'number' && !Number.isInteger(value)) {
+        value = value.toFixed(3);
+      }
+      return `<td>${value}</td>`;
+    }).join('');
+    return `<tr>${cellsHtml}</tr>`;
+  }).join('');
+
+  return `
+    <div class="data-preview-table">
+      <table style="border-collapse: collapse; width: 100%; margin-top: 10px;">
+        <thead>
+          <tr style="background-color: #f5f5f5;">${headerHtml}</tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
   // Function to create a table for segment analysis results
@@ -1417,7 +1850,7 @@ function displayResults(endpoint, data) {
     errorMessage.style.display = 'none';
   }
   // 1) Map your friendly endpoint names to their paths
-const endpointMap = {
+  const endpointMap = {
   regression:             '/regression/',
   classification:         '/classification/',
   clustering:             '/cluster/',
@@ -1428,8 +1861,11 @@ const endpointMap = {
   risk:                   '/risk_analysis/',
   'decision-paths':       '/decision_paths/',
   'time-series-analysis': '/forecast/',
-  survival:               '/survival/'
+  survival:               '/survival/',
+  classification_predict: '/classification/predict/',
+  regression_predict: '/regression/predict/',
 };
+
 function callRealAPI(endpoint, params) {
   // Show the spinner & clear any messages
   loader.style.display        = 'block';
@@ -1503,13 +1939,17 @@ function callRealAPI(endpoint, params) {
     showSuccess('Analysis completed successfully.');
     displayResults(endpoint, data);
   })
+  
   .catch(err => {
     loader.style.display = 'none';
     showError(`Error: ${err.message}`);
     console.error('Full API error:', err);
     console.error('Error stack:', err.stack);
   });
+
+
 }
+
 document.getElementById('btn-survival').addEventListener('click', () => {
   const eventCol = document.getElementById('target-column').value;
   const timeCol  = document.getElementById('time-column').value;
@@ -1546,6 +1986,60 @@ document.getElementById('btn-survival').addEventListener('click', () => {
     drop_cols: drop
   });
 });
+document.getElementById('btn-classification-predict').addEventListener('click', () => {
+  const targetCol = document.getElementById('target-column').value;
+  const drop      = document.getElementById('drop-columns').value;
+
+  if (!targetCol) {
+    showError('Please specify the target column for classification prediction.');
+    return;
+  }
+
+  const hasFullFile = fullInput.files.length === 1;
+  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
+
+  if (!hasFullFile && !hasTrainTest) {
+    showError('Please upload either a full dataset or both train and test files.');
+    return;
+  }
+
+  console.log('Classification prediction parameters:');
+  console.log('Target column:', targetCol);
+  console.log('Drop columns:', drop);
+
+  callRealAPI('classification_predict', {
+    target_column: targetCol,
+    drop_columns: drop
+  });
+});
+
+document.getElementById('btn-regression-predict').addEventListener('click', () => {
+  const targetCol = document.getElementById('target-column').value;
+  const drop      = document.getElementById('drop-columns').value;
+
+  if (!targetCol) {
+    showError('Please specify the target column for regression prediction.');
+    return;
+  }
+
+  const hasFullFile = fullInput.files.length === 1;
+  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
+
+  if (!hasFullFile && !hasTrainTest) {
+    showError('Please upload either a full dataset or both train and test files.');
+    return;
+  }
+
+  console.log('Regression prediction parameters:');
+  console.log('Target column:', targetCol);
+  console.log('Drop columns:', drop);
+
+  callRealAPI('regression_predict', {
+    target_column: targetCol,
+    drop_columns: drop
+  });
+});
+
 // Feature impact
 document.getElementById('btn-feature-impact').addEventListener('click', () => {
   const target = document.getElementById('target-column').value;
@@ -1560,30 +2054,26 @@ document.getElementById('btn-feature-impact').addEventListener('click', () => {
 // Counterfactual
 document.getElementById('btn-counterfactual').addEventListener('click', () => {
   const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
+  const drop = document.getElementById('drop-columns').value;
+  const desiredOutcome = document.getElementById('desired-outcome').value;
+  const editableFeatures = document.getElementById('editable-features').value;
+
   if (!target) return showError('Please specify a target column.');
+
   callRealAPI('counterfactual', {
     target_column: target,
-    drop_columns:  drop
+    drop_columns: drop,
+    desired_outcome: desiredOutcome,
+    editable_features: editableFeatures
   });
 });
+
 
 // Customer segments
 document.getElementById('btn-segments').addEventListener('click', () => {
   const drop = document.getElementById('drop-columns').value;
   callRealAPI('segments', {
     drop_columns: drop
-  });
-});
-
-// Risk analysis
-document.getElementById('btn-risk').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('risk', {
-    target_column: target,
-    drop_columns:  drop
   });
 });
 
