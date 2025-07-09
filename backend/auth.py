@@ -30,11 +30,13 @@ from sqlalchemy import LargeBinary, DateTime, ForeignKey
 from datetime import datetime
 from sqlalchemy import BigInteger, Float
 from pydantic import BaseModel, Field, EmailStr
+from dotenv import load_dotenv
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Base configuration
+# Load environment variables
+load_dotenv()
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "ethanhong")
