@@ -40,7 +40,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from anomaly_detection import train_best_anomaly_detection
+from .anomaly_detection import train_best_anomaly_detection
 import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
