@@ -1,4 +1,4 @@
-from preprocessing import preprocess_data
+from .preprocessing import preprocess_data
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
