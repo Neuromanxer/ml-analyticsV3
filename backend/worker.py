@@ -16,12 +16,12 @@ import numpy as np
 import io
 import shap
 # -- replace these imports with your actual module paths --
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from feature_importance import safe_generate_feature_importance
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .feature_importance import safe_generate_feature_importance
 import subprocess
-from clustering import run_kmeans, find_optimal_k, label_clusters_general
-from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
 import joblib
 from datetime import datetime
 from pathlib import Path as PathL
@@ -29,9 +29,9 @@ from celery import Celery
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 # -- replace these imports with your actual module paths --
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from ai import generate_insights
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .ai import generate_insights
 from queue import Queue
 from threading import Thread
 
