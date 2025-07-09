@@ -40,8 +40,9 @@ POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "ethanhong")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "printing")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
+MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "master_ml_insights")
 # Master database for user management
-MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/master_ml_insights"
+MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
 
 master_engine = create_engine(MASTER_DB_URL)
 
