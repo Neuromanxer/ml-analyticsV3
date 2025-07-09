@@ -10,7 +10,7 @@ services:
     - key: OPENAI_API_KEY
       value: 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
     - key: REDIS_URL
-      value: redis://ml-insights-redis:6379
+            value: redis://red-d1n270gdl3ps73fqo7fg:6379
     - key: POSTGRES_HOST
       value: dpg-d1n0o56uk2gs739cigq0-a.virginia-postgres.render.com
     - key: POSTGRES_PORT

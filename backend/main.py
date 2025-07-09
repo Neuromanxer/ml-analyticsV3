@@ -14,19 +14,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path as PathL
 import json
 import aiofiles
-from ai import generate_insights
-from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
-from ecs_launcher import launch_job_on_ecs
-from worker import make_json_safe
+from .ai import generate_insights
+from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+from .ecs_launcher import launch_job_on_ecs
+from .worker import make_json_safe
 from starlette.middleware.base import BaseHTTPMiddleware
 from sklearn.model_selection import train_test_split
 
-from tokens import TokenUsageLogResponse, TokenUsageLog
+from .tokens import TokenUsageLogResponse, TokenUsageLog
 from sklearn.model_selection import train_test_split, KFold
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from preprocessing import preprocess_data
-from survival import calculate_business_metrics
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .preprocessing import preprocess_data
+from .survival import calculate_business_metrics
 from sqlalchemy import Column
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
 from fastapi import APIRouter, HTTPException, Depends, status, Query
@@ -48,18 +48,18 @@ from anomaly_detection import train_best_anomaly_detection
 import uuid
 from pydantic import EmailStr
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
-from datasets import (
+from .datasets import (
     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
     get_user_db,
 
 )
-from datasets import init_db as init_dataset_master_db
+from .datasets import init_db as init_dataset_master_db
 from starlette.concurrency import run_in_threadpool
-from activity import router as activity_router
-from account import router as a_router
-from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+from .activity import router as activity_router
+from .account import router as a_router
+from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
 # These names should match exactly what you export from auth.py
-from auth import (
+from .auth import (
     # Authentication & token utilities
     get_current_active_user,
     get_current_user,
@@ -92,8 +92,8 @@ from auth import (
     User
 
 )
-from auth import router as auth_router
-from tokens import router as token_router
+from .auth import router as auth_router
+from .tokens import router as token_router
 from sqlalchemy.ext.declarative import declarative_base
 from fastapi.staticfiles import StaticFiles
 import uuid, os, io
