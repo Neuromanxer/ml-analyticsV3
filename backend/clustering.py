@@ -4,7 +4,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import joblib
-from preprocessing import preprocess_data
+from .preprocessing import preprocess_data
 # Find optimal k using both elbow method and silhouette score
 def find_optimal_k(data, max_k=10):
     """ Finds the best K using Elbow & Silhouette method """

@@ -62,7 +62,7 @@ from sqlalchemy.orm import (
 # ────────────────────────────────────────────────────────────────
 
 # These names should match exactly what you export from auth.py
-from auth import (
+from .auth import (
     # Authentication & token utilities
     get_current_active_user,
     create_access_token,
