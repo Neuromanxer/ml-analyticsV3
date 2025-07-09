@@ -164,9 +164,6 @@ app.add_middleware(
 
 # Load environment variables
 load_dotenv()
-# Serve the frontend folder as static files
-frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
-app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 print("Loaded environment:")
 print("POSTGRES_USER:", os.getenv("POSTGRES_USER"))
@@ -425,6 +422,10 @@ app.include_router(activity_router)
 app.include_router(a_router)
 app.include_router(token_router)
 # Dataset models
+# Serve the frontend folder as static files
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+app.mount("/app", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
 class DatasetCreate(BaseModel):
     name: str
     description: Optional[str] = None
