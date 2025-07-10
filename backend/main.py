@@ -155,7 +155,8 @@ app.add_middleware(
         "http://127.0.0.1:8080",
         "http://[::]:8080",
         "http://localhost:3000",  # Add any other origins you need
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        'https://ml-insights-frontend.onrender.com/'
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
