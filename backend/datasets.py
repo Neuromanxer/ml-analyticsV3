@@ -89,13 +89,14 @@ POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "ethanhong")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "printing")
+MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "master_ml_insights")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
 # Master database for user management
-MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/master_ml_insights"
+MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
 master_engine = create_engine(MASTER_DB_URL)
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
 # Master database for user management
-MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/master_ml_insights"
+MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
 master_engine = create_engine(MASTER_DB_URL)
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
 
@@ -151,7 +152,11 @@ def init_master_db():
     logger.info("Initializing master database")
      
     # Connect to postgres as superuser
-    conn_str = f"postgresql://postgres:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
+    conn_str = (
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
+    "?sslmode=require"
+    )
+
     superuser_engine = create_engine(conn_str, isolation_level="AUTOCOMMIT")
 
     try:
