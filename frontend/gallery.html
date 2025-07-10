@@ -1195,310 +1195,312 @@
     </style>
 </head>
 <body>
-    <!-- Sidebar -->
-    <div class="sidebar">
-        <div class="sidebar-logo">
-            <i class="fas fa-chart-line"></i>
-            <h1>MLAnalytics</h1>
-        </div>
-        
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">MAIN</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item">
-                    <a href="wizard.html">
-                      <i class="fas fa-rocket"></i>
-                      Run New Experiment
-                    </a>
-                  </li>
-                <li class="sidebar-menu-item">
-                    <a href="dashboard.html">
-                        <i class="fas fa-home"></i>
-                        Dashboard
-                    </a>
-                </li>
-                
-            </ul>
-        </div>
-        
+  <!-- Sidebar -->
+  <div class="sidebar">
+      <div class="sidebar-logo">
+          <i class="fas fa-chart-line"></i>
+          <h1>MLAnalytics</h1>
+      </div>
+      
       <div class="sidebar-section">
-        <div class="sidebar-section-title">STORAGE</div>
-        <ul class="sidebar-menu">
-          <li class="sidebar-menu-item">
-            <a href="gallery.html">
-                <i class="fas fa-project-diagram"></i>
-                Gallery
-            </a>
-        </li>
-        
+          <div class="sidebar-section-title">MAIN</div>
+          <ul class="sidebar-menu">
+              <li class="sidebar-menu-item">
+                  <a href="wizard.html">
+                    <i class="fas fa-rocket"></i>
+                    Run New Experiment
+                  </a>
+                </li>
+              <li class="sidebar-menu-item">
+                  <a href="dashboard.html">
+                      <i class="fas fa-home"></i>
+                      Dashboard
+                  </a>
+              </li>
+              
+          </ul>
+      </div>
+      
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">STORAGE</div>
+      <ul class="sidebar-menu">
         <li class="sidebar-menu-item">
-            <a href="datasets.html">
-                <i class="fas fa-database"></i>
-                Datasets
-            </a>
-        </li>
-      </ul>
-    </div>
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">SETTINGS</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item">
-                    <a href="pricing.html">
-                        <i class="fas fa-dollar-sign"></i>
-                        Pricing
-                    </a>
-                </li>
-                <li class="sidebar-menu-item">
-                    <a href="account.html">
-                        <i class="fas fa-user"></i>
-                        Account
-                    </a>
-                </li>
-            </ul>
-        </div>
+          <a href="gallery.html">
+              <i class="fas fa-project-diagram"></i>
+              Gallery
+          </a>
+      </li>
+      
+      <li class="sidebar-menu-item">
+          <a href="datasets.html">
+              <i class="fas fa-database"></i>
+              Datasets
+          </a>
+      </li>
+    </ul>
+  </div>
+      <div class="sidebar-section">
+          <div class="sidebar-section-title">SETTINGS</div>
+          <ul class="sidebar-menu">
+              <li class="sidebar-menu-item">
+                  <a href="pricing.html">
+                      <i class="fas fa-dollar-sign"></i>
+                      Pricing
+                  </a>
+              </li>
+              <li class="sidebar-menu-item">
+                  <a href="account.html">
+                      <i class="fas fa-user"></i>
+                      Account
+                  </a>
+              </li>
+          </ul>
+      </div>
 
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">COMMUNITY</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item">
-                    <a href="contact.html">
-                        <i class="fas fa-users"></i>
-                        Contact
-                    </a>
-                </li>
-            </ul>
-        </div>
-        
-        <div class="sidebar-footer">
-            <div class="sidebar-footer-item" onclick="signOutUser()">
-                <i class="fas fa-sign-out-alt"></i>
-                Sign out
-            </div>
-        </div>
-        
-    
-    <!-- Main Content -->
-    <div class="main-content">
-        <div class="page-header">
-            <h1>Visualization Gallery</h1>
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="search-input" placeholder="Search visualizations...">
-            </div>
-        </div>
+      <div class="sidebar-section">
+          <div class="sidebar-section-title">COMMUNITY</div>
+          <ul class="sidebar-menu">
+              <li class="sidebar-menu-item">
+                  <a href="contact.html">
+                      <i class="fas fa-users"></i>
+                      Contact
+                  </a>
+              </li>
+          </ul>
+      </div>
+      
+      <div class="sidebar-footer">
+          <div class="sidebar-footer-item" onclick="signOutUser()">
+              <i class="fas fa-sign-out-alt"></i>
+              Sign out
+          </div>
+      </div>
+  </div>
+      
+  
+  <!-- Main Content -->
+  <div class="main-content">
+      <div class="page-header">
+          <h1>Visualization Gallery</h1>
+          <div class="search-box">
+              <i class="fas fa-search"></i>
+              <input type="text" id="search-input" placeholder="Search visualizations...">
+          </div>
+      </div>
 
-        <div class="filters">
-            <div class="filter-group">
-                <label for="dataset-filter">Dataset:</label>
-                <select id="dataset-filter">
-                    <option value="all">All Datasets</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="type-filter">Type:</label>
-                <select id="type-filter">
-                    <option value="all">All Types</option>
-                    <option value="regression">Regression</option>
-                    <option value="classification">Classification</option>
-                    <option value="clustering">Clustering</option>
-                    <option value="feature-impact">Feature Impact</option>
-                    <option value="counterfactual">Counterfactual</option>
-                    <option value="segments">Segments</option>
-                    <option value="risk">Risk Analysis</option>
-                    <option value="decision-paths">Decision Paths</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="date-filter">Date:</label>
-                <select id="date-filter">
-                    <option value="all">All Time</option>
-                    <option value="today">Today</option>
-                    <option value="week">This Week</option>
-                    <option value="month">This Month</option>
-                </select>
-            </div>
-        </div>
+      <div class="filters">
+          <div class="filter-group">
+              <label for="dataset-filter">Dataset:</label>
+              <select id="dataset-filter">
+                  <option value="all">All Datasets</option>
+              </select>
+          </div>
+          <div class="filter-group">
+              <label for="type-filter">Type:</label>
+              <select id="type-filter">
+                  <option value="all">All Types</option>
+                  <option value="regression">Regression</option>
+                  <option value="classification">Classification</option>
+                  <option value="clustering">Clustering</option>
+                  <option value="feature-impact">Feature Impact</option>
+                  <option value="counterfactual">Counterfactual</option>
+                  <option value="segments">Segments</option>
+                  <option value="risk">Risk Analysis</option>
+                  <option value="decision-paths">Decision Paths</option>
+              </select>
+          </div>
+          <div class="filter-group">
+              <label for="date-filter">Date:</label>
+              <select id="date-filter">
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+              </select>
+          </div>
+      </div>
 
-        <div id="message-container"></div>
-        <div id="loader" class="loader"></div>
-         <!-- Section 1: Financial Assumptions -->
-         <div class="section">
-            <h2 class="section-title">Financial Assumptions</h2>
-            <div class="assumptions-form">
-                <div id="statusMessage"></div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="revenue-per-customer">Estimated Revenue per Customer</label>
-                        <input type="number" id="revenue-per-customer" placeholder="1200" step="0.01">
-                        <div class="form-note">e.g. $1,200</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="cost-per-lost-customer">Cost per Lost Customer</label>
-                        <input type="number" id="cost-per-lost-customer" placeholder="800" step="0.01">
-                        <div class="form-note">e.g. $800</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="revenue-per-lead">Revenue per Lead</label>
-                        <input type="number" id="revenue-per-lead" placeholder="100" step="0.01">
-                        <div class="form-note">e.g. $100</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="average-order-value">Average Order Value</label>
-                        <input type="number" id="average-order-value" placeholder="60" step="0.01">
-                        <div class="form-note">e.g. $60</div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-        
-        <div id="gallery-container" class="gallery-grid">
-            <!-- Gallery items will be populated here -->
-        </div>
-        <div class="generate-insights-wrapper">
-            <button class="btn btn-primary" onclick="saveAssumptions()">
-                🚀 Generate Insights
-            </button>
-        </div>
-        
-        <div id="no-visualizations" class="no-visualizations" style="display: none;">
-            <i class="fas fa-chart-area"></i>
-            <h2>No visualizations found</h2>
-            <p>Create your first visualization to see it appear here</p>
-            <button class="btn btn-primary" onclick="window.location.href='dashboard.html'">Create Visualization</button>
-        </div>
-
-        <div class="pagination" id="pagination">
-            <!-- Pagination will be populated here -->
-        </div>
-        
-                <!-- Section 2: AI Actionable Insights -->
-                <div class="section">
-                    <h2 class="section-title">AI Actionable Insights</h2>
-                    <div id="insights-container">
-                        <div class="status-message status-info">
-                            Please save your financial assumptions above to view personalized business impact insights.
-                        </div>
-                    </div>
-                </div>
-                <form class="impact-form">
-                    <h3>📅 Time Period</h3>
-                    <label>Month:</label>
-                    <input type="month" id="impact-month" required>
-                  
-                    <h3>💵 Estimated Financial Gains</h3>
-                    <label>Revenue Saved:</label>
-                    <input type="number" id="impact-revenue-saved" placeholder="e.g., 4800" required>
-                  
-                    <label>New Revenue:</label>
-                    <input type="number" id="impact-new-revenue" placeholder="e.g., 2600" required>
-                  
-                    <label>Cost Reduction:</label>
-                    <input type="number" id="impact-cost-reduction" placeholder="e.g., 1500" required>
-                  
-                    <h3>📈 Contextual Business Metrics</h3>
-                    <label>Conversion Rate (%):</label>
-                    <input type="number" id="impact-conversion-rate" placeholder="e.g., 12" step="0.01">
-                  
-                    <label>Retention Rate (%):</label>
-                    <input type="number" id="impact-retention-rate" placeholder="e.g., 80" step="0.01">
-                  
-                    <label>Cost Per Lead ($):</label>
-                    <input type="number" id="impact-cost-per-lead" placeholder="e.g., 50" step="0.01">
-                  
-                    <button type="submit" class="btn btn-primary">➕ Add to Impact Log</button>
-                  </form>
-                  
-                <div class="section">
-                    <h2 class="section-title">Historical Impact Log</h2>
-                    <div class="impact-table" id="impact-history-container" style="display:none;">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Month</th>
-                            <th>Revenue Saved</th>
-                            <th>New Revenue</th>
-                            <th>Cost Reduction</th>
-                            <th>Total Impact</th>
-                          </tr>
-                        </thead>
-                        <tbody id="impact-history-body">
-                          <!-- Dynamic rows go here -->
-                        </tbody>
-                      </table>
-                    </div>
+      <div id="message-container"></div>
+      <div id="loader" class="loader"></div>
+       <!-- Section 1: Financial Assumptions -->
+       <div class="section">
+          <h2 class="section-title">Financial Assumptions</h2>
+          <div class="assumptions-form">
+              <div id="statusMessage"></div>
+              <div class="form-grid">
+                  <div class="form-group">
+                      <label for="revenue-per-customer">Estimated Revenue per Customer</label>
+                      <input type="number" id="revenue-per-customer" placeholder="1200" step="0.01">
+                      <div class="form-note">e.g. $1,200</div>
                   </div>
-                  
-                <div class="section">
-                    <h2 class="section-title">Future Predictions</h2>
-                    <div class="prediction-card">
-                        <h3>Projected Impact Next Quarter</h3>
-                        <div class="prediction-value" id="future-prediction">$0</div>
-                        <div class="prediction-note">Based on current retention rates and model performance trends</div>
-                    </div>
+                  <div class="form-group">
+                      <label for="cost-per-lost-customer">Cost per Lost Customer</label>
+                      <input type="number" id="cost-per-lost-customer" placeholder="800" step="0.01">
+                      <div class="form-note">e.g. $800</div>
+                  </div>
+                  <div class="form-group">
+                      <label for="revenue-per-lead">Revenue per Lead</label>
+                      <input type="number" id="revenue-per-lead" placeholder="100" step="0.01">
+                      <div class="form-note">e.g. $100</div>
+                  </div>
+                  <div class="form-group">
+                      <label for="average-order-value">Average Order Value</label>
+                      <input type="number" id="average-order-value" placeholder="60" step="0.01">
+                      <div class="form-note">e.g. $60</div>
+                  </div>
+              </div>
+
+          </div>
+      </div>
+      
+      <div id="gallery-container" class="gallery-grid">
+          <!-- Gallery items will be populated here -->
+      </div>
+      <div class="generate-insights-wrapper">
+          <button class="btn btn-primary" onclick="saveAssumptions()">
+              🚀 Generate Insights
+          </button>
+      </div>
+      
+      <div id="no-visualizations" class="no-visualizations" style="display: none;">
+          <i class="fas fa-chart-area"></i>
+          <h2>No visualizations found</h2>
+          <p>Create your first visualization to see it appear here</p>
+          <button class="btn btn-primary" onclick="window.location.href='dashboard.html'">Create Visualization</button>
+      </div>
+
+      <div class="pagination" id="pagination">
+          <!-- Pagination will be populated here -->
+      </div>
+      
+              <!-- Section 2: AI Actionable Insights -->
+              <div class="section">
+                  <h2 class="section-title">AI Actionable Insights</h2>
+                  <div id="insights-container">
+                      <div class="status-message status-info">
+                          Please save your financial assumptions above to view personalized business impact insights.
+                      </div>
+                  </div>
+              </div>
+              <form class="impact-form">
+                  <h3>📅 Time Period</h3>
+                  <label>Month:</label>
+                  <input type="month" id="impact-month" required>
+                
+                  <h3>💵 Estimated Financial Gains</h3>
+                  <label>Revenue Saved:</label>
+                  <input type="number" id="impact-revenue-saved" placeholder="e.g., 4800" required>
+                
+                  <label>New Revenue:</label>
+                  <input type="number" id="impact-new-revenue" placeholder="e.g., 2600" required>
+                
+                  <label>Cost Reduction:</label>
+                  <input type="number" id="impact-cost-reduction" placeholder="e.g., 1500" required>
+                
+                  <h3>📈 Contextual Business Metrics</h3>
+                  <label>Conversion Rate (%):</label>
+                  <input type="number" id="impact-conversion-rate" placeholder="e.g., 12" step="0.01">
+                
+                  <label>Retention Rate (%):</label>
+                  <input type="number" id="impact-retention-rate" placeholder="e.g., 80" step="0.01">
+                
+                  <label>Cost Per Lead ($):</label>
+                  <input type="number" id="impact-cost-per-lead" placeholder="e.g., 50" step="0.01">
+                
+                  <button type="submit" class="btn btn-primary">➕ Add to Impact Log</button>
+                </form>
+                
+              <div class="section">
+                  <h2 class="section-title">Historical Impact Log</h2>
+                  <div class="impact-table" id="impact-history-container" style="display:none;">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Month</th>
+                          <th>Revenue Saved</th>
+                          <th>New Revenue</th>
+                          <th>Cost Reduction</th>
+                          <th>Total Impact</th>
+                        </tr>
+                      </thead>
+                      <tbody id="impact-history-body">
+                        <!-- Dynamic rows go here -->
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-    </div>
-    <div id="modalVariantTabs" class="variant-tabs" style="margin-bottom: 10px;"></div>
+                
+              <div class="section">
+                  <h2 class="section-title">Future Predictions</h2>
+                  <div class="prediction-card">
+                      <h3>Projected Impact Next Quarter</h3>
+                      <div class="prediction-value" id="future-prediction">$0</div>
+                      <div class="prediction-note">Based on current retention rates and model performance trends</div>
+                  </div>
+              </div>
+  </div>
+  <div id="modalVariantTabs" class="variant-tabs" style="margin-bottom: 10px;"></div>
 <!-- Visualization Detail Modal -->
 <div id="visualization-modal" class="modal">
-    <div class="modal-content">
-        <span class="modal-close" id="modal-close">&times;</span>
-        <div class="modal-header">
-            <h2 id="modal-title">Visualization Details</h2>
-        </div>
-        <img id="modal-image" class="visualization-large" src="" alt="Visualization">
-        
-        <div class="visualization-info">
-            <div class="viz-details">
-                <div class="section-title">General Information</div>
-                <div class="viz-detail-row">
-                    <div class="viz-detail-label">Dataset:</div>
-                    <div id="modal-dataset">--</div>
-                </div>
-                <div class="viz-detail-row">
-                    <div class="viz-detail-label">Type:</div>
-                    <div id="modal-type">--</div>
-                </div>
-                <div class="viz-detail-row">
-                    <div class="viz-detail-label">Created:</div>
-                    <div id="modal-date">--</div>
-                </div>
-                <div class="viz-detail-row">
-                    <div class="viz-detail-label">Target:</div>
-                    <div id="modal-target">--</div>
-                </div>
-                <div class="viz-detail-row">
-                    <div class="viz-detail-label">Parameters:</div>
-                    <div id="modal-params">--</div>
-                </div>
-            </div>
-            
-            <div class="metrics-section">
-                <div class="section-title">Performance Metrics</div>
-                <div id="test-scores-container"></div>
-                <div id="cv-scores-container"></div>
-            </div>
-        </div>
-        
-        <div class="features-section" style="margin: 20px 0;">
-            <div class="section-title">Top Features</div>
-            <div id="top-features-container" class="features-grid"></div>
-        </div>
-        
-        <div class="gallery-actions">
-            <button class="btn btn-primary" id="btn-download">
-                <i class="fas fa-download"></i> Download
-            </button>
-            <button class="btn btn-outline-danger" id="btn-delete">
-                <i class="fas fa-trash"></i> Delete
-            </button>
-            <button class="btn btn-insights" id="btn-insights" onclick="sendMetadataForInsights(currentVizId)">
-                <i class="fas fa-lightbulb"></i> Generate Insights
-            </button>
-        </div>
-    </div>
+  <div class="modal-content">
+      <span class="modal-close" id="modal-close">&times;</span>
+      <div class="modal-header">
+          <h2 id="modal-title">Visualization Details</h2>
+      </div>
+      <img id="modal-image" class="visualization-large" src="" alt="Visualization">
+      
+      <div class="visualization-info">
+          <div class="viz-details">
+              <div class="section-title">General Information</div>
+              <div class="viz-detail-row">
+                  <div class="viz-detail-label">Dataset:</div>
+                  <div id="modal-dataset">--</div>
+              </div>
+              <div class="viz-detail-row">
+                  <div class="viz-detail-label">Type:</div>
+                  <div id="modal-type">--</div>
+              </div>
+              <div class="viz-detail-row">
+                  <div class="viz-detail-label">Created:</div>
+                  <div id="modal-date">--</div>
+              </div>
+              <div class="viz-detail-row">
+                  <div class="viz-detail-label">Target:</div>
+                  <div id="modal-target">--</div>
+              </div>
+              <div class="viz-detail-row">
+                  <div class="viz-detail-label">Parameters:</div>
+                  <div id="modal-params">--</div>
+              </div>
+          </div>
+          
+          <div class="metrics-section">
+              <div class="section-title">Performance Metrics</div>
+              <div id="test-scores-container"></div>
+              <div id="cv-scores-container"></div>
+          </div>
+      </div>
+      
+      <div class="features-section" style="margin: 20px 0;">
+          <div class="section-title">Top Features</div>
+          <div id="top-features-container" class="features-grid"></div>
+      </div>
+      
+      <div class="gallery-actions">
+          <button class="btn btn-primary" id="btn-download">
+              <i class="fas fa-download"></i> Download
+          </button>
+          <button class="btn btn-outline-danger" id="btn-delete">
+              <i class="fas fa-trash"></i> Delete
+          </button>
+          <button class="btn btn-insights" id="btn-insights" onclick="sendMetadataForInsights(currentVizId)">
+              <i class="fas fa-lightbulb"></i> Generate Insights
+          </button>
+      </div>
+  </div>
 </div>
-        <script>
+</body>
+<script>
 const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
 
 // DOM refs
