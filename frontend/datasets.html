@@ -731,7 +731,7 @@ function loadDatasetsWithAuth() {
     
     const token = safeStorageGet('access_token');
     
-    fetchWithTokenRefresh('http://127.0.0.1:8000/datasets/', {
+    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {}, {
         headers: {
             'Authorization': `Bearer ${token}`
         }
@@ -861,9 +861,8 @@ async function fetchWithTokenRefresh(url, options = {}) {
         if (!refreshToken) {
             throw new Error('No refresh token available');
         }
-        
-        // Attempt to refresh the token
-        const refreshResponse = await fetch('http://127.0.0.1:8000/api/auth/refresh-token', {
+
+        const refreshResponse = await fetch('${API_BASE_URL}/api/auth/refresh-token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -941,7 +940,7 @@ function uploadDataset(event) {
 
     const token = safeStorageGet('access_token');
 
-    fetch('http://127.0.0.1:8000/datasets/', {
+    fetch(`${API_BASE_URL}/datasets`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`

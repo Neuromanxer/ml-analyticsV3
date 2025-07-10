@@ -53,7 +53,7 @@ class TokenUsageLog(Base):
 router = APIRouter(prefix="/tokens", tags=["auth"])
 TOKEN_PRICE_CENTS = 100
 
-FRONTEND_BASE_URL = "http://127.0.0.1:8080"
+FRONTEND_BASE_URL = "https://ml-insights-frontend.onrender.com"
 from pydantic import BaseModel, AnyHttpUrl
 
 class CheckoutSessionResponse(BaseModel):
