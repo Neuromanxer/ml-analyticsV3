@@ -717,7 +717,10 @@ function storeAuthTokens(tokenData) {
     if (!tokenData) return false;
     
     let success = true;
-    
+    if (tokenData.id) {
+        success = safeStorageSet('user_id', tokenData.id) && success;
+    }
+
     if (tokenData.access_token) {
         success = safeStorageSet('access_token', tokenData.access_token) && success;
     }
