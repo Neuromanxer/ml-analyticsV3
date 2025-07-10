@@ -1021,8 +1021,7 @@ function signOutUser() {
     const metricsDetails         = document.getElementById('metrics-details');
     const visualizationContainer = document.getElementById('visualization-container');
     const token  = safeStorageGet('access_token');
-    const userId = safeStorageGet('user_id');
-    if (!token || !userId || isTokenExpired(token)) {
+    if (!token || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
       const next = encodeURIComponent(window.location.pathname);
       window.location.href = `index.html?next=${next}&reason=Please log in`;
