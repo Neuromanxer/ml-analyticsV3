@@ -44,7 +44,7 @@ import shap
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from anomaly_detection import train_best_anomaly_detection
+from .anomaly_detection import train_best_anomaly_detection
 import uuid
 from pydantic import EmailStr
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
