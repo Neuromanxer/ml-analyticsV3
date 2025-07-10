@@ -658,6 +658,29 @@ function safeStorageGet(key) {
         return null;
     }
 }
+function verifyAuthState() {
+  const accessToken = safeStorageGet('access_token');
+
+  if (!accessToken) {
+    return false;
+  }
+
+  // Optional: Decode the JWT and check expiration
+  try {
+    const [, payloadBase64] = accessToken.split('.');
+    const payload = JSON.parse(atob(payloadBase64));
+    const now = Math.floor(Date.now() / 1000);
+
+    if (payload.exp && payload.exp < now) {
+      console.warn("Token expired");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Failed to parse token:", err);
+    return false;
+  }
+}
 
 function clearAuthStorage() {
     try {
