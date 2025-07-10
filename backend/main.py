@@ -1374,7 +1374,7 @@ class VisualizationResponse(BaseModel):
 class VisualizationListResponse(BaseModel):
     visualizations: List[VisualizationResponse]
     total: int
-from worker import _load_metadata, _save_metadata
+from .worker import _load_metadata, _save_metadata
 
 
 # Additional utility functions you might need
