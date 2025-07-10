@@ -2,7 +2,7 @@
 
 from datetime import datetime, date
 from typing import Optional, List, Literal
-from activity import ActivityLog
+from .activity import ActivityLog
 import secrets
 from fastapi import (
     APIRouter,

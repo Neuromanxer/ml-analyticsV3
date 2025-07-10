@@ -439,7 +439,7 @@ class DatasetQuery(BaseModel):
 def startup_event():
     """Initialize database on startup"""
     init_dataset_master_db()
-    from auth import Base, master_engine  # (make sure you import Base from wherever your User model lives)
+    from .auth import Base, master_engine  # (make sure you import Base from wherever your User model lives)
     Base.metadata.create_all(bind=master_engine)
     logger.info("Application started and database initialized")
     

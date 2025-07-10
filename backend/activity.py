@@ -62,7 +62,7 @@ def get_activity(current_user: User = Depends(get_current_active_user), db: Sess
         .limit(10)
         .all()
     )
-from preprocessing import preprocess_data
+from .preprocessing import preprocess_data
 def suggest_model_from_df(df, target_column: str):
     import numpy as np
 
