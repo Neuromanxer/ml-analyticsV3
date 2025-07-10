@@ -49,9 +49,10 @@ MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOS
 master_engine = create_engine(MASTER_DB_URL)
 
 SUPERUSER_DB_URL = (
-    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
     "?sslmode=require"
 )
+
 superuser_engine = create_engine(SUPERUSER_DB_URL, isolation_level="AUTOCOMMIT")
 
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
