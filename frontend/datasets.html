@@ -539,7 +539,7 @@
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
     document.addEventListener('DOMContentLoaded', function() {
     // 1️⃣ Delegate all download-button clicks from the container
@@ -555,7 +555,7 @@
     // 2️⃣ Auth guard + load
     if (!checkAuthentication()) {
         window.location.href = 
-        'login.html?next=datasets.html&reason=Please log in to view your datasets';
+        'index.html?next=datasets.html&reason=Please log in to view your datasets';
         return;
     }
     loadDatasetsWithAuth();
@@ -901,7 +901,7 @@ async function fetchWithTokenRefresh(url, options = {}) {
         
         // If token refresh fails, redirect to login
         if (error.message === 'Token refresh failed' || error.message === 'No refresh token available') {
-            window.location.href = 'login.html?next=' + encodeURIComponent(window.location.pathname) + '&reason=Your session has expired';
+            window.location.href = 'index.html?next=' + encodeURIComponent(window.location.pathname) + '&reason=Your session has expired';
         }
         
         throw error;
@@ -975,7 +975,7 @@ function uploadDataset(event) {
     .catch(error => {
         console.error('Error uploading dataset:', error);
         if (error.message === 'Authentication failed') {
-            window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
+            window.location.href = 'index.html?next=datasets.html&reason=Your session has expired';
         } else {
             showUploadStatus('Error uploading dataset. Please try again.', 'danger');
         }
@@ -1279,7 +1279,7 @@ function deleteDataset(datasetId) {
             console.error('Error deleting dataset:', error);
             if (error.message === 'Authentication failed') {
                 // Redirect to login page
-                window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
+                window.location.href = 'index.html?next=datasets.html&reason=Your session has expired';
             } else {
                 alert('Error deleting dataset. Please try again.');
             }

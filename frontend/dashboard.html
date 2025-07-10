@@ -993,7 +993,7 @@ function signOutUser() {
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
 
   document.addEventListener('DOMContentLoaded', function() {
@@ -1025,7 +1025,7 @@ function signOutUser() {
     if (!token || !userId || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
       const next = encodeURIComponent(window.location.pathname);
-      window.location.href = `login.html?next=${next}&reason=Please log in`;
+      window.location.href = `index.html?next=${next}&reason=Please log in`;
       return;
     }
 
@@ -1044,7 +1044,7 @@ function signOutUser() {
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
 
     // Core parser + previewer
@@ -1908,7 +1908,7 @@ function callRealAPI(endpoint, params) {
   if (!token) {
     loader.style.display = 'none';
     alert('Session expired—please log in again.');
-    window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
+    window.location.href = `index.html?next=${encodeURIComponent(window.location.pathname)}`;
     return;
   }
 

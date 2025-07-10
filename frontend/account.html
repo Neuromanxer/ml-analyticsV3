@@ -1532,7 +1532,7 @@ function checkAuth() {
   if (!checkAuthentication()) {
     // include a “next” param so you can return to this page after login
     const current = encodeURIComponent(window.location.pathname);
-    window.location.href = `login.html?next=${current}`;
+    window.location.href = `index.html?next=${current}`;
     return null;
   }
   return safeStorageGet("access_token");
@@ -1544,7 +1544,7 @@ async function saveProfile() {
     if (!token || safeStorageGet('userLoggedIn') !== 'true') {
         showError('Authentication required. Please log in again.');
         clearAuthStorage();
-        window.location.href = 'login.html';
+        window.location.href = 'index.html';
         return;
     }
 
@@ -1623,7 +1623,7 @@ async function saveProfile() {
             } catch (refreshErr) {
                 console.error('Token refresh failed:', refreshErr);
                 clearAuthStorage();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
                 return;
             }
         }
@@ -1774,7 +1774,7 @@ async function changePlan(planName) {
   if (!token || !loggedIn) {
     showError("Authentication required. Please log in again.");
     clearAuthStorage();
-    window.location.href = "login.html";
+    window.location.href = "index.html";
     return;
   }
 
@@ -1810,7 +1810,7 @@ async function changePlan(planName) {
         console.error("🔒 Token refresh failed:", refreshError);
         showError("Your session has expired. Please log in again.");
         clearAuthStorage();
-        window.location.href = "login.html";
+        window.location.href = "index.html";
         return;
       }
     }
@@ -1927,7 +1927,7 @@ async function loadAccountStats() {
         } catch (refreshError) {
             console.error("Could not refresh token when loading stats:", refreshError);
             clearAuthStorage();
-            window.location.href = "login.html";
+            window.location.href = "index.html";
             return;
         }
     }
@@ -1961,7 +1961,7 @@ async function loadAccountData() {
 
   if (res.status === 401) {
     clearAuthStorage();
-    return window.location.href = "login.html";
+    return window.location.href = "index.html";
   }
   if (!res.ok) {
     return showProfileCreationMode();
@@ -2240,7 +2240,7 @@ function signOutUser() {
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
 function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
@@ -2252,7 +2252,7 @@ function signOutUser() {
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -2311,7 +2311,7 @@ document.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             if (confirm('Are you sure you want to log out?')) {
                 clearAuthStorage();
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         });
     }

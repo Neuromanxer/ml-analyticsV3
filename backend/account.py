@@ -21,7 +21,9 @@ from .auth import get_current_active_user, get_master_db_session, User, Base  # 
 import os
 import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
-stripe.api_key = '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'
+
+stripe.api_key = os.environ.get("STRIPE_API_KEY", "")
+
 DOMAIN = "http://localhost:8000"  # ✅ for local development
 
 

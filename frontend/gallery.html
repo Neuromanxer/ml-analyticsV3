@@ -1543,7 +1543,7 @@ function signOutUser() {
     sessionStorage.clear();
 
     // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    window.location.href = "/index.html"; // Adjust the path if needed
 }
 
 // Helper function to handle authentication errors
@@ -1552,7 +1552,7 @@ function handleAuthError(error) {
   localStorage.removeItem('access_token');
   localStorage.removeItem('user_id');
   localStorage.removeItem('user');
-  window.location.href = 'login.html?next=gallery.html&reason=Session expired, please log in again';
+  window.location.href = 'index.html?next=gallery.html&reason=Session expired, please log in again';
 }
 
 // Helper function to make authenticated requests
@@ -1613,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail', 'user_id', 'user'];
     keys.forEach(key => localStorage.removeItem(key));
     
-    window.location.href = 'login.html?next=gallery.html&reason=Please log in';
+    window.location.href = 'index.html?next=gallery.html&reason=Please log in';
     return;
   }
 
@@ -3152,7 +3152,7 @@ function logout() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('user_id');
   localStorage.removeItem('user');
-  window.location.href = 'login.html';
+  window.location.href = 'index.html';
 }
 
 // Prevent form submission on search input
