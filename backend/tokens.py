@@ -51,7 +51,7 @@ class TokenUsageLog(Base):
     user = relationship("User", back_populates="token_usage_logs")
 
 router = APIRouter(prefix="/tokens", tags=["auth"])
-TOKEN_PRICE_CENTS = 7
+TOKEN_PRICE_CENTS = 100
 
 FRONTEND_BASE_URL = "http://127.0.0.1:8080"
 from pydantic import BaseModel, AnyHttpUrl
