@@ -821,9 +821,10 @@ def delete_user(user_email: str) -> bool:
 
     # 3) Drop the user's database via superuser connection
     conn_str = (
-        f"postgresql://{POSTGRES_USER}:"
-        f"{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
+    "?sslmode=require"
     )
+
     engine = create_engine(conn_str, isolation_level="AUTOCOMMIT")
     try:
         with engine.connect() as conn:
