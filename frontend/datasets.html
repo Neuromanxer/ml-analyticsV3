@@ -731,10 +731,12 @@ function loadDatasetsWithAuth() {
     
     const token = safeStorageGet('access_token');
     
-    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {}, {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
+    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {
+    headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    },
+    credentials: 'include'
     })
     .then(response => response.json())
     .then(data => {
@@ -941,12 +943,15 @@ function uploadDataset(event) {
     const token = safeStorageGet('access_token');
 
     fetch(`${API_BASE_URL}/datasets`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        },
-        body: formData
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'  // optional but recommended
+    },
+    body: formData,
+    credentials: 'include'
     })
+
     .then(response => {
         if (!response.ok) {
             if (response.status === 401 || response.status === 403) {
@@ -990,7 +995,8 @@ async function fetchWithAuth(url, token) {
     headers: { 
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
-    }
+    },
+    credentials: 'include'  // ⬅️ ensures session/cookie support
   });
 
   if (!response.ok) {
@@ -1251,9 +1257,12 @@ function deleteDataset(datasetId) {
         fetch(`${API_BASE_URL}/datasets/${datasetId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token}`
-            }
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            },
+            credentials: 'include'
         })
+
         .then(response => {
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403) {
