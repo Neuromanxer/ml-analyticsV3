@@ -15,6 +15,7 @@ import json
 import numpy as np
 import io
 import shap
+import tempfile
 # -- replace these imports with your actual module paths --
 from .preprocessing import preprocess_data
 from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
@@ -44,7 +45,7 @@ from .anomaly_detection import train_best_anomaly_detection
 import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
-
+from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
 # OAuth2 scheme
 # Configure logging
 logging.basicConfig(
@@ -197,7 +198,6 @@ def _append_limited_metadata(user_id: str, new_entry: Dict[str, Any], max_entrie
     except Exception as e:
         logging.error(f"❌ Failed to append limited metadata for {user_id}: {e}")
         raise
-
 def do_classification(
     user_id: str,
     file_path: str = None,
@@ -209,11 +209,10 @@ def do_classification(
 ) -> dict:
     import json
     import subprocess
-
-    # Prepare directories
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    PathL("models").mkdir(exist_ok=True)
+    import tempfile
+    import os
+    import pandas as pd
+    from pathlib import Path as PathL
 
     # Validate upload mode
     if file_path and (train_path or test_path):
@@ -222,302 +221,365 @@ def do_classification(
         raise ValueError("Both train_path and test_path must be provided together.")
     if not file_path and not (train_path and test_path):
         raise ValueError("Provide either a full dataset (file_path) or both train_path+test_path.")
-
-    if file_path:
-        df = pd.read_csv(file_path)
-        if drop_columns:
-            drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
-            df.drop(columns=drops, inplace=True)
-
-        if target_column not in df.columns:
-            raise ValueError(f"Target column '{target_column}' not found in dataset.")
-        y = df[target_column]
-        X = df.drop(columns=['ID', target_column], errors='ignore')
-
-
-        X, _, _ = preprocess_data(X)
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
-        test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
-        dataset_name = os.path.basename(file_path)
-
-    else:
-        train_df = pd.read_csv(train_path)
-        test_df = pd.read_csv(test_path)
-
-        if drop_columns:
-            drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
-            train_df.drop(columns=[c for c in drops if c in train_df.columns], inplace=True)
-            test_df.drop(columns=[c for c in drops if c in test_df.columns], inplace=True)
-
-        if target_column not in train_df.columns:
-            raise ValueError(f"Target column '{target_column}' not found in training dataset.")
-        if target_column not in test_df.columns:
-            raise ValueError(f"Target column '{target_column}' not found in test dataset.")
-
-        # Extract targets
-        y_train = train_df[target_column]
-        y_test  = test_df[target_column]
-
-        # Drop ID and target from features
-        X_train = train_df.drop(columns=[target_column], errors='ignore')
-        X_test  = test_df.drop(columns=[target_column], errors='ignore')
-
-        X_train.drop(columns=["ID"], inplace=True, errors='ignore')
-        X_test.drop(columns=["ID"], inplace=True, errors='ignore')
-
-        # Now preprocess
-        X_train, _, _ = preprocess_data(X_train)
-        X_test, _, _ = preprocess_data(X_test)
-
-
-        common_columns = list(set(X_train.columns) & set(X_test.columns))
-        X_train = X_train[common_columns]
-        X_test = X_test[common_columns]
-
-        train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
-        test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
-        dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
-        
-    trainer = ModelClassifyingTrainer(train_df, n_splits=5)
-    lgb_models, lgb_oof = trainer.train_model(lgb_params_c, target_column, title="LightGBM")
-    ctb_models, ctb_oof = trainer.train_model(cat_params_c, target_column, title="CatBoost")
-    xgb_models, xgb_oof = trainer.train_model(xgb_params_c, target_column, title="XGBoost")
-
-    # ───── CV Performance ─────
-    cv_scores = {
-        name: {
-            "accuracy": accuracy_score(y_train, preds),
-            "f1": f1_score(y_train, preds, average="weighted"),
-            "precision": precision_score(y_train, preds, average="weighted"),
-            "recall": recall_score(y_train, preds, average="weighted")
-        } for name, preds in zip(["LightGBM", "CatBoost", "XGBoost"], [lgb_oof, ctb_oof, xgb_oof])
-    }
-        # ───── Save training columns for SHAP alignment ─────
-    training_columns = list(X_train.columns)
-    with open(user_dir / "training_columns.json", "w") as f:
-        json.dump(training_columns, f)
-    # ───── Pick Best ─────
-    best_name = max(cv_scores, key=lambda m: cv_scores[m]["f1"])
-    best_models = {
-        "LightGBM": lgb_models,
-        "CatBoost": ctb_models,
-        "XGBoost": xgb_models
-    }[best_name]
-    final_model = clone(best_models[0])
-
-    # ───── Align X_test to match training columns ─────
-    missing_cols = set(X_train.columns) - set(X_test.columns)
-    extra_cols = set(X_test.columns) - set(X_train.columns)
-    for col in missing_cols:
-        X_test[col] = 0
-    X_test.drop(columns=list(extra_cols), inplace=True, errors='ignore')
-    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
-
-    if file_path:
-        full_df = train_df.copy()  # already processed
-    else:
-        full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
-
-    X_full = full_df.drop(columns=['ID', target_column], errors='ignore')
-    y_full = full_df[target_column]
-
-    # Ensure full_df matches training columns
-    X_full = X_full.reindex(columns=X_train.columns, fill_value=0)
-    final_model.fit(X_full, y_full)
-    # ───── Evaluate on test set ─────
-    preds = final_model.predict(X_test)
-    test_scores = {
-        "accuracy": accuracy_score(y_test, preds),
-        "f1": f1_score(y_test, preds, average="weighted"),
-        "precision": precision_score(y_test, preds, average="weighted"),
-        "recall": recall_score(y_test, preds, average="weighted")
-    }
-    # Add conversion rate if binary classification
-    if len(set(y_test)) == 2:
-        tp = ((y_test == 1) & (preds == 1)).sum()
-        predicted_positive = (preds == 1).sum()
-        conversion_rate = tp / predicted_positive if predicted_positive else 0.0
-        test_scores["conversion_rate"] = round(conversion_rate * 100, 2)
-        # Class distribution (predicted)
-    class_distribution = dict(Counter(preds))
-
-    # Confusion matrix
-    cm = confusion_matrix(y_test, preds).tolist()  # Make it JSON serializable
-    # Classification report (includes precision, recall, F1 per class)
-    report = classification_report(y_test, preds, output_dict=True)
-    # 1. Class distribution plot
+    
+    # Handle file downloads from Supabase
+    # Note: file_path, train_path, test_path are now Supabase storage paths (e.g., "user123/dataset.csv")
+    local_file_path = None
+    local_train_path = None
+    local_test_path = None
+    temp_files = []
+    
     try:
-        fig_dist = plt.figure()
-        sns.barplot(x=list(class_distribution.keys()), y=list(class_distribution.values()))
-        plt.title("Class Distribution")
-        plt.xlabel("Predicted Class")
-        plt.ylabel("Count")
-        class_dist_base64 = plot_to_base64(fig_dist)
-        plt.close(fig_dist)
+        # Create temporary directory for processing
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download files from Supabase to temporary locations
+            if file_path:
+                # Download single file from Supabase using the storage path
+                file_bytes = download_file_from_supabase(file_path)
+                local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
+                with open(local_file_path, 'wb') as f:
+                    f.write(file_bytes)
+                temp_files.append(local_file_path)
+            
+            if train_path and test_path:
+                # Download train and test files from Supabase using the storage paths
+                train_bytes = download_file_from_supabase(train_path)
+                test_bytes = download_file_from_supabase(test_path)
+                
+                local_train_path = os.path.join(temp_dir, os.path.basename(train_path))
+                local_test_path = os.path.join(temp_dir, os.path.basename(test_path))
+                
+                with open(local_train_path, 'wb') as f:
+                    f.write(train_bytes)
+                with open(local_test_path, 'wb') as f:
+                    f.write(test_bytes)
+                    
+                temp_files.extend([local_train_path, local_test_path])
+            
+            # Prepare model directory
+            model_dir = os.path.join(temp_dir, "models")
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # Create user directory for outputs
+            user_dir = PathL(temp_dir) / "user_outputs"
+            user_dir.mkdir(exist_ok=True)
+            
+            # Process data based on single file or train/test split
+            if local_file_path:
+                df = pd.read_csv(local_file_path)
+                if drop_columns:
+                    drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
+                    df.drop(columns=drops, inplace=True)
+
+                if target_column not in df.columns:
+                    raise ValueError(f"Target column '{target_column}' not found in dataset.")
+                y = df[target_column]
+                X = df.drop(columns=['ID', target_column], errors='ignore')
+
+                X, _, _ = preprocess_data(X)
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y
+                )
+                train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
+                test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
+                dataset_name = os.path.basename(file_path)
+
+            else:
+                train_df = pd.read_csv(local_train_path)
+                test_df = pd.read_csv(local_test_path)
+
+                if drop_columns:
+                    drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
+                    train_df.drop(columns=[c for c in drops if c in train_df.columns], inplace=True)
+                    test_df.drop(columns=[c for c in drops if c in test_df.columns], inplace=True)
+
+                if target_column not in train_df.columns:
+                    raise ValueError(f"Target column '{target_column}' not found in training dataset.")
+                if target_column not in test_df.columns:
+                    raise ValueError(f"Target column '{target_column}' not found in test dataset.")
+
+                # Extract targets
+                y_train = train_df[target_column]
+                y_test = test_df[target_column]
+
+                # Drop ID and target from features
+                X_train = train_df.drop(columns=[target_column], errors='ignore')
+                X_test = test_df.drop(columns=[target_column], errors='ignore')
+
+                X_train.drop(columns=["ID"], inplace=True, errors='ignore')
+                X_test.drop(columns=["ID"], inplace=True, errors='ignore')
+
+                # Now preprocess
+                X_train, _, _ = preprocess_data(X_train)
+                X_test, _, _ = preprocess_data(X_test)
+
+                common_columns = list(set(X_train.columns) & set(X_test.columns))
+                X_train = X_train[common_columns]
+                X_test = X_test[common_columns]
+
+                train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
+                test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
+                dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
+            
+            # Train models
+            trainer = ModelClassifyingTrainer(train_df, n_splits=5)
+            lgb_models, lgb_oof = trainer.train_model(lgb_params_c, target_column, title="LightGBM")
+            ctb_models, ctb_oof = trainer.train_model(cat_params_c, target_column, title="CatBoost")
+            xgb_models, xgb_oof = trainer.train_model(xgb_params_c, target_column, title="XGBoost")
+
+            # CV Performance
+            cv_scores = {
+                name: {
+                    "accuracy": accuracy_score(y_train, preds),
+                    "f1": f1_score(y_train, preds, average="weighted"),
+                    "precision": precision_score(y_train, preds, average="weighted"),
+                    "recall": recall_score(y_train, preds, average="weighted")
+                } for name, preds in zip(["LightGBM", "CatBoost", "XGBoost"], [lgb_oof, ctb_oof, xgb_oof])
+            }
+            
+            # Save training columns for SHAP alignment
+            training_columns = list(X_train.columns)
+            with open(user_dir / "training_columns.json", "w") as f:
+                json.dump(training_columns, f)
+            
+            # Pick Best Model
+            best_name = max(cv_scores, key=lambda m: cv_scores[m]["f1"])
+            best_models = {
+                "LightGBM": lgb_models,
+                "CatBoost": ctb_models,
+                "XGBoost": xgb_models
+            }[best_name]
+            final_model = clone(best_models[0])
+
+            # Align X_test to match training columns
+            missing_cols = set(X_train.columns) - set(X_test.columns)
+            extra_cols = set(X_test.columns) - set(X_train.columns)
+            for col in missing_cols:
+                X_test[col] = 0
+            X_test.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+            X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
+            if local_file_path:
+                full_df = train_df.copy()
+            else:
+                full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+
+            X_full = full_df.drop(columns=['ID', target_column], errors='ignore')
+            y_full = full_df[target_column]
+
+            # Ensure full_df matches training columns
+            X_full = X_full.reindex(columns=X_train.columns, fill_value=0)
+            final_model.fit(X_full, y_full)
+            
+            # Evaluate on test set
+            preds = final_model.predict(X_test)
+            test_scores = {
+                "accuracy": accuracy_score(y_test, preds),
+                "f1": f1_score(y_test, preds, average="weighted"),
+                "precision": precision_score(y_test, preds, average="weighted"),
+                "recall": recall_score(y_test, preds, average="weighted")
+            }
+            
+            # Initialize conversion_rate for later use
+            conversion_rate = 0.0
+            
+            # Add conversion rate if binary classification
+            if len(set(y_test)) == 2:
+                tp = ((y_test == 1) & (preds == 1)).sum()
+                predicted_positive = (preds == 1).sum()
+                conversion_rate = tp / predicted_positive if predicted_positive else 0.0
+                test_scores["conversion_rate"] = round(conversion_rate * 100, 2)
+            
+            # Class distribution (predicted)
+            class_distribution = dict(Counter(preds))
+
+            # Confusion matrix
+            cm = confusion_matrix(y_test, preds).tolist()
+            
+            # Classification report
+            report = classification_report(y_test, preds, output_dict=True)
+            
+            # Generate visualizations
+            # 1. Class distribution plot
+            try:
+                fig_dist = plt.figure()
+                sns.barplot(x=list(class_distribution.keys()), y=list(class_distribution.values()))
+                plt.title("Class Distribution")
+                plt.xlabel("Predicted Class")
+                plt.ylabel("Count")
+                class_dist_base64 = plot_to_base64(fig_dist)
+                plt.close(fig_dist)
+            except Exception as e:
+                print(f"[⚠️] Class distribution plot failed: {e}")
+                class_dist_base64 = ""
+
+            # 2. Confusion matrix plot
+            try:
+                fig_cm = plt.figure(figsize=(6, 5))
+                sns.heatmap(cm, annot=True, fmt='d', cmap="Blues")
+                plt.title("Confusion Matrix")
+                plt.xlabel("Predicted")
+                plt.ylabel("Actual")
+                confusion_matrix_base64 = plot_to_base64(fig_cm)
+                plt.close(fig_cm)
+            except Exception as e:
+                print(f"[⚠️] Confusion matrix plot failed: {e}")
+                confusion_matrix_base64 = ""
+
+            # 3. Classification report table as image
+            try:
+                fig_report = plt.figure(figsize=(8, 4))
+                report_df = pd.DataFrame(report).transpose()
+                sns.heatmap(report_df.iloc[:-1, :-1], annot=True, fmt=".2f", cmap="YlGnBu")
+                plt.title("Classification Report")
+                classification_report_base64 = plot_to_base64(fig_report)
+                plt.close(fig_report)
+            except Exception as e:
+                print(f"[⚠️] Classification report plot failed: {e}")
+                classification_report_base64 = ""
+
+            # Save Final Model and Data (temporarily in temp directory)
+            model_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
+            joblib.dump(final_model, model_path)
+
+            data_path = user_dir / "data.csv"
+            full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
+            full_df_model_data.to_csv(data_path, index=False)
+
+            # Create request JSON for SHAP
+            request_json = user_dir / "request.json"
+            with open(request_json, "w") as f:
+                json.dump({
+                    "user_id": str(user_id),
+                    "model_path": str(model_path.resolve()),
+                    "data_path": str(data_path.resolve()),
+                    "output_dir": str(user_dir.resolve()),
+                    "model_type": "classifier",
+                    "target_column": target_column,
+                    "drop_columns": drop_columns
+                }, f)
+            
+            # Run SHAP Visualizations
+            try:
+                subprocess.run(["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())], check=True)
+                with open(user_dir / "result.json") as f:
+                    result = json.load(f)
+                fi_shap_bar = result.get("shap_bar")
+                fi_shap_dot = result.get("shap_dot")
+                imp_df = pd.DataFrame(result.get("imp_df"))
+            except Exception as viz_error:
+                print(f"[⚠️] Visualization error: {viz_error}")
+                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
+            # TODO: Upload model and data files back to Supabase for persistence
+            # This would involve uploading the model_path and data_path files
+            # and updating the paths in the response to point to Supabase locations
+            
+            # Save Metadata for Gallery
+            from tabulate import tabulate
+
+            # Flatten cv_scores into a list of rows
+            cv_table = [
+                [model, scores["accuracy"], scores["f1"], scores["precision"], scores["recall"]]
+                for model, scores in cv_scores.items()
+            ]
+
+            headers = ["Model", "Accuracy", "F1", "Precision", "Recall"]
+            
+            # Create entry for metadata
+            if len(set(y_test)) == 2:
+                tn, fp, fn, tp = confusion_matrix(y_test, preds).ravel()
+                impact_metrics = {
+                    "true_positives": int(tp),
+                    "false_positives": int(fp),
+                    "false_negatives": int(fn),
+                    "true_negatives": int(tn),
+                    "n_samples": len(y_test),
+                    "predicted_positive": int(sum(preds)),
+                    "actual_positive": int(sum(y_test)),
+                    "conversion_rate": round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0,
+                }
+            else:
+                impact_metrics = {
+                    "n_samples": len(y_test),
+                    "correct_predictions": int((preds == y_test).sum()),
+                    "total_classes": int(len(set(y_test))),
+                }
+            
+            entry = {
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "classification",
+                "dataset": dataset_name,
+                "parameters": {"drop_columns": drop_columns},
+                "test_scores": test_scores,
+                "cv_scores": cv_table,
+                "target_column": target_column,
+                "visualizations": {
+                    "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                    "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else "",
+                },
+                "thumbnailData": f"data:image/png;base64,{fi_shap_bar or fi_shap_dot or ''}",
+                "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
+                "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                "conversion_rate": conversion_rate
+            }
+            
+            # Add additional visualizations
+            if class_dist_base64:
+                entry["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
+            if confusion_matrix_base64:
+                entry["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
+            if classification_report_base64:
+                entry["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
+
+            try:
+                _append_limited_metadata(user_id, entry, max_entries=5)
+            except Exception as meta_error:
+                print(f"[⚠️] Metadata save error: {meta_error}")
+
+            # Final API Response
+            response_data = {
+                "status": "success",
+                "user_id": user_id,
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "classification",
+                "best_model": best_name,
+                "test_scores": test_scores,
+                "cv_scores": cv_scores,
+                "visualizations": {},
+                "insights": "",
+                "conversion_rate": round(conversion_rate * 100, 2),
+                "target_column": target_column,
+                "dataset": dataset_name,
+                "parameters": {"drop_columns": drop_columns},
+            }
+
+            if fi_shap_bar:
+                response_data["visualizations"]["feature_importance"] = f"data:image/png;base64,{fi_shap_bar}"
+            if fi_shap_dot:
+                response_data["visualizations"]["feature_importance_detailed"] = f"data:image/png;base64,{fi_shap_dot}"
+            if class_dist_base64:
+                response_data["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
+            if confusion_matrix_base64:
+                response_data["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
+            if classification_report_base64:
+                response_data["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
+
+            # Optional: Generate Insights
+            try:
+                insights = generate_insights("classification", response_data)
+                response_data["insights"] = insights
+            except Exception as insight_err:
+                print(f"[⚠️] Insight generation failed: {insight_err}")
+                response_data["insights"] = "Could not generate insights."
+
+            return response_data
+            
     except Exception as e:
-        print(f"[⚠️] Class distribution plot failed: {e}")
-        class_dist_base64 = ""
-
-    # 2. Confusion matrix plot
-    try:
-        fig_cm = plt.figure(figsize=(6, 5))
-        sns.heatmap(cm, annot=True, fmt='d', cmap="Blues")
-        plt.title("Confusion Matrix")
-        plt.xlabel("Predicted")
-        plt.ylabel("Actual")
-        confusion_matrix_base64 = plot_to_base64(fig_cm)
-        plt.close(fig_cm)
-    except Exception as e:
-        print(f"[⚠️] Confusion matrix plot failed: {e}")
-        confusion_matrix_base64 = ""
-
-    # 3. Classification report table as image
-    try:
-        fig_report = plt.figure(figsize=(8, 4))
-        report_df = pd.DataFrame(report).transpose()
-        sns.heatmap(report_df.iloc[:-1, :-1], annot=True, fmt=".2f", cmap="YlGnBu")
-        plt.title("Classification Report")
-        classification_report_base64 = plot_to_base64(fig_report)
-        plt.close(fig_report)
-    except Exception as e:
-        print(f"[⚠️] Classification report plot failed: {e}")
-        classification_report_base64 = ""
-
-    # ─────── Save Final Model and Data ───────
-    model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
-    joblib.dump(final_model, model_path)
-
-    data_path = user_dir / "data.csv"
-    full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
-    full_df_model_data.to_csv(data_path, index=False)
-
-
-    request_json = user_dir / "request.json"
-    with open(request_json, "w") as f:
-        json.dump({
-            "user_id": str(user_id),
-            "model_path": str(model_path.resolve()),
-            "data_path": str(data_path.resolve()),
-            "output_dir": str(user_dir.resolve()),
-            "model_type": "classifier",
-            "target_column": target_column,
-            "drop_columns": drop_columns
-        }, f)
-    # ─────── Run SHAP Visualizations ───────
-    try:
-        subprocess.run(["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())], check=True)
-        with open(user_dir / "result.json") as f:
-            result = json.load(f)
-        fi_shap_bar = result.get("shap_bar")
-        fi_shap_dot = result.get("shap_dot")
-        imp_df = pd.DataFrame(result.get("imp_df"))
-    except Exception as viz_error:
-        print(f"[⚠️] Visualization error: {viz_error}")
-        fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-    # ─────── Save Metadata for Gallery ───────
-    # Replace the try/except block around metadata saving with:
-    from tabulate import tabulate
-
-    # Flatten cv_scores into a list of rows
-    cv_table = [
-        [model, scores["accuracy"], scores["f1"], scores["precision"], scores["recall"]]
-        for model, scores in cv_scores.items()
-    ]
-
-    headers = ["Model", "Accuracy", "F1", "Precision", "Recall"]
-    # Create entry (your existing entry code)
-    tn, fp, fn, tp = confusion_matrix(y_test, preds).ravel()
-    entry = {
-        "id": str(uuid.uuid4()),
-        "created_at": datetime.utcnow().isoformat(),
-        "type": "classification",
-        "dataset": dataset_name,
-        "parameters": {"drop_columns": drop_columns},
-        "test_scores": test_scores,
-        "cv_scores": cv_table,
-        "target_column": target_column,
-        "visualizations": {
-            "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-            "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else "",
-        },
-        "thumbnailData": f"data:image/png;base64,{fi_shap_bar or fi_shap_dot or ''}",
-        "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
-        "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-        "convversion_rate" : conversion_rate
-    }
-    if len(set(y_test)) == 2:
-        tn, fp, fn, tp = confusion_matrix(y_test, preds).ravel()
-        impact_metrics = {
-            "true_positives": int(tp),
-            "false_positives": int(fp),
-            "false_negatives": int(fn),
-            "true_negatives": int(tn),
-            "n_samples": len(y_test),
-            "predicted_positive": int(sum(preds)),
-            "actual_positive": int(sum(y_test)),
-            "conversion_rate": round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0,
-        }
-    else:
-        impact_metrics = {
-            "n_samples": len(y_test),
-            "correct_predictions": int((preds == y_test).sum()),
-            "total_classes": int(len(set(y_test))),
-        }
-    # Add additional visualizations
-    if class_dist_base64:
-        entry["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
-    if confusion_matrix_base64:
-        entry["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
-    if classification_report_base64:
-        entry["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
-
-    try:
-        _append_limited_metadata(user_id, entry, max_entries=5)
-    except Exception as meta_error:
-        print(f"[⚠️] Metadata save error: {meta_error}")
-
-    # ─────── Final API Response ───────
-    response_data = {
-        "status": "success",
-        "user_id": user_id,
-        "id": str(uuid.uuid4()),
-        "created_at": datetime.utcnow().isoformat(),
-        "type": "classification",
-        "best_model": best_name,
-        "test_scores": test_scores,
-        "cv_scores": cv_scores,
-        "visualizations": {},
-        "insights": "",
-        "conversion_rate": round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0,
-        "target_column": target_column,
-        "dataset": dataset_name,
-        "parameters": {"drop_columns": drop_columns},
-    }
-
-    if fi_shap_bar:
-        response_data["visualizations"]["feature_importance"] = f"data:image/png;base64,{fi_shap_bar}"
-    if fi_shap_dot:
-        response_data["visualizations"]["feature_importance_detailed"] = f"data:image/png;base64,{fi_shap_dot}"
-    if class_dist_base64:
-        response_data["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
-    if confusion_matrix_base64:
-        response_data["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
-
-    if classification_report_base64:
-        response_data["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
-
-    # ─────── Optional: Generate Insights ───────
-    try:
-        insights = generate_insights("classification", response_data)
-        response_data["insights"] = insights
-    except Exception as insight_err:
-        print(f"[⚠️] Insight generation failed: {insight_err}")
-        response_data["insights"] = "Could not generate insights."
-
-    return response_data
+        print(f"[⚠️] Error in do_classification: {e}")
+        raise e
 def do_classification_predict(
     user_id: str,
     current_user: dict,
@@ -530,27 +592,13 @@ def do_classification_predict(
     
     Args:
         user_id: User identifier to locate the saved model
-        prediction_file_path: Path to CSV file containing new data for predictions
+        file_path: Supabase path to CSV file containing new data for predictions
         drop_columns: Comma-separated column names to drop before prediction
         output_predictions: Whether to save predictions to a CSV file
     
     Returns:
         Dictionary containing file path to predictions and metadata
     """
-    import json
-    import pandas as pd
-    import joblib
-    import numpy as np
-    from pathlib import Path as PathL
-    from collections import Counter
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import base64
-    from io import BytesIO
-    import os
-    import uuid
-    from datetime import datetime
-
     def convert_numpy_types(obj):
         """Convert numpy types to native Python types for JSON serialization"""
         if isinstance(obj, np.integer):
@@ -567,241 +615,278 @@ def do_classification_predict(
             return obj
 
     try:
-        # Setup paths
-        user_dir = PathL("user_uploads") / str(user_id)
+        # Setup paths - models are still stored locally, but data files are in Supabase
         model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
-        training_columns_path = user_dir / "training_columns.json"
+        
+        # For training columns, we'll also store this in Supabase
+        training_columns_supabase_path = f"{user_id}/training_columns.json"
 
         # Validate required files exist
         if not model_path.exists():
             raise FileNotFoundError(f"No trained model found for user {user_id}. Please train a model first.")
         
-        if not training_columns_path.exists():
-            raise FileNotFoundError(f"Training columns metadata not found for user {user_id}.")
+        # Download training columns from Supabase
+        try:
+            training_columns_data = download_file_from_supabase(training_columns_supabase_path)
+            training_columns = json.loads(training_columns_data.decode('utf-8'))
+        except Exception as e:
+            raise FileNotFoundError(f"Training columns metadata not found for user {user_id} in Supabase: {str(e)}")
         
-        if not PathL(file_path).exists():
-            raise FileNotFoundError(f"Prediction file not found: {file_path}")
-        dataset_name = os.path.basename(file_path)
+        # Download prediction data from Supabase
+        try:
+            prediction_data = download_file_from_supabase(file_path)
+            dataset_name = os.path.basename(file_path)
+        except Exception as e:
+            raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
         
-        # Load the trained model
+        # Load the trained model (still stored locally)
         print(f"[📁] Loading model from {model_path}")
         model = joblib.load(model_path)
         
-        # Load training columns for alignment
-        with open(training_columns_path, "r") as f:
-            training_columns = json.load(f)
+        # Create temporary file to load CSV data
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
+            temp_file.write(prediction_data)
+            temp_csv_path = temp_file.name
         
-        # Load and preprocess prediction data
-        print(f"[📊] Loading prediction data from {file_path}")
-        pred_df = pd.read_csv(file_path)
-        original_shape = pred_df.shape
-        
-        # Store original dataframe for final output
-        original_df = pred_df.copy()
-        
-        # Store original ID column if present
-        id_column = None
-        if 'ID' in pred_df.columns:
-            id_column = pred_df['ID'].copy()
-
-        # Save original ID column if available
-        id_column = pred_df['ID'].copy() if 'ID' in pred_df.columns else None
-
-        # Save target column (if known or common name exists)
-        known_targets = ['target', 'label', 'class', 'y', 'Target', 'Label', 'Class']
-        target_column_actual = None
-        for col in known_targets:
-            if col in pred_df.columns:
-                target_column_actual = col
-                break
-
-        # Save target values if found (for conversion rate calc)
-        true_labels = pred_df[target_column_actual].copy() if target_column_actual else None
-
-        # Drop ID and target ONLY from features going into model
-        drop_features = ['ID']
-        if target_column_actual:
-            drop_features.append(target_column_actual)
-
-        # Drop specified columns
-        if drop_columns:
-            drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in pred_df.columns]
-            pred_df.drop(columns=drops, inplace=True)
-            print(f"[🗑️] Dropped columns: {drops}")
-        
-        pred_df.drop(columns=drop_features, inplace=True, errors='ignore')
-
-        # Preprocess the data using the same function as training
-        print("[🔄] Preprocessing prediction data...")
-        X_pred, _, _ = preprocess_data(pred_df)
-        
-        # Align columns with training data
-        print("[🔧] Aligning features with training data...")
-        missing_cols = set(training_columns) - set(X_pred.columns)
-        extra_cols = set(X_pred.columns) - set(training_columns)
-        
-        # Add missing columns with default values
-        for col in missing_cols:
-            X_pred[col] = 0
+        try:
+            # Load and preprocess prediction data
+            print(f"[📊] Loading prediction data from Supabase: {file_path}")
+            pred_df = pd.read_csv(temp_csv_path)
+            original_shape = pred_df.shape
             
-        # Remove extra columns
-        X_pred.drop(columns=list(extra_cols), inplace=True, errors='ignore')
-        
-        # Reorder columns to match training
-        X_pred = X_pred.reindex(columns=training_columns, fill_value=0)
-        
-        print(f"[✅] Feature alignment complete: {len(training_columns)} features")
-        predictions = model.predict(X_pred)
-        
-        # Conversion Rate Calculation (only if target exists and binary)
-        conversion_rate = None
-        if true_labels is not None and hasattr(model, "classes_") and len(model.classes_) == 2:
-            predicted_positive = (predictions == 1).sum()
-            tp = ((true_labels == 1) & (predictions == 1)).sum()
-            conversion_rate = float((tp / predicted_positive) * 100) if predicted_positive else 0.0
+            # Store original dataframe for final output
+            original_df = pred_df.copy()
+            
+            # Store original ID column if present
+            id_column = None
+            if 'ID' in pred_df.columns:
+                id_column = pred_df['ID'].copy()
 
-        prediction_probs = None
-        if hasattr(model, 'predict_proba'):
-            try:
-                prediction_probs = model.predict_proba(X_pred)
-                max_probs = np.max(prediction_probs, axis=1)
-            except:
-                prediction_probs = None
+            # Save original ID column if available
+            id_column = pred_df['ID'].copy() if 'ID' in pred_df.columns else None
+
+            # Save target column (if known or common name exists)
+            known_targets = ['target', 'label', 'class', 'y', 'Target', 'Label', 'Class']
+            target_column_actual = None
+            for col in known_targets:
+                if col in pred_df.columns:
+                    target_column_actual = col
+                    break
+
+            # Save target values if found (for conversion rate calc)
+            true_labels = pred_df[target_column_actual].copy() if target_column_actual else None
+
+            # Drop ID and target ONLY from features going into model
+            drop_features = ['ID']
+            if target_column_actual:
+                drop_features.append(target_column_actual)
+
+            # Drop specified columns
+            if drop_columns:
+                drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in pred_df.columns]
+                pred_df.drop(columns=drops, inplace=True)
+                print(f"[🗑️] Dropped columns: {drops}")
+            
+            pred_df.drop(columns=drop_features, inplace=True, errors='ignore')
+
+            # Preprocess the data using the same function as training
+            print("[🔄] Preprocessing prediction data...")
+            X_pred, _, _ = preprocess_data(pred_df)
+            
+            # Align columns with training data
+            print("[🔧] Aligning features with training data...")
+            missing_cols = set(training_columns) - set(X_pred.columns)
+            extra_cols = set(X_pred.columns) - set(training_columns)
+            
+            # Add missing columns with default values
+            for col in missing_cols:
+                X_pred[col] = 0
+                
+            # Remove extra columns
+            X_pred.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+            
+            # Reorder columns to match training
+            X_pred = X_pred.reindex(columns=training_columns, fill_value=0)
+            
+            print(f"[✅] Feature alignment complete: {len(training_columns)} features")
+            predictions = model.predict(X_pred)
+            
+            # Conversion Rate Calculation (only if target exists and binary)
+            conversion_rate = None
+            if true_labels is not None and hasattr(model, "classes_") and len(model.classes_) == 2:
+                predicted_positive = (predictions == 1).sum()
+                tp = ((true_labels == 1) & (predictions == 1)).sum()
+                conversion_rate = float((tp / predicted_positive) * 100) if predicted_positive else 0.0
+
+            prediction_probs = None
+            if hasattr(model, 'predict_proba'):
+                try:
+                    prediction_probs = model.predict_proba(X_pred)
+                    max_probs = np.max(prediction_probs, axis=1)
+                except:
+                    prediction_probs = None
+                    max_probs = None
+            else:
                 max_probs = None
-        else:
-            max_probs = None
-        
-        # Create output dataframe by adding predictions to original data
-        output_df = original_df.copy()
-        output_df['prediction'] = predictions
-        
-        if max_probs is not None:
-            output_df['confidence'] = max_probs
             
-        # Add probability columns for each class if available
-        if prediction_probs is not None:
-            classes = model.classes_ if hasattr(model, 'classes_') else np.unique(predictions)
-            for i, class_name in enumerate(classes):
-                output_df[f'prob_class_{class_name}'] = prediction_probs[:, i]
-        
-        # Generate visualizations
-        visualizations = {}
-        
-        # 1. Prediction distribution
-        try:
-            pred_counts = Counter(predictions)
-            fig_dist = plt.figure(figsize=(8, 6))
-            sns.barplot(x=list(pred_counts.keys()), y=list(pred_counts.values()))
-            plt.title("Prediction Distribution")
-            plt.xlabel("Predicted Class")
-            plt.ylabel("Count")
-            plt.xticks(rotation=45)
-            visualizations["prediction_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_dist)}"
-            plt.close(fig_dist)
-        except Exception as e:
-            print(f"[⚠️] Prediction distribution plot failed: {e}")
-        
-        # 2. Confidence distribution (if available)
-        if max_probs is not None:
+            # Create output dataframe by adding predictions to original data
+            output_df = original_df.copy()
+            output_df['prediction'] = predictions
+            
+            if max_probs is not None:
+                output_df['confidence'] = max_probs
+                
+            # Add probability columns for each class if available
+            if prediction_probs is not None:
+                classes = model.classes_ if hasattr(model, 'classes_') else np.unique(predictions)
+                for i, class_name in enumerate(classes):
+                    output_df[f'prob_class_{class_name}'] = prediction_probs[:, i]
+            
+            # Generate visualizations
+            visualizations = {}
+            
+            # 1. Prediction distribution
             try:
-                fig_conf = plt.figure(figsize=(8, 6))
-                plt.hist(max_probs, bins=20, alpha=0.7, edgecolor='black')
-                plt.title("Prediction Confidence Distribution")
-                plt.xlabel("Confidence Score")
-                plt.ylabel("Frequency")
-                plt.axvline(np.mean(max_probs), color='red', linestyle='--', 
-                           label=f'Mean: {np.mean(max_probs):.3f}')
-                plt.legend()
-                visualizations["confidence_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_conf)}"
-                plt.close(fig_conf)
+                pred_counts = Counter(predictions)
+                fig_dist = plt.figure(figsize=(8, 6))
+                sns.barplot(x=list(pred_counts.keys()), y=list(pred_counts.values()))
+                plt.title("Prediction Distribution")
+                plt.xlabel("Predicted Class")
+                plt.ylabel("Count")
+                plt.xticks(rotation=45)
+                visualizations["prediction_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_dist)}"
+                plt.close(fig_dist)
             except Exception as e:
-                print(f"[⚠️] Confidence distribution plot failed: {e}")
-        
-        # Always save predictions to file (regardless of output_predictions flag)
-        output_path = user_dir / f"predictions_{PathL(file_path).stem}.csv"
-        output_df.to_csv(output_path, index=False)
-        print(f"[💾] Predictions saved to {output_path}")
-        
-        # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
-        pred_stats = {
-            "total_predictions": int(len(predictions)),
-            "unique_classes": int(len(set(predictions))),
-            "class_distribution": {str(k): int(v) for k, v in Counter(predictions).items()},
-            "most_common_class": str(Counter(predictions).most_common(1)[0][0]),
-            "original_data_shape": [int(x) for x in original_shape],
-            "processed_data_shape": [int(x) for x in X_pred.shape]
-        }
-        
-        if max_probs is not None:
-            pred_stats.update({
-                "mean_confidence": float(np.mean(max_probs)),
-                "min_confidence": float(np.min(max_probs)),
-                "max_confidence": float(np.max(max_probs)),
-                "low_confidence_count": int(np.sum(max_probs < 0.7)),
-                "high_confidence_count": int(np.sum(max_probs > 0.9))
-            })
-        
-        entry = {
-            "id": str(uuid.uuid4()),
-            "created_at": datetime.utcnow().isoformat(),
-            "type": "classification_prediction",
-            "target_col": target_column_actual,
-            "dataset": os.path.basename(file_path),
-            "conversion_rate": conversion_rate if true_labels is not None else None,
-            "metrics": pred_stats,
-            "output_file": str(output_path).replace("\\", "/"),
-            "visualizations": visualizations,
-            "thumbnailData":  visualizations["prediction_distribution"],
-            "imageData":  visualizations["confidence_distribution"],
-            "feature_alignment": {
-                "training_features": int(len(training_columns)),
-                "prediction_features": int(len(X_pred.columns)),
-                "missing_features_added": list(missing_cols),
-                "extra_features_removed": list(extra_cols)
+                print(f"[⚠️] Prediction distribution plot failed: {e}")
+            
+            # 2. Confidence distribution (if available)
+            if max_probs is not None:
+                try:
+                    fig_conf = plt.figure(figsize=(8, 6))
+                    plt.hist(max_probs, bins=20, alpha=0.7, edgecolor='black')
+                    plt.title("Prediction Confidence Distribution")
+                    plt.xlabel("Confidence Score")
+                    plt.ylabel("Frequency")
+                    plt.axvline(np.mean(max_probs), color='red', linestyle='--', 
+                               label=f'Mean: {np.mean(max_probs):.3f}')
+                    plt.legend()
+                    visualizations["confidence_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_conf)}"
+                    plt.close(fig_conf)
+                except Exception as e:
+                    print(f"[⚠️] Confidence distribution plot failed: {e}")
+            
+            # Save predictions to temporary file, then upload to Supabase
+            output_filename = f"predictions_{PathL(file_path).stem}.csv"
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_output:
+                output_df.to_csv(temp_output.name, index=False)
+                temp_output_path = temp_output.name
+            
+            try:
+                # Upload predictions to Supabase
+                supabase_output_path = upload_file_to_supabase(
+                    user_id=str(user_id),
+                    file_path=temp_output_path,
+                    filename=output_filename
+                )
+                
+                # Get signed URL for the output file
+                signed_url_response = get_file_url(supabase_output_path, expires_in=3600)
+                signed_url = signed_url_response.get('signedURL') if signed_url_response else None
+                
+                print(f"[💾] Predictions uploaded to Supabase: {supabase_output_path}")
+                
+            finally:
+                # Clean up temporary output file
+                os.unlink(temp_output_path)
+            
+            # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
+            pred_stats = {
+                "total_predictions": int(len(predictions)),
+                "unique_classes": int(len(set(predictions))),
+                "class_distribution": {str(k): int(v) for k, v in Counter(predictions).items()},
+                "most_common_class": str(Counter(predictions).most_common(1)[0][0]),
+                "original_data_shape": [int(x) for x in original_shape],
+                "processed_data_shape": [int(x) for x in X_pred.shape]
             }
-        }
+            
+            if max_probs is not None:
+                pred_stats.update({
+                    "mean_confidence": float(np.mean(max_probs)),
+                    "min_confidence": float(np.min(max_probs)),
+                    "max_confidence": float(np.max(max_probs)),
+                    "low_confidence_count": int(np.sum(max_probs < 0.7)),
+                    "high_confidence_count": int(np.sum(max_probs > 0.9))
+                })
+            
+            entry = {
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "classification_prediction",
+                "target_col": target_column_actual,
+                "dataset": dataset_name,
+                "conversion_rate": conversion_rate if true_labels is not None else None,
+                "metrics": pred_stats,
+                "output_file": supabase_output_path,
+                "signed_url": signed_url,
+                "visualizations": visualizations,
+                "thumbnailData": visualizations.get("prediction_distribution"),
+                "imageData": visualizations.get("confidence_distribution"),
+                "feature_alignment": {
+                    "training_features": int(len(training_columns)),
+                    "prediction_features": int(len(X_pred.columns)),
+                    "missing_features_added": list(missing_cols),
+                    "extra_features_removed": list(extra_cols)
+                }
+            }
 
-        try:
-            _append_limited_metadata(user_id, entry)
-        except Exception as meta_error:
-            print(f"[⚠️] Failed to save prediction metadata: {meta_error}")
+            try:
+                _append_limited_metadata(user_id, entry)
+            except Exception as meta_error:
+                print(f"[⚠️] Failed to save prediction metadata: {meta_error}")
 
-        # Prepare response - CONVERT ALL NUMPY TYPES
-        response_data = {
-            "status": "success",
-            "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "type": "classification",
-            "dataset": dataset_name,
-            "parameters": {"drop_columns": drop_columns},
-            "file": file_path,
-            "output_file": str(output_path).replace("\\", "/"),
-            "output_file_name": f"predictions_{PathL(file_path).stem}.csv",
-            "metrics": pred_stats,
-            "data_preview": output_df.head(10).to_dict('records'),  # Show first 10 rows as preview
-            "total_rows": len(output_df),
-            "columns_added": ["prediction"] + ([f"prob_class_{c}" for c in model.classes_] if hasattr(model, 'classes_') and prediction_probs is not None else []) + (["confidence"] if max_probs is not None else []),
-            "visualizations": visualizations,
-            "feature_alignment": {
-                "training_features": int(len(training_columns)),
-                "prediction_features": int(len(X_pred.columns)),
-                "missing_features_added": list(missing_cols),
-                "extra_features_removed": list(extra_cols)
-            },
-            "conversion_rate": conversion_rate if true_labels is not None else None
-        }
-        
-        # Convert all numpy types in the response
-        response_data = convert_numpy_types(response_data)
-        
-        print(f"[🎉] Prediction completed successfully!")
-        print(f"    • Total predictions: {len(predictions)}")
-        print(f"    • Unique classes: {len(set(predictions))}")
-        if max_probs is not None:
-            print(f"    • Mean confidence: {np.mean(max_probs):.3f}")
-        print(f"    • Output file: {output_path}")
-        
-        return response_data
+            # Prepare response - CONVERT ALL NUMPY TYPES
+            response_data = {
+                "status": "success",
+                "user_id": user_id,
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "classification",
+                "dataset": dataset_name,
+                "parameters": {"drop_columns": drop_columns},
+                "file": file_path,
+                "output_file": supabase_output_path,
+                "output_file_name": output_filename,
+                "signed_url": signed_url,
+                "metrics": pred_stats,
+                "data_preview": output_df.head(10).to_dict('records'),  # Show first 10 rows as preview
+                "total_rows": len(output_df),
+                "columns_added": ["prediction"] + ([f"prob_class_{c}" for c in model.classes_] if hasattr(model, 'classes_') and prediction_probs is not None else []) + (["confidence"] if max_probs is not None else []),
+                "visualizations": visualizations,
+                "feature_alignment": {
+                    "training_features": int(len(training_columns)),
+                    "prediction_features": int(len(X_pred.columns)),
+                    "missing_features_added": list(missing_cols),
+                    "extra_features_removed": list(extra_cols)
+                },
+                "conversion_rate": conversion_rate if true_labels is not None else None
+            }
+            
+            # Convert all numpy types in the response
+            response_data = convert_numpy_types(response_data)
+            
+            print(f"[🎉] Prediction completed successfully!")
+            print(f"    • Total predictions: {len(predictions)}")
+            print(f"    • Unique classes: {len(set(predictions))}")
+            if max_probs is not None:
+                print(f"    • Mean confidence: {np.mean(max_probs):.3f}")
+            print(f"    • Output file: {supabase_output_path}")
+            print(f"    • Signed URL: {signed_url}")
+            
+            return response_data
+            
+        finally:
+            # Clean up temporary CSV file
+            os.unlink(temp_csv_path)
         
     except Exception as e:
         print(f"[❌] Prediction failed: {str(e)}")
@@ -823,13 +908,18 @@ def do_clustering(
     time_column: str = None,
     drop_columns: str = ""
 ):
+    import json
+    import subprocess
+    import tempfile
+    import os
+    import pandas as pd
+    from pathlib import Path as PathL
+    import joblib
+    import uuid
+    from datetime import datetime
+    import logging
+    
     try:
-        # Prepare directories
-        user_dir = PathL("user_uploads") / str(user_id)
-        user_dir.mkdir(parents=True, exist_ok=True)
-        PathL("models").mkdir(exist_ok=True)
-        PathL("data").mkdir(exist_ok=True)
-
         # Validate upload mode
         if file_path and (train_path or test_path):
             raise ValueError("Provide either file_path or both train_path+test_path, not both.")
@@ -837,219 +927,295 @@ def do_clustering(
             raise ValueError("Both train_path and test_path must be provided together.")
         if not file_path and not (train_path and test_path):
             raise ValueError("Provide either a full dataset (file_path) or both train_path+test_path.")
-
-        if file_path:
-            # Single file mode
-            df = pd.read_csv(file_path)
-
-            if drop_columns:
-                drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
-                df.drop(columns=drops, inplace=True)
-
-            if target_column and target_column in df.columns:
-                df.drop(columns=[target_column], inplace=True)
-
-            dataset_name = os.path.basename(file_path)
-
-        else:
-            # Train/test pair mode
-            train_df = pd.read_csv(train_path)
-            test_df = pd.read_csv(test_path)
-            df = pd.concat([train_df, test_df], ignore_index=True)
-
-            if drop_columns:
-                drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
-                df.drop(columns=[c for c in drops if c in df.columns], inplace=True)
-
-            if target_column and target_column in df.columns:
-                df.drop(columns=[target_column], inplace=True)
-
-            dataset_name = f"{os.path.basename(train_path)} + {os.path.basename(test_path)}"
-
-        # Validate numeric columns
-        numeric_df = df.select_dtypes(include=["number"]).fillna(0)
-        if numeric_df.empty:
-            return {
-                "status": "error",
-                "message": "No numeric columns available for clustering after preprocessing."
-            }
-
-        # Scale the data
-        scaler = StandardScaler()
-        scaled_data = scaler.fit_transform(numeric_df)
-
-        # Find optimal k
-        max_k = min(10, len(df) - 1)
-        best_k, distortions, silhouette_scores = find_optimal_k(scaled_data, max_k)
-                # Identify numeric columns (excluding the cluster column)
-        numeric_cols = df.select_dtypes(include=["int", "float"]).columns.tolist()
-        numeric_cols = [col for col in numeric_cols if col != "cluster"]
-
-            # Run clustering
-        clusters, kmeans = run_kmeans(scaled_data, best_k)
-        df["cluster"] = clusters
-
-        # Metrics
-        clustering_metrics = {
-            "silhouette_score": float(silhouette_score(scaled_data, clusters)),
-            "calinski_harabasz_score": float(calinski_harabasz_score(scaled_data, clusters)),
-            "davies_bouldin_score": float(davies_bouldin_score(scaled_data, clusters)),
-            "inertia": float(kmeans.inertia_)
-        }
-
-        # Only keep numeric columns for summary stats
-        numeric_cols = df.select_dtypes(include=['number']).columns.drop("cluster", errors="ignore")
-
-        # Cluster sizes
-        cluster_counts = df["cluster"].value_counts().sort_index()
-        cluster_sizes = cluster_counts.to_dict()
-
-        # Ensure we only use numeric columns that are still present in the DataFrame
-        available_numeric_cols = df.select_dtypes(include=["number"]).columns.drop("cluster", errors="ignore").tolist()
-
-        # Run aggregation safely
-        cluster_stats = {}
-        for stat_func in ["mean", "median", "std", "min", "max"]:
-            try:
-                stat_df = df[available_numeric_cols + ["cluster"]].groupby("cluster").agg(stat_func)
-                for cluster_id, row in stat_df.iterrows():
-                    for feature, value in row.items():
-                        cluster_stats.setdefault(cluster_id, {})[f"{feature}_{stat_func}"] = round(value, 2)
-            except KeyError as e:
-                logging.warning(f"Skipped aggregation '{stat_func}' due to missing columns: {e}")
-
-        # Global means
-        global_means = df[numeric_cols].mean()
-
-        # Cluster feature differences
-        cluster_feature_diffs = (
-            df.groupby("cluster")[numeric_cols].mean() - global_means
-        ).abs()
-
-        cluster_feature_diffs_dict = cluster_feature_diffs.to_dict(orient="index")
-
-        # Insights per cluster
-        cluster_insights = {}
-        for cluster_id, diffs in cluster_feature_diffs.iterrows():
-            top_feats = diffs.sort_values(ascending=False).head(3)
-            cluster_insights[str(cluster_id)] = [
-                f"{feat} is {round(df[df['cluster'] == cluster_id][feat].mean() - global_means[feat], 2)} higher than average"
-                for feat in top_feats.index
-            ]
-
-        # Visualization
-        if numeric_df.shape[1] > 1:
-            pca = PCA(n_components=2)
-            reduced_features = pca.fit_transform(scaled_data)
-
-            cluster_fig = plt.figure(figsize=(10, 6))
-            for i in range(best_k):
-                plt.scatter(
-                    reduced_features[clusters == i, 0],
-                    reduced_features[clusters == i, 1],
-                    label=f"Cluster {i}"
-                )
-            plt.legend()
-            plt.title(f"Customer Clusters (K={best_k})")
-            plt.xlabel("Principal Component 1")
-            plt.ylabel("Principal Component 2")
-            cluster_viz_base64 = plot_to_base64(cluster_fig)
-        else:
-            cluster_fig = plt.figure(figsize=(10, 6))
-            plt.hist(df['cluster'], bins=best_k)
-            plt.title(f'Cluster Distribution (K={best_k})')
-            plt.xlabel('Cluster')
-            plt.ylabel('Count')
-            cluster_viz_base64 = plot_to_base64(cluster_fig)
-
-        # Elbow method visualization
-        elbow_fig = plt.figure(figsize=(10, 6))
-        plt.plot(range(2, max_k + 1), distortions, 'bx-')
-        plt.xlabel("Number of clusters (k)")
-        plt.ylabel("Distortion")
-        plt.title("Elbow Method For Optimal k")
-        elbow_base64 = plot_to_base64(elbow_fig)
-
-        # Save clustered data and model
-        clustered_data_path = PathL("data") / f"{user_id}_clustered_data.csv"
-        df.to_csv(clustered_data_path, index=False)
-
-        model_path = PathL("models") / f"{user_id}_kmeans_model.pkl"
-        joblib.dump(kmeans, model_path)
-
-        logger.info(f"✅ Clustering completed for user_id: {user_id} | Clusters: {best_k}")
-
-        response_data = {
-            "status": "success",
-            "user_id": user_id,
-            "message": f"Clustering completed with {best_k} clusters",
-            "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
-            "visualizations": {},
-            "insights": "",
-            "metrics": clustering_metrics,  # ✅ NEW
-            "cluster_stats": cluster_stats,  # ✅ NEW
-            "cluster_feature_differences": cluster_feature_diffs_dict,  # ✅ NEW,
-            "cluster_insights": cluster_insights
-        }
-      # Add visualizations if they exist
-        if cluster_viz_base64:
-            response_data["visualizations"]["cluster_viz"] = f"data:image/png;base64,{cluster_viz_base64}"
-        if elbow_base64:
-            response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
-
-        # Generate insights (optional)
-        try:
-            insights = generate_insights("cluster", response_data)
-            response_data["insights"] = insights
-        except Exception as insight_err:
-            logger.warning(f"Insight generation failed: {insight_err}")
-            response_data["insights"] = "Could not generate insights."
-
-        # Save metadata
-        try:
-            meta_dir = PathL("data") / "visualizations"
-            meta_dir.mkdir(parents=True, exist_ok=True)
-
-            # In your save code
-            safe_user_id = str(user_id).replace('/', '_').replace('\\', '_')
-            meta_file = meta_dir / f"{safe_user_id}.json"
-            if meta_file.exists():
-                meta_list = json.loads(meta_file.read_text(encoding="utf-8"))
+        
+        # Handle file downloads from Supabase
+        # Note: file_path, train_path, test_path are now Supabase storage paths (e.g., "user123/dataset.csv")
+        local_file_path = None
+        local_train_path = None
+        local_test_path = None
+        temp_files = []
+        
+        # Create temporary directory for processing
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download files from Supabase to temporary locations
+            if file_path:
+                # Download single file from Supabase using the storage path
+                file_bytes = download_file_from_supabase(file_path)
+                local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
+                with open(local_file_path, 'wb') as f:
+                    f.write(file_bytes)
+                temp_files.append(local_file_path)
+            
+            if train_path and test_path:
+                # Download train and test files from Supabase using the storage paths
+                train_bytes = download_file_from_supabase(train_path)
+                test_bytes = download_file_from_supabase(test_path)
+                
+                local_train_path = os.path.join(temp_dir, os.path.basename(train_path))
+                local_test_path = os.path.join(temp_dir, os.path.basename(test_path))
+                
+                with open(local_train_path, 'wb') as f:
+                    f.write(train_bytes)
+                with open(local_test_path, 'wb') as f:
+                    f.write(test_bytes)
+                    
+                temp_files.extend([local_train_path, local_test_path])
+            
+            # Prepare model directory
+            model_dir = os.path.join(temp_dir, "models")
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # Create user directory for outputs
+            user_dir = PathL(temp_dir) / "user_outputs"
+            user_dir.mkdir(exist_ok=True)
+            
+            # Process data based on single file or train/test split
+            if local_file_path:
+                # Single file mode
+                df = pd.read_csv(local_file_path)
+                
+                if drop_columns:
+                    drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
+                    df.drop(columns=drops, inplace=True)
+                
+                if target_column and target_column in df.columns:
+                    df.drop(columns=[target_column], inplace=True)
+                
+                dataset_name = os.path.basename(file_path)
             else:
-                meta_list = []
-
+                # Train/test pair mode
+                train_df = pd.read_csv(local_train_path)
+                test_df = pd.read_csv(local_test_path)
+                df = pd.concat([train_df, test_df], ignore_index=True)
+                
+                if drop_columns:
+                    drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
+                    df.drop(columns=[c for c in drops if c in df.columns], inplace=True)
+                
+                if target_column and target_column in df.columns:
+                    df.drop(columns=[target_column], inplace=True)
+                
+                dataset_name = f"{os.path.basename(train_path)} + {os.path.basename(test_path)}"
+            
+            # Drop ID column if present
+            df.drop(columns=["ID"], inplace=True, errors='ignore')
+            
+            # Validate numeric columns
+            numeric_df = df.select_dtypes(include=["number"]).fillna(0)
+            if numeric_df.empty:
+                return {
+                    "status": "error",
+                    "message": "No numeric columns available for clustering after preprocessing."
+                }
+            
+            # Scale the data
+            scaler = StandardScaler()
+            scaled_data = scaler.fit_transform(numeric_df)
+            
+            # Find optimal k
+            max_k = min(10, len(df) - 1)
+            best_k, distortions, silhouette_scores = find_optimal_k(scaled_data, max_k)
+            
+            # Run clustering
+            clusters, kmeans = run_kmeans(scaled_data, best_k)
+            df["cluster"] = clusters
+            
+            # Metrics
+            clustering_metrics = {
+                "silhouette_score": float(silhouette_score(scaled_data, clusters)),
+                "calinski_harabasz_score": float(calinski_harabasz_score(scaled_data, clusters)),
+                "davies_bouldin_score": float(davies_bouldin_score(scaled_data, clusters)),
+                "inertia": float(kmeans.inertia_)
+            }
+            
+            # Identify numeric columns (excluding the cluster column)
+            numeric_cols = df.select_dtypes(include=["int", "float"]).columns.tolist()
+            numeric_cols = [col for col in numeric_cols if col != "cluster"]
+            
+            # Cluster sizes
+            cluster_counts = df["cluster"].value_counts().sort_index()
+            cluster_sizes = cluster_counts.to_dict()
+            
+            # Ensure we only use numeric columns that are still present in the DataFrame
+            available_numeric_cols = df.select_dtypes(include=["number"]).columns.drop("cluster", errors="ignore").tolist()
+            
+            # Run aggregation safely
+            cluster_stats = {}
+            for stat_func in ["mean", "median", "std", "min", "max"]:
+                try:
+                    stat_df = df[available_numeric_cols + ["cluster"]].groupby("cluster").agg(stat_func)
+                    for cluster_id, row in stat_df.iterrows():
+                        for feature, value in row.items():
+                            cluster_stats.setdefault(cluster_id, {})[f"{feature}_{stat_func}"] = round(value, 2)
+                except KeyError as e:
+                    logging.warning(f"Skipped aggregation '{stat_func}' due to missing columns: {e}")
+            
+            # Global means
+            global_means = df[numeric_cols].mean()
+            
+            # Cluster feature differences
+            cluster_feature_diffs = (
+                df.groupby("cluster")[numeric_cols].mean() - global_means
+            ).abs()
+            
+            cluster_feature_diffs_dict = cluster_feature_diffs.to_dict(orient="index")
+            
+            # Insights per cluster
+            cluster_insights = {}
+            for cluster_id, diffs in cluster_feature_diffs.iterrows():
+                top_feats = diffs.sort_values(ascending=False).head(3)
+                cluster_insights[str(cluster_id)] = [
+                    f"{feat} is {round(df[df['cluster'] == cluster_id][feat].mean() - global_means[feat], 2)} higher than average"
+                    for feat in top_feats.index
+                ]
+            
+            # Visualization
+            cluster_viz_base64 = ""
+            if numeric_df.shape[1] > 1:
+                try:
+                    pca = PCA(n_components=2)
+                    reduced_features = pca.fit_transform(scaled_data)
+                    
+                    cluster_fig = plt.figure(figsize=(10, 6))
+                    for i in range(best_k):
+                        plt.scatter(
+                            reduced_features[clusters == i, 0],
+                            reduced_features[clusters == i, 1],
+                            label=f"Cluster {i}"
+                        )
+                    plt.legend()
+                    plt.title(f"Customer Clusters (K={best_k})")
+                    plt.xlabel("Principal Component 1")
+                    plt.ylabel("Principal Component 2")
+                    cluster_viz_base64 = plot_to_base64(cluster_fig)
+                    plt.close(cluster_fig)
+                except Exception as e:
+                    print(f"[⚠️] Cluster visualization failed: {e}")
+                    cluster_viz_base64 = ""
+            else:
+                try:
+                    cluster_fig = plt.figure(figsize=(10, 6))
+                    plt.hist(df['cluster'], bins=best_k)
+                    plt.title(f'Cluster Distribution (K={best_k})')
+                    plt.xlabel('Cluster')
+                    plt.ylabel('Count')
+                    cluster_viz_base64 = plot_to_base64(cluster_fig)
+                    plt.close(cluster_fig)
+                except Exception as e:
+                    print(f"[⚠️] Cluster distribution plot failed: {e}")
+                    cluster_viz_base64 = ""
+            
+            # Elbow method visualization
+            elbow_base64 = ""
+            try:
+                elbow_fig = plt.figure(figsize=(10, 6))
+                plt.plot(range(2, max_k + 1), distortions, 'bx-')
+                plt.xlabel("Number of clusters (k)")
+                plt.ylabel("Distortion")
+                plt.title("Elbow Method For Optimal k")
+                elbow_base64 = plot_to_base64(elbow_fig)
+                plt.close(elbow_fig)
+            except Exception as e:
+                print(f"[⚠️] Elbow method plot failed: {e}")
+                elbow_base64 = ""
+            
+            # Save clustered data and model (temporarily in temp directory)
+            clustered_data_path = PathL(model_dir) / f"{user_id}_clustered_data.csv"
+            df.to_csv(clustered_data_path, index=False)
+            
+            model_path = PathL(model_dir) / f"{user_id}_kmeans_model.pkl"
+            joblib.dump(kmeans, model_path)
+            
+            # Create request JSON for additional processing if needed
+            request_json = user_dir / "request.json"
+            with open(request_json, "w") as f:
+                json.dump({
+                    "user_id": str(user_id),
+                    "model_path": str(model_path.resolve()),
+                    "data_path": str(clustered_data_path.resolve()),
+                    "output_dir": str(user_dir.resolve()),
+                    "model_type": "clustering",
+                    "target_column": target_column,
+                    "drop_columns": drop_columns,
+                    "optimal_k": best_k
+                }, f)
+            
+            # TODO: Upload model and data files back to Supabase for persistence
+            # This would involve uploading the model_path and clustered_data_path files
+            # and updating the paths in the response to point to Supabase locations
+            
+            logger.info(f"✅ Clustering completed for user_id: {user_id} | Clusters: {best_k}")
+            
+            response_data = {
+                "status": "success",
+                "user_id": user_id,
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "clustering",
+                "dataset": dataset_name,
+                "parameters": {
+                    "target_column": target_column,
+                    "drop_columns": drop_columns,
+                    "optimal_k": best_k
+                },
+                "message": f"Clustering completed with {best_k} clusters",
+                "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
+                "visualizations": {},
+                "insights": "",
+                "metrics": clustering_metrics,
+                "cluster_stats": cluster_stats,
+                "cluster_feature_differences": cluster_feature_diffs_dict,
+                "cluster_insights": cluster_insights
+            }
+            
+            # Add visualizations if they exist
+            if cluster_viz_base64:
+                response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
+            if elbow_base64:
+                response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
+            
+            # Generate insights (optional)
+            try:
+                insights = generate_insights("clustering", response_data)
+                response_data["insights"] = insights
+            except Exception as insight_err:
+                print(f"[⚠️] Insight generation failed: {insight_err}")
+                response_data["insights"] = "Could not generate insights."
+            
+            # Save Metadata for Gallery
             entry = {
-            "id": str(uuid.uuid4()),
-            "created_at": datetime.utcnow().isoformat(),
-            "type": "segmentation",
-            "dataset": dataset_name,
-            "parameters": {
-                "target_column": target_column,
-                "optimal_k": best_k
-            },
-            "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
-            "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-            "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
-            "visualizations": {
-                "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
-            },
-            "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
-            "metrics": clustering_metrics,  # ✅ NEW
-            "cluster_stats": cluster_stats,  # ✅ NEW
-            "cluster_feature_differences": cluster_feature_diffs_dict  # ✅ NEW
-        }
-            _append_limited_metadata(user_id, entry, max_entries=5) 
-        except Exception as meta_error:
-            logger.error(f"Metadata save error: {meta_error}")
-
-        return response_data
-
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "segmentation",
+                "dataset": dataset_name,
+                "parameters": {
+                    "target_column": target_column,
+                    "drop_columns": drop_columns,
+                    "optimal_k": best_k
+                },
+                "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
+                "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
+                "visualizations": {
+                    "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                    "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
+                },
+                "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
+                "metrics": clustering_metrics,
+                "cluster_stats": cluster_stats,
+                "cluster_feature_differences": cluster_feature_diffs_dict
+            }
+            
+            try:
+                _append_limited_metadata(user_id, entry, max_entries=5)
+            except Exception as meta_error:
+                print(f"[⚠️] Metadata save error: {meta_error}")
+            
+            return response_data
+            
     except Exception as e:
-        logger.error(f"❌ Error in do_clustering for user_id {user_id}: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return {"status": "error", "message": str(e)}
+        print(f"[⚠️] Error in do_clustering: {e}")
+        raise e
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 def do_segment_analysis(
     user_id: str,

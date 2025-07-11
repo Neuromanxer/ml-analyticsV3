@@ -105,6 +105,7 @@ from pydantic import BaseModel
 from sqlalchemy import Table, MetaData, Column, String, Integer, Float, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 import json
+from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
 # Create a directory for storing uploaded CSV files if it doesn't exist
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -492,6 +493,9 @@ def infer_sqlalchemy_column(name, dtype):
         return Column(name, Float)
     else:
         return Column(name, String)
+from sqlalchemy import MetaData, Table, text
+from backend.storage import upload_file_to_supabase  # assumes your upload function is here
+import tempfile
 @app.post("/datasets/", status_code=status.HTTP_201_CREATED)
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -504,68 +508,61 @@ async def upload_dataset(
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Only CSV files are supported")
 
-    file_path = None
+    temp_path = None  # needed for cleanup
     try:
-        # 1. Save file
-        user_upload_dir = os.path.join(UPLOAD_DIR, f"user_{current_user.id}")
-        os.makedirs(user_upload_dir, exist_ok=True)
+        # 1. Save the uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_path = tmp.name
 
-        file_path = os.path.join(user_upload_dir, file.filename)
-        base_name, extension = os.path.splitext(file_path)
-        counter = 1
-        while os.path.exists(file_path):
-            file_path = f"{base_name}_{counter}{extension}"
-            counter += 1
+        # 2. Upload to Supabase storage (organized by user)
+        supabase_path = upload_file_to_supabase(
+            user_id=str(current_user.id),
+            file_path=temp_path,
+            filename=file.filename
+        )
 
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # 3. Read the CSV file BEFORE deleting it
+        df = pd.read_csv(temp_path)
 
-        # 2. Load and analyze CSV
-        df = pd.read_csv(file_path)
+        # Now safe to remove temp file
+        os.remove(temp_path)
+
+        # 4. Prepare the data
         if 'id' not in df.columns:
             df.insert(0, 'id', range(1, len(df) + 1))
         row_count, column_count = df.shape
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        table_name = name.replace(" ", "_").lower()
+        file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)  # Still valid even after reading
 
-        # 3. Create table and register dataset
-        dataset_info = None  # Initialize variable to store dataset info
-        
+        table_name = name.replace(" ", "_").lower()
+        dataset_info = None
+
+        # 5. Register dataset in user database
         with get_user_db(current_user) as db:
             metadata = MetaData()
             columns = [infer_sqlalchemy_column(col, df[col].dtype) for col in df.columns]
-            dataset_table = Table(
-                table_name, metadata,
-                *columns
-            )
+            dataset_table = Table(table_name, metadata, *columns)
 
             dataset_table.create(bind=db.bind, checkfirst=True)
-
-            # 4. Insert data into the new table
             df_records = df.replace({np.nan: None}).to_dict(orient="records")
             db.execute(dataset_table.insert(), df_records)
 
-            # 5. Prepare schema as a dict
             schema = {col: str(df[col].dtype) for col in df.columns}
-
-            # 6. Register dataset
             dataset = register_dataset(
                 db=db,
                 name=name,
                 description=description,
                 table_name=table_name,
-                file_path=file_path,
+                file_path=supabase_path,
                 row_count=row_count,
                 column_count=column_count,
                 schema=schema,
                 overwrite_existing=True
             )
-            
-            # ✅ CRITICAL FIX: Extract data while session is still active
-            db.commit()  # Ensure the dataset is committed to the database
-            db.refresh(dataset)  # Refresh to get the latest data including ID
-            
-            # Store the dataset information before session closes
+
+            db.commit()
+            db.refresh(dataset)
+
             dataset_info = {
                 "id": dataset.id,
                 "name": dataset.name,
@@ -573,7 +570,7 @@ async def upload_dataset(
                 "column_count": dataset.column_count
             }
 
-        # Update user's storage usage in master DB
+        # 6. Update user’s storage usage in master database
         with master_db_cm() as master_db:
             master_db.execute(text("""
                 UPDATE users
@@ -581,7 +578,6 @@ async def upload_dataset(
                 WHERE id = :user_id
             """), {"additional": file_size_mb, "user_id": current_user.id})
 
-        # ✅ Use the stored dataset info instead of accessing the detached object
         return {
             "message": "Dataset uploaded, saved, and registered successfully",
             "dataset_id": dataset_info["id"],
@@ -591,8 +587,8 @@ async def upload_dataset(
         }
 
     except Exception as e:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
         logger.error(f"Error processing dataset: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing dataset: {str(e)}")
 @app.get("/datasets/")
@@ -833,10 +829,10 @@ async def upload_csv(
 async def classification(
     file: UploadFile = File(None),
     train_file: UploadFile = File(None),
-    test_file: UploadFile  = File(None),
-    target_column: str     = Form("target"),
-    drop_columns: str      = Form(""),
-    current_user: User     = Depends(get_current_active_user),
+    test_file: UploadFile = File(None),
+    target_column: str = Form("target"),
+    drop_columns: str = Form(""),
+    current_user: User = Depends(get_current_active_user),
 ):
     # ───────── Token check ───────────
     MINIMUM_TOKENS = 0.1
@@ -844,61 +840,79 @@ async def classification(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    PathL("models").mkdir(exist_ok=True)
-
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    try:
+        # ───────── Save and upload files to Supabase ───────────
+        if file:
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                temp_path = tmp.name
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
+            file_path = upload_file_to_supabase(
+                user_id=str(user_id),
+                file_path=temp_path,
+                filename=file.filename
+            )
+            os.remove(temp_path)
 
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                shutil.copyfileobj(train_file.file, tmp)
+                temp_train = tmp.name
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = fully isolated ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
+            train_path = upload_file_to_supabase(
+                user_id=str(user_id),
+                file_path=temp_train,
+                filename=train_file.filename
+            )
+            os.remove(temp_train)
 
-    else:
-        # Free users = Celery worker
-        task = run_classification.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                shutil.copyfileobj(test_file.file, tmp)
+                temp_test = tmp.name
+
+            test_path = upload_file_to_supabase(
+                user_id=str(user_id),
+                file_path=temp_test,
+                filename=test_file.filename
+            )
+            os.remove(temp_test)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+
+        # ───────── Choose execution mode ───────────
+        if current_user.subscription in ["Pro", "Enterprise"]:
+            response = launch_job_on_ecs(
+                user_id=user_id,
+                file_path=file_path,
+                train_path=train_path,
+                test_path=test_path,
+                target_column=target_column,
+                drop_columns=drop_columns
+            )
+            return {"status": "queued_on_ecs", "ecs_response": response}
+        else:
+            task = run_classification.delay(
+                user_id=user_id,
+                current_user={
+                    "id": current_user.id,
+                    "email": current_user.email,
+                    "subscription": current_user.subscription
+                },
+                file_path=file_path,
+                train_path=train_path,
+                test_path=test_path,
+                target_column=target_column,
+                drop_columns=drop_columns
+            )
+            response_data = await run_in_threadpool(task.get)
+            return response_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing classification: {str(e)}")
 @app.post("/classification/predict/")
 async def classification_predict(
     file: UploadFile = File(...),
@@ -907,43 +921,40 @@ async def classification_predict(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    FastAPI endpoint for making predictions using a previously trained classification model.
-    
-    Args:
-        prediction_file: CSV file containing new data for predictions
-        drop_columns: Comma-separated column names to drop before prediction
-        output_predictions: Whether to save predictions to a CSV file
-        current_user: Current authenticated user
-    
-    Returns:
-        Dictionary containing predictions and metadata
+    Predict using previously trained classification model.
     """
     # ───────── Token check ───────────
-    MINIMUM_TOKENS = 0.05  # Lower cost for prediction vs training
+    MINIMUM_TOKENS = 0.05
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
 
-    # ───────── Validate that a trained model exists ───────────
+    # ───────── Validate trained model exists ───────────
     model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
     if not model_path.exists():
         raise HTTPException(404, "No trained classification model found. Please train a model first.")
 
-    # ───────── Handle file upload ───────────
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(400, "Prediction file must be a CSV file.")
-    
-    file_path = os.path.join(user_dir, f"predict_{file.filename}")
-    async with aiofiles.open(file_path, "wb") as out:
-        await out.write(await file.read())
+    # ───────── Validate and save uploaded file ───────────
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(400, "Prediction file must be a CSV.")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = fully isolated ECS job (you would need to implement this)
-        # For now, falling back to Celery for all users
+    try:
+        # Save file temporarily
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_path = tmp.name
+
+        # Upload to Supabase under user-specific path
+        supabase_path = upload_file_to_supabase(
+            user_id=str(user_id),
+            file_path=temp_path,
+            filename=f"predict_{file.filename}"
+        )
+
+        os.remove(temp_path)
+
+        # ───────── Launch Prediction ───────────
         task = run_classification_predict.delay(
             user_id=user_id,
             current_user={
@@ -951,48 +962,26 @@ async def classification_predict(
                 "email": current_user.email,
                 "subscription": current_user.subscription
             },
-            file_path=file_path,
+            file_path=supabase_path,  # Supabase path
             drop_columns=drop_columns,
             output_predictions=output_predictions
         )
-        response_data = await run_in_threadpool(task.get)
-        
-        # Optional: Implement ECS job launching for premium users
-        # response = launch_prediction_job_on_ecs(
-        #     user_id=user_id,
-        #     prediction_file_path=prediction_file_path,
-        #     drop_columns=drop_columns,
-        #     output_predictions=output_predictions
-        # )
-        # return {"status": "queued_on_ecs", "ecs_response": response}
-        
-    else:
-        # Free users = Celery worker
-        task = run_classification_predict.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            drop_columns=drop_columns,
-            output_predictions=output_predictions
-        )
+
         response_data = await run_in_threadpool(task.get)
 
-    # ───────── Deduct tokens on successful completion ───────────
-    if response_data.get("status") == "success":
-        try:
-            # Deduct tokens based on data size or fixed rate
-            tokens_to_deduct = min(MINIMUM_TOKENS, current_user.tokens)
-            current_user.tokens -= tokens_to_deduct
-            # You would typically save this to your database here
-            # db.commit()
-        except Exception as token_error:
-            print(f"[⚠️] Token deduction failed: {token_error}")
+        # ───────── Deduct Tokens ───────────
+        if response_data.get("status") == "success":
+            try:
+                tokens_to_deduct = min(MINIMUM_TOKENS, current_user.tokens)
+                current_user.tokens -= tokens_to_deduct
+                # Commit user token deduction in DB (you likely handle this elsewhere)
+            except Exception as token_error:
+                print(f"[⚠️] Token deduction failed: {token_error}")
 
-    return response_data
+        return response_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 @app.post("/cluster/")
 async def clustering(
     file: Optional[UploadFile] = File(None),
@@ -1009,30 +998,24 @@ async def clustering(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1066,6 +1049,7 @@ async def clustering(
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
+
 @app.post("/segment_analysis/")
 async def segment_analysis(
     file: UploadFile = File(None),
@@ -1081,30 +1065,24 @@ async def segment_analysis(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1121,7 +1099,7 @@ async def segment_analysis(
         return {"status": "queued_on_ecs", "ecs_response": response}
 
     else:
-      task = run_segment_analysis.delay(
+        task = run_segment_analysis.delay(
             user_id=user_id,
             current_user={
                 "id": current_user.id,
@@ -1135,8 +1113,9 @@ async def segment_analysis(
             drop_columns=drop_columns
         )
 
-    response_data = await run_in_threadpool(task.get)
-    return response_data
+        response_data = await run_in_threadpool(task.get)
+        return response_data
+
 @app.post("/label_clusters/")
 async def label_clusters(
     file: UploadFile = File(None),
@@ -1151,30 +1130,24 @@ async def label_clusters(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1206,14 +1179,35 @@ async def label_clusters(
         response_data = await run_in_threadpool(task.get)
         return response_data
 
-# Helper function to save plot to static directory and return filename
-
-# Helper function for consistent file processing
-def process_uploaded_file(file_path):
-    """Process a CSV file and return the DataFrame"""
+def download_file_from_supabase(file_path: str, local_path: str):
+    """Download file from Supabase storage to local path"""
     try:
-        df = pd.read_csv(file_path)
-        return df
+        response = supabase.storage.from_(SUPABASE_BUCKET).download(file_path)
+        with open(local_path, "wb") as f:
+            f.write(response)
+        return local_path
+    except Exception as e:
+        raise Exception(f"Download failed: {str(e)}")
+
+def process_uploaded_file(file_path: str):
+    """Process a CSV file from Supabase storage and return the DataFrame"""
+    try:
+        # Create temporary file for processing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # Download from Supabase to temporary file
+            download_file_from_supabase(file_path, temp_path)
+            
+            # Process the file
+            df = pd.read_csv(temp_path)
+            return df
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+                
     except Exception as e:
         logger.error(f"Error processing file {file_path}: {str(e)}")
         raise e
@@ -1233,30 +1227,24 @@ async def regression(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1540,83 +1528,73 @@ async def delete_visualization(
     _try_remove("feature_importance_detailed")
 
     _save_metadata(user_id, meta)
+
 @app.post("/segment_analysis/")
 async def segment_analysis(
     file: UploadFile = File(None),
     train_file: UploadFile = File(None),
-    test_file: UploadFile = File(None),
-    target_column: str = Form(None),
-    drop_columns: str = Form(""),
-    current_user: User = Depends(get_current_active_user),
+    test_file: UploadFile  = File(None),
+    target_column: str     = Form(None),
+    drop_columns: str      = Form(""),
+    current_user: User     = Depends(get_current_active_user),
 ):
-    """FastAPI endpoint for segmentation analysis"""
-    
     # ───────── Token check ───────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
-    PathL("data").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = user_dir / file.filename
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
-        file_path = str(file_path)
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = user_dir / train_file.filename
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-        train_path = str(train_path)
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
-        test_path = user_dir / test_file.filename
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-        test_path = str(test_path)
-
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
-
-    # ───────── Prepare user data ─────────────
-    user_data = {
-        "id": current_user.id,
-        "email": current_user.email,
-        "subscription": current_user.subscription
-    }
-
-    # ───────── Choose execution mode ─────────────
+    # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium plan = external ECS job
+        # Premium = fully isolated ECS job
         response = launch_job_on_ecs(
             user_id=user_id,
-            file_path=file_path or train_path,
-            target_column=target_column
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns,
+            job_type="segment_analysis"  # Pass job type to ECS handler
         )
         return {"status": "queued_on_ecs", "ecs_response": response}
 
     else:
-        # Free users = run on Celery worker
         task = run_segment_analysis.delay(
             user_id=user_id,
-            current_user=user_data,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
             file_path=file_path,
             train_path=train_path,
             test_path=test_path,
             target_column=target_column,
             drop_columns=drop_columns
         )
+
         response_data = await run_in_threadpool(task.get)
         return response_data
+
 @app.post("/visualize/")
 async def visualize(
     file: UploadFile = File(None),
@@ -1632,30 +1610,24 @@ async def visualize(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1688,7 +1660,7 @@ async def visualize(
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
-# Also fix the API endpoint to handle the desired_outcome parameter properly
+
 @app.post("/counterfactual/")
 async def counterfactual(
     file: UploadFile = File(None),
@@ -1711,30 +1683,24 @@ async def counterfactual(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ───────── Convert input types ───────────
     # Parse desired_outcome properly
@@ -1815,6 +1781,7 @@ async def counterfactual(
         response_data = await run_in_threadpool(task.get)
         
         return response_data
+
 @app.post("/survival/")
 async def survival(
     file: UploadFile = File(None),
@@ -1831,36 +1798,32 @@ async def survival(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
     
-    # ───────── Handle file uploads ───────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ───────── Handle file uploads to Supabase ───────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
     if file_path:
         train_path, test_path = None, None
     elif train_path and test_path:
         file_path = None
     else:
         raise HTTPException(400, "Invalid upload state: no valid dataset provided.")
+
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
         # Premium users -> ECS job
@@ -1916,30 +1879,24 @@ async def what_if_analysis(
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
     PathL("models").mkdir(exist_ok=True)
 
     file_path = None
     train_path = None
     test_path = None
 
-    # ──────────── Handle file uploads ─────────────
-    if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+    # ──────────── Handle file uploads to Supabase ─────────────
+    try:
+        if file:
+            file_path = await handle_file_upload(user_id, file)
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+    except Exception as e:
+        raise HTTPException(500, f"File upload failed: {str(e)}")
 
     # ──────────── Choose execution mode ─────────────
     if current_user.subscription in ["Pro", "Enterprise"]:
@@ -1965,16 +1922,15 @@ async def what_if_analysis(
                 "email": current_user.email,
                 "subscription": current_user.subscription
             },
-            file_path= file_path,
+            file_path=file_path,
             train_path=train_path,
             test_path=test_path,
-            sample_id= sample_id,
-            target_column= target_column,
+            sample_id=sample_id,
+            target_column=target_column,
             feature_changes=feature_changes
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
-
 # Add this to your database functions
 async def store_counterfactual_result(user_id, sample_id, original_features, modified_features, 
                                      original_prediction, modified_prediction):
@@ -2024,28 +1980,16 @@ async def risk_analysis(
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    PathL("models").mkdir(exist_ok=True)
-
+    # Handle file uploads to Supabase
     file_path = None
     train_path = None
     test_path = None
 
-    # ──────────── Handle file uploads ─────────────
     if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
-
+        file_path = await handle_file_upload(user_id, file)
     elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
+        train_path = await handle_file_upload(user_id, train_file)
+        test_path = await handle_file_upload(user_id, test_file)
     else:
         raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
@@ -2078,6 +2022,7 @@ async def risk_analysis(
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
+
 @app.post("/decision_paths/")
 async def decision_paths(
     file: UploadFile = File(None),
@@ -2093,28 +2038,17 @@ async def decision_paths(
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    PathL("models").mkdir(exist_ok=True)
 
+    # Handle file uploads to Supabase
     file_path = None
     train_path = None
     test_path = None
 
-    # ─────────── Handle file uploads ─────────────
     if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
-
+        file_path = await handle_file_upload(user_id, file)
     elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
-
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
+        train_path = await handle_file_upload(user_id, train_file)
+        test_path = await handle_file_upload(user_id, test_file)
     else:
         raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
@@ -2140,17 +2074,13 @@ async def decision_paths(
                 "subscription": current_user.subscription
             },
             file_path=file_path,
-            train_path = train_path,
+            train_path=train_path,
             test_path=test_path,
             target_column=target_column,
             drop_columns=drop_columns
         )
         response_data = await run_in_threadpool(task.get)
         return response_data
-
-import matplotlib.pyplot as plt
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
 @app.post("/forecast/")
 async def forecast_time_series(
@@ -2163,21 +2093,16 @@ async def forecast_time_series(
     try:
         if periods is None or isinstance(periods, str):
             raise HTTPException(status_code=422, detail="Invalid value for periods")
+        
         # ─── Token check ───
         MINIMUM_TOKENS = 0.1
         if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
             raise HTTPException(403, "Insufficient token balance to begin processing.")
 
         user_id = current_user.id
-        user_dir = f"user_uploads/{user_id}"
-        os.makedirs(user_dir, exist_ok=True)
-
-        # Save uploaded file
-        await file.seek(0)
-        content = await file.read()
-        file_path = f"{user_dir}/{file.filename}"
-        with open(file_path, "wb") as f_out:
-            f_out.write(content)
+        
+        # Upload file to Supabase
+        file_path = await handle_file_upload(user_id, file)
 
         results = run_forecast(
             user_id=user_id,
@@ -2203,34 +2128,51 @@ async def forecast_time_series(
 class DownloadRequest(BaseModel):
     file_path: str
     file_name: str
-
 @app.post("/api/prediction-download")
 async def download_file(request: DownloadRequest):
-    # Define the allowed base directory
-    base_dir = PathL("user_uploads").resolve()
-    
-    # Build the requested file path safely
-    requested_path = (PathL(request.file_path)).resolve()
+    try:
+        # Validate that the file path is within the user's directory structure
+        # This assumes file_path is in format "user_id/filename"
+        if not request.file_path or "/" not in request.file_path:
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        
+        # Download file from Supabase
+        file_bytes = download_file_from_supabase(request.file_path)
+        
+        # Create a temporary file for FastAPI to serve
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{request.file_name}") as temp_file:
+            temp_file.write(file_bytes)
+            temp_path = temp_file.name
+        
+        # Return the file response
+        # Note: FastAPI will handle cleanup of the temporary file
+        return FileResponse(
+            path=temp_path,
+            filename=request.file_name,
+            media_type='application/octet-stream'
+        )
+        
+    except Exception as e:
+        print(f"[❌] Download failed: {str(e)}")
+        raise HTTPException(status_code=404, detail="File not found or download failed")
 
-    print(f"[🔍] Checking if file exists at: {requested_path}")
+# Helper function for processing functions that need to work with local files
+async def download_file_for_processing(file_path: str) -> str:
+    """Download a file from Supabase to a temporary local file for processing"""
+    try:
+        file_bytes = download_file_from_supabase(file_path)
+        
+        # Extract filename from path
+        filename = file_path.split("/")[-1]
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}") as temp_file:
+            temp_file.write(file_bytes)
+            return temp_file.name
+            
+    except Exception as e:
+        raise Exception(f"Failed to download file for processing: {str(e)}")
 
-    # ❌ Deny access if someone tries to escape the allowed folder
-    if not str(requested_path).startswith(str(base_dir)):
-        print("[🚫] Attempted access outside allowed directory")
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # ❌ File doesn't exist
-    if not requested_path.exists():
-        print("[❌] File not found.")
-        raise HTTPException(status_code=404, detail="File not found")
-
-    # ✅ File exists and is inside allowed user directory
-    print("[✅] File found. Sending response.")
-    return FileResponse(
-        path=requested_path,
-        filename=request.file_name,
-        media_type='application/octet-stream'
-    )
 app.include_router(auth_router)
 if __name__ == "__main__":
     for route in app.routes:
