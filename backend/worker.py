@@ -473,12 +473,13 @@ def do_classification(
                 
                 # Run the subprocess with proper error handling
                 result = subprocess.run(
-                    ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
-                    cwd=str(current_dir),  # Set working directory
+                    ["python3", "-m", "backend.shap_runner", str(request_json.resolve())],
+                    cwd=str(current_dir.parent),  # 🚨 Go up one level so `backend/` is importable
                     capture_output=True,
                     text=True,
-                    timeout=300  # 5 minute timeout
+                    timeout=300
                 )
+
                 
                 if result.returncode != 0:
                     print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
