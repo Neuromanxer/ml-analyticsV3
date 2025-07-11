@@ -59,8 +59,8 @@ logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "tasks",
-    broker="redis://red-abc123:6379/0",
-    backend="redis://red-abc123:6379/1"
+    broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
+    backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 )
 
 
