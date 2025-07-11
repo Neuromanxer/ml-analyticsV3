@@ -34,7 +34,7 @@ scipy
 openai
 # Anomaly detection (you might be using it for your train_best_anomaly_detection function)
 pyod
-
+tabulate
 # Task queue
 celery
 redis
