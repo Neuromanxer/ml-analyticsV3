@@ -11,12 +11,15 @@ SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+import mimetypes
+import os
+
 def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
     upload_path = f"{user_id}/{filename}"
 
     # Step 1: Check if file exists
-    existing_files = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
-    existing_file_names = [f["name"] for f in existing_files]
+    list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+    existing_file_names = [f["name"] for f in list_response or []]
 
     # Step 2: Delete existing file if present
     if filename in existing_file_names:
@@ -24,20 +27,23 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
         if getattr(delete_response, "error", None):
             raise Exception(f"Failed to delete existing file: {delete_response.error.message}")
 
-    # Step 3: Upload
+    # Step 3: Upload with correct content-type
     with open(file_path, "rb") as f:
         file_bytes = f.read()
+
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     upload_response = supabase.storage.from_(SUPABASE_BUCKET).upload(
         upload_path,
         file_bytes,
-        {"content-type": "text/csv"}
+        {"content-type": content_type}
     )
 
     if getattr(upload_response, "error", None):
         raise Exception(f"Upload failed: {upload_response.error.message}")
 
     return upload_path
+
 
 
 async def handle_file_upload(user_id: str, file: UploadFile) -> str:

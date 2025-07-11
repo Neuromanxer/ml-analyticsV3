@@ -520,8 +520,8 @@ def do_classification(
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
                 # Generate signed URLs for access (e.g., for frontend or gallery)
-                model_url = get_file_url(model_supabase_path)
-                data_url = get_file_url(data_supabase_path)
+                model_url = get_file_url(model_supabase_path, expires_in=3600)
+                data_url = get_file_url(data_supabase_path, expires_in=3600)
 
                 print(f"[✅] Uploaded model: {model_url}")
                 print(f"[✅] Uploaded data: {data_url}")
@@ -844,18 +844,18 @@ def do_classification_predict(
                     file_path=temp_output_path,
                     filename=output_filename
                 )
-                
-                # Get signed URL for the output file
-                signed_url_response = get_file_url(supabase_output_path, expires_in=3600)
-                signed_url = signed_url_response.get('signedURL') if signed_url_response else None
-                
+
+                # Get signed URL as a string
+                signed_url = get_file_url(supabase_output_path, expires_in=3600)
+
                 print(f"[💾] Predictions uploaded to Supabase: {supabase_output_path}")
-                
+
             finally:
                 # Clean up temporary output file
                 os.unlink(temp_output_path)
                 if os.path.exists(model_file_path):
                     os.unlink(model_file_path)
+
             
             # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
             pred_stats = {
@@ -2497,16 +2497,18 @@ def do_regression_predict(
                     file_path=temp_output_path,
                     filename=output_filename
                 )
-                
-                # Get signed URL for the output file
-                signed_url_response = get_file_url(supabase_output_path, expires_in=3600)
-                signed_url = signed_url_response.get('signedURL') if signed_url_response else None
-                
+
+                # Get signed URL as a string (not a dict)
+                signed_url = get_file_url(supabase_output_path, expires_in=3600)
+
                 print(f"[💾] Predictions uploaded to Supabase: {supabase_output_path}")
-                
+                print(f"[🔗] Signed URL: {signed_url}")
+
             finally:
                 # Clean up temporary output file
-                os.unlink(temp_output_path)
+                if os.path.exists(temp_output_path):
+                    os.unlink(temp_output_path)
+
             
             # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
             pred_stats = {
