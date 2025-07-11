@@ -15,6 +15,7 @@ import json
 import numpy as np
 import io
 import shap
+from typing import Union, List, Any, Dict
 import tempfile
 # -- replace these imports with your actual module paths --
 from .preprocessing import preprocess_data
@@ -5343,7 +5344,7 @@ def run_visualization(
         feature_column=feature_column
     )
 import numpy as np
-from typing import Union, List, Any, Dict
+
 import json
 
 def make_json_safe(obj):
