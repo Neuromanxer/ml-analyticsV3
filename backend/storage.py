@@ -13,7 +13,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 import mimetypes
 import os
-
 def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
     upload_path = f"{user_id}/{filename}"
 
@@ -21,13 +20,12 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
     list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
     existing_file_names = [f["name"] for f in list_response or []]
 
-    # Step 2: Delete existing file if present
     if filename in existing_file_names:
         delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
-        if getattr(delete_response, "error", None):
-            raise Exception(f"Failed to delete existing file: {delete_response.error.message}")
+        if isinstance(delete_response, dict) and delete_response.get("error"):
+            raise Exception(f"Failed to delete existing file: {delete_response['error']['message']}")
 
-    # Step 3: Upload with correct content-type
+    # Step 2: Upload
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
@@ -39,11 +37,11 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
         {"content-type": content_type}
     )
 
-    if getattr(upload_response, "error", None):
-        raise Exception(f"Upload failed: {upload_response.error.message}")
+    # ✅ FIX: Safely check for error in dict response
+    if isinstance(upload_response, dict) and upload_response.get("error"):
+        raise Exception(f"Upload failed: {upload_response['error']['message']}")
 
     return upload_path
-
 
 
 async def handle_file_upload(user_id: str, file: UploadFile) -> str:
@@ -70,18 +68,21 @@ def list_user_files(user_id: str):
     response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
     if getattr(response, "error", None):
         raise Exception(f"Failed to list files: {response.error.message}")
-    return response.data
 
 
 def delete_file_from_supabase(file_path: str):
     response = supabase.storage.from_(SUPABASE_BUCKET).remove([file_path])
-    if getattr(response, "error", None):
-        raise Exception(f"Failed to delete file: {response.error.message}")
-    return response.data
+    if isinstance(response, dict) and "error" in response and response["error"]:
+        raise Exception(f"Failed to delete file: {response['error']['message']}")
+    return response  # or just return True
 
 
 def get_file_url(file_path: str, expires_in: int = 3600) -> str:
     response = supabase.storage.from_(SUPABASE_BUCKET).create_signed_url(file_path, expires_in)
-    if getattr(response, "error", None):
-        raise Exception(f"Failed to create signed URL: {response.error.message}")
-    return response.data.signed_url
+
+    # If an error exists in the response (depends on client), handle it
+    if isinstance(response, dict) and "error" in response and response["error"]:
+        raise Exception(f"Failed to create signed URL: {response['error']['message']}")
+
+    # ✅ Safely return the signed URL from the dict
+    return response.get("signedURL", "")
