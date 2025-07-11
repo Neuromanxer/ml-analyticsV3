@@ -1294,18 +1294,34 @@ function displayResults(endpoint, data) {
       
       break;
 
-    case 'classification':
-      metricsDetails.innerHTML = buildMetricsHtml(data);
+      case 'classification':
+        metricsDetails.innerHTML = buildMetricsHtml(data);
 
-      
-      // Feature importance visualization
-      if (data.visualizations && data.visualizations.feature_importance) {
-        addVisualization('Feature Importance', data.visualizations.feature_importance);
-      }
-      if (data.visualizations && data.visualizations.feature_importance_detailed) {
-        addVisualization('Detailed Feature Importance', data.visualizations.feature_importance_detailed);
-      }
-      break;
+        // Feature importance
+        if (data.visualizations?.feature_importance) {
+          addVisualization('Feature Importance', data.visualizations.feature_importance);
+        }
+        if (data.visualizations?.feature_importance_detailed) {
+          addVisualization('Detailed Feature Importance', data.visualizations.feature_importance_detailed);
+        }
+
+        // Class Distribution
+        if (data.visualizations?.class_distribution) {
+          addVisualization('Class Distribution', data.visualizations.class_distribution);
+        }
+
+        // Classification Report
+        if (data.visualizations?.classification_report) {
+          addVisualization('Classification Report', data.visualizations.classification_report);
+        }
+
+        // Confusion Matrix
+        if (data.visualizations?.confusion_matrix) {
+          addVisualization('Confusion Matrix', data.visualizations.confusion_matrix);
+        }
+
+        break;
+
 
       case 'clustering':
       metricsDetails.innerHTML = buildMetricsHtml(data);
