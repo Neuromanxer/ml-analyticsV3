@@ -1896,11 +1896,11 @@ function callRealAPI(endpoint, params) {
 
   // 2) Append any additional form fields
   for (const [key, value] of Object.entries(params)) {
-    if (value != null && value !== '') {
-      formData.append(key, value);
-      console.log(`Form field: ${key} = ${value}`);
-    }
+  if (value != null && value !== '') {
+    formData.append(key, String(value));  // 🔥 force all values to be strings
+    console.log(`Form field: ${key} = ${String(value)}`);
   }
+}
 
   // 3) Pull the stored JWT
   const token = localStorage.getItem('access_token');
