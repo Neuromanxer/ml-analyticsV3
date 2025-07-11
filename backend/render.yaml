@@ -21,6 +21,9 @@ services:
       value: jXGQTW5siqxNNK5YXztrEovd1cJTDMWa
     - key: DATABASE_URL
       value: postgresql://ethanhong:jXGQTW5siqxNNK5YXztrEovd1cJTDMWa@dpg-d1n0o56uk2gs739cigq0-a.virginia-postgres.render.com/ml_insights_db
+    - key: REDIS_URL
+      value: redis://red-abc123:6379/internal
+
 
     plan: free
     region: oregon
