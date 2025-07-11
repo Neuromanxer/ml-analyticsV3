@@ -16,7 +16,12 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str):
         file_bytes = f.read()
 
     upload_path = f"{user_id}/{filename}"
-    response = supabase.storage.from_(SUPABASE_BUCKET).upload(upload_path, file_bytes, {"content-type": "text/csv", "upsert": True})
+    response = supabase.storage.from_(SUPABASE_BUCKET).upload(
+        upload_path,
+        file_bytes,
+        {"content-type": "text/csv", "upsert": "true"} 
+    )
+
     
     if response.get("error"):
         raise Exception(f"Upload failed: {response['error']['message']}")
