@@ -509,7 +509,7 @@ def do_classification(
                 import traceback
                 traceback.print_exc()
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-
+            response_data = {}
             try:
                 # Upload trained model
                 model_filename = PathL(model_path).name
@@ -598,6 +598,7 @@ def do_classification(
                 print(f"[⚠️] Metadata save error: {meta_error}")
 
             # Final API Response
+            # Final API Response
             response_data = {
                 "status": "success",
                 "user_id": user_id,
@@ -614,6 +615,7 @@ def do_classification(
                 "dataset": dataset_name,
                 "parameters": {"drop_columns": drop_columns},
             }
+
 
             if fi_shap_bar:
                 response_data["visualizations"]["feature_importance"] = f"data:image/png;base64,{fi_shap_bar}"
