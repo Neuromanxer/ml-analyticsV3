@@ -10,30 +10,29 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
+    from datetime import datetime
+
     upload_path = f"{user_id}/{filename}"
 
-    # Step 1: Check if file already exists
-    existing_files = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+    # Step 1: Check if file exists
+    list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
 
-    if getattr(existing_files, "error", None):
-        raise Exception(f"Failed to list files: {existing_files.error.message}")
+    if getattr(list_response, "error", None):
+        raise Exception(f"Failed to list files for overwrite check: {list_response.error.message}")
 
-    existing_file_names = [f["name"] for f in existing_files.data or []]
+    existing_files = [f["name"] for f in list_response.data or []]
 
-    # Step 2: If the file exists, delete it
-    if filename in existing_file_names:
+    # Step 2: Delete if already exists
+    if filename in existing_files:
         delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
         if getattr(delete_response, "error", None):
-            raise Exception(f"Failed to delete existing file before upload: {delete_response.error.message}")
+            raise Exception(f"Failed to delete existing file: {delete_response.error.message}")
 
-    # Step 3: Upload the file
+    # Step 3: Upload file
     with open(file_path, "rb") as f:
         file_bytes = f.read()
-    print(f"Attempting to upload to path: {upload_path}")
-    print(f"Deleting file first if it exists: {filename} in {existing_file_names}")
-    print("✅ Reached upload_file_to_supabase with overwrite logic")
+
     upload_response = supabase.storage.from_(SUPABASE_BUCKET).upload(
         upload_path,
         file_bytes,
@@ -44,6 +43,7 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
         raise Exception(f"Upload failed: {upload_response.error.message}")
 
     return upload_path
+
 
 async def handle_file_upload(user_id: str, file: UploadFile) -> str:
     """Handle file upload to Supabase and return the upload path"""
