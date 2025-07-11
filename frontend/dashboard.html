@@ -1915,8 +1915,8 @@ function callRealAPI(endpoint, params) {
   fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`
-    },
+  'Authorization': `Bearer ${String(token)}`
+  },
     body: formData
   })
   .then(res => {
