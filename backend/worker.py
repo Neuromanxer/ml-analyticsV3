@@ -1118,14 +1118,34 @@ def do_clustering(
             except Exception as e:
                 print(f"[⚠️] Elbow method plot failed: {e}")
                 elbow_base64 = ""
-            
-            # Save clustered data and model (temporarily in temp directory)
+                        
+                        # ─────── Save clustered data and model locally ───────
             clustered_data_path = PathL(model_dir) / f"{user_id}_clustered_data.csv"
             df.to_csv(clustered_data_path, index=False)
-            
+
             model_path = PathL(model_dir) / f"{user_id}_kmeans_model.pkl"
             joblib.dump(kmeans, model_path)
-            
+
+            # ─────── Upload model + data to Supabase ───────
+            model_filename = model_path.name
+            data_filename = clustered_data_path.name
+
+            model_upload_path = upload_file_to_supabase(
+                user_id=user_id,
+                file_path=str(model_path),
+                filename=model_filename
+            )
+
+            data_upload_path = upload_file_to_supabase(
+                user_id=user_id,
+                file_path=str(clustered_data_path),
+                filename=data_filename
+            )
+
+            # Optional: Signed URLs
+            model_url = get_file_url(model_upload_path)
+            data_url = get_file_url(data_upload_path)
+                        
             # Create request JSON for additional processing if needed
             request_json = user_dir / "request.json"
             with open(request_json, "w") as f:
@@ -1165,9 +1185,15 @@ def do_clustering(
                 "metrics": clustering_metrics,
                 "cluster_stats": cluster_stats,
                 "cluster_feature_differences": cluster_feature_diffs_dict,
-                "cluster_insights": cluster_insights
+                "cluster_insights": cluster_insights,
+                # ✅ Add model and data file references
+                "model_url": model_url,
+                "data_url": data_url,
+                "model_path": model_upload_path,
+                "data_path": data_upload_path
             }
-            
+
+                    
             # Add visualizations if they exist
             if cluster_viz_base64:
                 response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
@@ -1182,7 +1208,6 @@ def do_clustering(
                 print(f"[⚠️] Insight generation failed: {insight_err}")
                 response_data["insights"] = "Could not generate insights."
             
-            # Save Metadata for Gallery
             entry = {
                 "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
@@ -1203,9 +1228,14 @@ def do_clustering(
                 "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
                 "metrics": clustering_metrics,
                 "cluster_stats": cluster_stats,
-                "cluster_feature_differences": cluster_feature_diffs_dict
+                "cluster_feature_differences": cluster_feature_diffs_dict,
+                # ✅ Add uploaded file references
+                "model_url": model_url,
+                "data_url": data_url,
+                "model_path": model_upload_path,
+                "data_path": data_upload_path
             }
-            
+
             try:
                 _append_limited_metadata(user_id, entry, max_entries=5)
             except Exception as meta_error:
