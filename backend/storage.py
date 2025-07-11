@@ -18,8 +18,9 @@ def upload_file_to_supabase(user_id: str, file_path: str, filename: str):
     response = supabase.storage.from_(SUPABASE_BUCKET).upload(
         upload_path,
         file_bytes,
-        {"content-type": "text/csv", "upsert": True}  # <- `True` as boolean, not string
+        {"content-type": "text/csv"}  # Only headers here
     )
+
     if getattr(response, "error", None):
         raise Exception(f"Upload failed: {response.error.message}")
 
