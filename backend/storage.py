@@ -10,26 +10,21 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
-    from datetime import datetime
 
+def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
     upload_path = f"{user_id}/{filename}"
 
     # Step 1: Check if file exists
-    list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+    existing_files = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+    existing_file_names = [f["name"] for f in existing_files]
 
-    if getattr(list_response, "error", None):
-        raise Exception(f"Failed to list files for overwrite check: {list_response.error.message}")
-
-    existing_files = [f["name"] for f in list_response.data or []]
-
-    # Step 2: Delete if already exists
-    if filename in existing_files:
+    # Step 2: Delete existing file if present
+    if filename in existing_file_names:
         delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
         if getattr(delete_response, "error", None):
             raise Exception(f"Failed to delete existing file: {delete_response.error.message}")
 
-    # Step 3: Upload file
+    # Step 3: Upload
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
