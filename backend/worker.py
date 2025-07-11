@@ -439,15 +439,15 @@ def do_classification(
                 print(f"[⚠️] Classification report plot failed: {e}")
                 classification_report_base64 = ""
 
-            # Save Final Model and Data (temporarily in temp directory)
             model_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
             joblib.dump(final_model, model_path)
 
+            # Save the data used for SHAP (full processed dataset)
             data_path = user_dir / "data.csv"
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
 
-            # Create request JSON for SHAP
+            # Create request JSON for SHAP runner
             request_json = user_dir / "request.json"
             with open(request_json, "w") as f:
                 json.dump({
@@ -457,25 +457,83 @@ def do_classification(
                     "output_dir": str(user_dir.resolve()),
                     "model_type": "classifier",
                     "target_column": target_column,
-                    "drop_columns": drop_columns
+                    "save_filename": f"{user_id}_feature_importance.png"
                 }, f)
             
-            # Run SHAP Visualizations
+            # Run SHAP Visualizations subprocess
             try:
-                subprocess.run(["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())], check=True)
-                with open(user_dir / "result.json") as f:
-                    result = json.load(f)
-                fi_shap_bar = result.get("shap_bar")
-                fi_shap_dot = result.get("shap_dot")
-                imp_df = pd.DataFrame(result.get("imp_df"))
+                # Get the current script's directory to find shap_runner.py
+                current_dir = PathL(__file__).parent
+                shap_runner_path = current_dir / "shap_runner.py"
+                
+                # Ensure shap_runner.py exists
+                if not shap_runner_path.exists():
+                    print(f"[⚠️] SHAP runner not found at: {shap_runner_path}")
+                    raise FileNotFoundError(f"SHAP runner script not found: {shap_runner_path}")
+                
+                # Run the subprocess with proper error handling
+                result = subprocess.run(
+                    ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
+                    cwd=str(current_dir),  # Set working directory
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+                
+                if result.returncode != 0:
+                    print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
+                    print(f"[⚠️] STDERR: {result.stderr}")
+                    print(f"[⚠️] STDOUT: {result.stdout}")
+                    raise subprocess.CalledProcessError(result.returncode, result.args)
+                
+                # Load results from SHAP processing
+                result_path = user_dir / "result.json"
+                if result_path.exists():
+                    with open(result_path) as f:
+                        shap_result = json.load(f)
+                    fi_shap_bar = shap_result.get("shap_bar")
+                    fi_shap_dot = shap_result.get("shap_dot")
+                    imp_df = pd.DataFrame(shap_result.get("imp_df", []))
+                else:
+                    print("[⚠️] SHAP result.json not found")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                    
+            except subprocess.TimeoutExpired:
+                print("[⚠️] SHAP subprocess timed out after 5 minutes")
+                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+            except subprocess.CalledProcessError as e:
+                print(f"[⚠️] SHAP subprocess failed: {e}")
+                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
             except Exception as viz_error:
                 print(f"[⚠️] Visualization error: {viz_error}")
+                import traceback
+                traceback.print_exc()
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
-            # TODO: Upload model and data files back to Supabase for persistence
-            # This would involve uploading the model_path and data_path files
-            # and updating the paths in the response to point to Supabase locations
-            
+            try:
+                # Upload trained model
+                model_filename = PathL(model_path).name
+                model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
+
+                # Upload processed dataset
+                data_filename = PathL(data_path).name
+                data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
+
+                # Generate signed URLs for access (e.g., for frontend or gallery)
+                model_url = get_file_url(model_supabase_path)
+                data_url = get_file_url(data_supabase_path)
+
+                print(f"[✅] Uploaded model: {model_url}")
+                print(f"[✅] Uploaded data: {data_url}")
+
+                # Optionally return/store these URLs in your pipeline response
+                response_data.update({
+                    "model_url": model_url,
+                    "data_url": data_url
+                })
+
+            except Exception as upload_error:
+                print(f"[⚠️] Failed to upload to Supabase: {upload_error}")
             # Save Metadata for Gallery
             from tabulate import tabulate
 
@@ -606,15 +664,26 @@ def do_classification_predict(
 
     try:
         # Setup paths - models are still stored locally, but data files are in Supabase
-        model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
         
+        model_supabase_path = f"{user_id}/models/{user_id}_best_classifier.pkl"
+
+        try:
+            print(f"[📦] Downloading model from Supabase: {model_supabase_path}")
+            model_bytes = download_file_from_supabase(model_supabase_path)
+            
+            # Save model to a temporary file
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.pkl', delete=False) as model_file:
+                model_file.write(model_bytes)
+                model_file_path = model_file.name
+            
+            # Load model
+            model = joblib.load(model_file_path)
+
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to load model from Supabase for user {user_id}: {str(e)}")
+
         # For training columns, we'll also store this in Supabase
         training_columns_supabase_path = f"{user_id}/training_columns.json"
-
-        # Validate required files exist
-        if not model_path.exists():
-            raise FileNotFoundError(f"No trained model found for user {user_id}. Please train a model first.")
-        
         # Download training columns from Supabase
         try:
             training_columns_data = download_file_from_supabase(training_columns_supabase_path)
@@ -628,11 +697,7 @@ def do_classification_predict(
             dataset_name = os.path.basename(file_path)
         except Exception as e:
             raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
-        
-        # Load the trained model (still stored locally)
-        print(f"[📁] Loading model from {model_path}")
-        model = joblib.load(model_path)
-        
+
         # Create temporary file to load CSV data
         with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
             temp_file.write(prediction_data)
@@ -789,6 +854,8 @@ def do_classification_predict(
             finally:
                 # Clean up temporary output file
                 os.unlink(temp_output_path)
+                if os.path.exists(model_file_path):
+                    os.unlink(model_file_path)
             
             # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
             pred_stats = {
@@ -1141,19 +1208,17 @@ def do_clustering(
             with open(request_json, "w") as f:
                 json.dump({
                     "user_id": str(user_id),
-                    "model_path": str(model_path.resolve()),
-                    "data_path": str(clustered_data_path.resolve()),
-                    "output_dir": str(user_dir.resolve()),
+                    "model_path": model_upload_path,       # Supabase storage path
+                    "model_url": model_url,                # Signed URL for download
+                    "data_path": data_upload_path,         # Supabase storage path
+                    "data_url": data_url,                  # Signed URL for download
+                    "output_dir": str(user_dir.resolve()), # Local output dir for logs/debug
                     "model_type": "clustering",
                     "target_column": target_column,
                     "drop_columns": drop_columns,
                     "optimal_k": best_k
                 }, f)
-            
-            # TODO: Upload model and data files back to Supabase for persistence
-            # This would involve uploading the model_path and clustered_data_path files
-            # and updating the paths in the response to point to Supabase locations
-            
+
             logger.info(f"✅ Clustering completed for user_id: {user_id} | Clusters: {best_k}")
             
             response_data = {
@@ -2097,18 +2162,55 @@ def do_regression(
                         "drop_columns": drop_columns,
                     }, f)
 
-                # Run SHAP Visualizations
+               
+                # Run SHAP Visualizations subprocess
                 try:
-                    subprocess.run(["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())], check=True)
-                    with open(user_dir / "result.json") as f:
-                        result = json.load(f)
-                    fi_shap_bar = result.get("shap_bar")
-                    fi_shap_dot = result.get("shap_dot")
-                    imp_df = pd.DataFrame(result.get("imp_df"))
+                    # Get the current script's directory to find shap_runner.py
+                    current_dir = PathL(__file__).parent
+                    shap_runner_path = current_dir / "shap_runner.py"
+                    
+                    # Ensure shap_runner.py exists
+                    if not shap_runner_path.exists():
+                        print(f"[⚠️] SHAP runner not found at: {shap_runner_path}")
+                        raise FileNotFoundError(f"SHAP runner script not found: {shap_runner_path}")
+                    
+                    # Run the subprocess with proper error handling
+                    result = subprocess.run(
+                        ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
+                        cwd=str(current_dir),  # Set working directory
+                        capture_output=True,
+                        text=True,
+                        timeout=300  # 5 minute timeout
+                    )
+                    
+                    if result.returncode != 0:
+                        print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
+                        print(f"[⚠️] STDERR: {result.stderr}")
+                        print(f"[⚠️] STDOUT: {result.stdout}")
+                        raise subprocess.CalledProcessError(result.returncode, result.args)
+                    
+                    # Load results from SHAP processing
+                    result_path = user_dir / "result.json"
+                    if result_path.exists():
+                        with open(result_path) as f:
+                            shap_result = json.load(f)
+                        fi_shap_bar = shap_result.get("shap_bar")
+                        fi_shap_dot = shap_result.get("shap_dot")
+                        imp_df = pd.DataFrame(shap_result.get("imp_df", []))
+                    else:
+                        print("[⚠️] SHAP result.json not found")
+                        fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                except subprocess.TimeoutExpired:
+                    print("[⚠️] SHAP subprocess timed out after 5 minutes")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                except subprocess.CalledProcessError as e:
+                    print(f"[⚠️] SHAP subprocess failed: {e}")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except Exception as viz_error:
                     print(f"[⚠️] Visualization error: {viz_error}")
+                    import traceback
+                    traceback.print_exc()
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-
                 # TODO: Upload model and preprocessor files back to Supabase for persistence
                 # This would involve uploading the model_path and preprocessor_path files
                 # and updating the paths in the response to point to Supabase locations
