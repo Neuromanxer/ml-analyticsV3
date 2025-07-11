@@ -1912,15 +1912,16 @@ function callRealAPI(endpoint, params) {
     window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
     return;
   }
+  
+  const headers = new Headers();
+  headers.append('Authorization', `Bearer ${String(token)}`);
 
-  // 4) Fire the request
   fetch(url, {
     method: 'POST',
-    headers: {
-  'Authorization': `Bearer ${String(token)}`
-  },
+    headers: headers,
     body: formData
   })
+
   .then(res => {
     console.log('Response status:', res.status);
     console.log('Response headers:', res.headers);
