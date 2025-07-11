@@ -12,6 +12,7 @@ databases[postgresql]
 alembic
 psycopg2-binary
 scipy==1.11.4 --only-binary=:all:
+supabase-client
 
 # Authentication
 pyjwt
