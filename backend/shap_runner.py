@@ -7,7 +7,8 @@ import base64
 from pathlib import Path
 from datetime import datetime
 import uuid
-from .feature_importance import safe_generate_feature_importance
+from backend.feature_importance import safe_generate_feature_importance
+
 
 def main():
     import sys

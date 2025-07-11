@@ -274,6 +274,8 @@ def do_classification(
 
                 if target_column not in df.columns:
                     raise ValueError(f"Target column '{target_column}' not found in dataset.")
+
+                df = df.dropna(subset=[target_column])
                 y = df[target_column]
                 X = df.drop(columns=['ID', target_column], errors='ignore')
 
@@ -288,7 +290,8 @@ def do_classification(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
                     train_df.drop(columns=[c for c in drops if c in train_df.columns], inplace=True)
@@ -1033,7 +1036,7 @@ def do_clustering(
             if local_file_path:
                 # Single file mode
                 df = pd.read_csv(local_file_path)
-                
+                df = df.dropna(subset=[target_column])
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
                     df.drop(columns=drops, inplace=True)
@@ -1046,6 +1049,8 @@ def do_clustering(
                 # Train/test pair mode
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 
                 if drop_columns:
@@ -1387,11 +1392,14 @@ def do_segment_analysis(
             if local_file_path:
                 # Single file mode
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 # Train/test pair mode
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)} + {os.path.basename(test_path)}"
 
@@ -2048,6 +2056,7 @@ def do_regression(
             if local_file_path:
                 # Single file mode
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
 
                 if drop_columns:
@@ -2066,6 +2075,8 @@ def do_regression(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 dataset_name = f"{os.path.basename(train_path)} + {os.path.basename(test_path)}"
 
                 if drop_columns:
@@ -2092,17 +2103,52 @@ def do_regression(
             )
             print("Model training completed!")
 
-            # ───────────── Save Models ─────────────
+           # ───────────── Save Model & Preprocessor ─────────────
             model_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
             preprocessor_path = PathL(model_dir) / f"{user_id}_preprocessor.pkl"
+
             joblib.dump(results["final_model"], model_path)
             joblib.dump(results["preprocessor"], preprocessor_path)
-            print(f"Models saved: {model_path} and {preprocessor_path}")
+            print(f"[💾] Models saved to: {model_path} and {preprocessor_path}")
+
+            # ───────────── Upload to Supabase ─────────────
+            try:
+                model_filename = model_path.name
+                preprocessor_filename = preprocessor_path.name
+
+                # Upload model and preprocessor
+                model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
+                preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
+
+                # Upload processed dataset
+                data_filename = processed_data_path.name
+                data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
+
+                # Get signed URLs for frontend access (1-hour expiration)
+                model_url = get_file_url(model_supabase_path, expires_in=3600)
+                preprocessor_url = get_file_url(preprocessor_supabase_path, expires_in=3600)
+                data_url = get_file_url(data_supabase_path, expires_in=3600)
+
+                print(f"[✅] Uploaded model: {model_url}")
+                print(f"[✅] Uploaded preprocessor: {preprocessor_url}")
+                print(f"[✅] Uploaded processed data: {data_url}")
+
+                # Append to response_data
+                response_data.update({
+                    "model_url": model_url,
+                    "preprocessor_url": preprocessor_url,
+                    "data_url": data_url
+                })
+
+            except Exception as upload_error:
+                print(f"[⚠️] Failed to upload regression artifacts to Supabase: {upload_error}")
+
 
             # ───────────── Generate Visualizations ─────────────
             try:
                 if local_file_path:
                     full_df = pd.read_csv(local_file_path)
+                    full_df = full_df.dropna(subset=[target_column])
                     if drop_columns:
                         drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in full_df.columns]
                         if drops:
@@ -2166,33 +2212,37 @@ def do_regression(
                     }, f)
 
                
-                # Run SHAP Visualizations subprocess
                 try:
-                    # Get the current script's directory to find shap_runner.py
+                    # Build request.json for regression SHAP
+                    request_json = user_dir / "request.json"
+                    with open(request_json, "w") as f:
+                        json.dump({
+                            "user_id": str(user_id),
+                            "model_path": str(model_path.resolve()),
+                            "data_path": str(processed_data_path.resolve()),
+                            "output_dir": str(user_dir.resolve()),
+                            "model_type": "regression",  # <- updated model_type
+                            "target_column": target_column,
+                            "save_filename": f"{user_id}_feature_importance.png"
+                        }, f)
+
+                    # SHAP subprocess
                     current_dir = PathL(__file__).parent
-                    shap_runner_path = current_dir / "shap_runner.py"
-                    
-                    # Ensure shap_runner.py exists
-                    if not shap_runner_path.exists():
-                        print(f"[⚠️] SHAP runner not found at: {shap_runner_path}")
-                        raise FileNotFoundError(f"SHAP runner script not found: {shap_runner_path}")
-                    
-                    # Run the subprocess with proper error handling
                     result = subprocess.run(
-                        ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
-                        cwd=str(current_dir),  # Set working directory
+                        ["python3", "-m", "backend.shap_runner", str(request_json.resolve())],
+                        cwd=str(current_dir.parent),  # run from parent of "backend/"
                         capture_output=True,
                         text=True,
-                        timeout=300  # 5 minute timeout
+                        timeout=300
                     )
-                    
+
                     if result.returncode != 0:
                         print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
                         print(f"[⚠️] STDERR: {result.stderr}")
                         print(f"[⚠️] STDOUT: {result.stdout}")
                         raise subprocess.CalledProcessError(result.returncode, result.args)
-                    
-                    # Load results from SHAP processing
+
+                    # Load result
                     result_path = user_dir / "result.json"
                     if result_path.exists():
                         with open(result_path) as f:
@@ -2203,6 +2253,7 @@ def do_regression(
                     else:
                         print("[⚠️] SHAP result.json not found")
                         fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
                 except subprocess.TimeoutExpired:
                     print("[⚠️] SHAP subprocess timed out after 5 minutes")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
@@ -2214,9 +2265,6 @@ def do_regression(
                     import traceback
                     traceback.print_exc()
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-                # TODO: Upload model and preprocessor files back to Supabase for persistence
-                # This would involve uploading the model_path and preprocessor_path files
-                # and updating the paths in the response to point to Supabase locations
 
                 # ───────────── Generate Insights ─────────────
                 try:
@@ -2239,14 +2287,18 @@ def do_regression(
                         "metrics": results.get("metrics", {}),
                         "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
                         "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
-                        "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else {},
+                        "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                         "visualizations": {
                             "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
                             "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
                         },
                         "pred_stats": pred_stats,
                         "insights": insights,
+                        "model_url": model_url if 'model_url' in locals() else "",
+                        "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
+                        "data_url": data_url if 'data_url' in locals() else ""
                     }
+
                     
                     try:
                         _append_limited_metadata(user_id, entry, max_entries=5)
@@ -2271,11 +2323,18 @@ def do_regression(
                     },
                     "metrics": results.get("metrics", {}),
                     "message": "Regression model training completed",
-                    "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else {},
-                    "visualizations": {},
-                    "insights": insights if 'insights' in locals() else "Could not generate insights.",
                     "pred_stats": pred_stats,
+                    "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else {},
+                    "insights": insights if 'insights' in locals() else "Could not generate insights.",
+                    "visualizations": {
+                        "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                        "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
+                    },
+                    "model_url": model_url if 'model_url' in locals() else "",
+                    "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
+                    "data_url": data_url if 'data_url' in locals() else ""
                 }
+
 
                 if fi_shap_bar:
                     response_data["visualizations"]["shap_bar"] = f"data:image/png;base64,{fi_shap_bar}"
@@ -2700,10 +2759,13 @@ def do_visualization(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
@@ -2960,6 +3022,7 @@ def do_counterfactual(
             # ──────── Load & preprocess data ────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
 
                 if drop_columns:
@@ -2984,6 +3047,8 @@ def do_counterfactual(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
                 if drop_columns:
@@ -3645,6 +3710,7 @@ def do_survival(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
 
                 if drop_cols:
@@ -3681,6 +3747,8 @@ def do_survival(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
                 
                 if drop_cols:
@@ -4140,10 +4208,13 @@ def do_what_if(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
@@ -4398,10 +4469,13 @@ def do_risk_analysis(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
@@ -4628,6 +4702,7 @@ def do_decision_paths(
             # ───────────── Load and preprocess data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
+                df = df.dropna(subset=[target_column])
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
                     df.drop(columns=drops, inplace=True)
@@ -4636,6 +4711,7 @@ def do_decision_paths(
                     raise ValueError(f"Target column '{target_column}' not found in dataset.")
 
                 y = df[target_column]
+
                 X = df.drop(columns=['ID', target_column], errors='ignore')
 
                 X, _, _ = preprocess_data(X)
@@ -4647,7 +4723,8 @@ def do_decision_paths(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-
+                train_df = train_df.dropna(subset=[target_column])
+                test_df = test_df.dropna(subset=[target_column])
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
                     train_df.drop(columns=[c for c in drops if c in train_df.columns], inplace=True)
@@ -5135,47 +5212,66 @@ def plot_model_diagnostics(model_fit):
 import sys
 def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
     """
-    Run forecast visualization in subprocess
+    Run forecast visualization subprocess.
+    Saves request.json and executes forecast_runner.py
     """
     output_dir = PathL(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     request_data = {
         "user_id": str(user_id),
         "file_path": str(file_path),
         "forecast_result": forecast_result,
         "output_dir": str(output_dir)
     }
-    
-    request_path = output_dir / "forecast_request.json"
-    with request_path.open("w", encoding="utf-8") as f:
-        json.dump(request_data, f, indent=2)
-    
-    try:
-        # Create the forecast runner script if it doesn't exist
-        runner_script = PathL("forecast_runner.py")
 
-        
+    try:
+        # Save request.json into the output directory
+        request_path = output_dir / "request.json"
+        with request_path.open("w", encoding="utf-8") as f:
+            json.dump(request_data, f, indent=2)
+
+        # Locate forecast_runner.py
+        current_dir = PathL(__file__).parent
+        runner_script = current_dir / "forecast_runner.py"
+
+        if not runner_script.exists():
+            print(f"[⚠️] Forecast runner not found at: {runner_script}")
+            raise FileNotFoundError(f"Forecast runner script not found: {runner_script}")
+
+        # Run the subprocess
         result = subprocess.run(
-            [sys.executable, str(runner_script.resolve()), str(request_path.resolve())],
-            check=True,
+            ["python3", "-m", "backend.forecast_runner", str(request_path.resolve())],
+            cwd=str(current_dir.parent),  # go up so `backend` is importable
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            timeout=300
         )
-        print(f"✅ Forecast subprocess ran successfully for user {user_id}")
+
+
+        if result.returncode != 0:
+            print(f"[⚠️] Forecast subprocess failed with return code {result.returncode}")
+            print(f"[⚠️] STDERR: {result.stderr}")
+            print(f"[⚠️] STDOUT: {result.stdout}")
+            raise subprocess.CalledProcessError(result.returncode, result.args)
+
+        print(f"[✅] Forecast subprocess ran successfully for user {user_id}")
         return True
-        
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Forecast subprocess failed: {e}")
-        print(f"Error output: {e.stderr}")
-        return False
+
     except subprocess.TimeoutExpired:
-        print(f"❌ Forecast subprocess timed out for user {user_id}")
+        print(f"[⚠️] Forecast subprocess timed out after 5 minutes for user {user_id}")
         return False
+
+    except subprocess.CalledProcessError as e:
+        print(f"[⚠️] Forecast subprocess failed: {e}")
+        return False
+
     except Exception as e:
-        print(f"❌ Subprocess error: {e}")
+        print(f"[⚠️] Forecast subprocess error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
+
 
 
 @celery_app.task(bind=True, max_retries=3)
