@@ -694,23 +694,40 @@ def _get_meta_path(user_id: str) -> PathL:
     safe_user_id = str(user_id).replace("/", "_").replace("\\", "_")
     return meta_dir / f"{safe_user_id}.json"
 from sqlalchemy import text
+from uuid import uuid4
+from sqlalchemy import text
+from datetime import datetime
+
 def _save_metadata(user_id: str, data: List[Dict[str, Any]], db: Session) -> None:
     """Overwrite all metadata for a user (not common, but preserved)."""
     try:
-        db.execute(text("DELETE FROM visualizations_metadata WHERE user_id = :user_id"), {"user_id": user_id})
+        # Delete previous metadata entries
+        db.execute(
+            text("DELETE FROM visualizations_metadata WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        )
+
         for entry in data:
-            db.execute(text("""
+            entry_id = entry.get("id") or str(uuid4())
+            entry["id"] = entry_id  # ensure ID is injected into the entry itself
+
+            db.execute(
+                text("""
                 INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
                 VALUES (:id, :user_id, :type, :created_at, :metadata)
-            """), {
-                "id": str(uuid4()),
-                "user_id": str(user_id),
-                "type": entry.get("type", "other"),
-                "created_at": entry.get("created_at", datetime.utcnow().isoformat()),
-                "metadata": json.dumps(entry)
-            })
+                """),
+                {
+                    "id": entry_id,
+                    "user_id": str(user_id),
+                    "type": entry.get("type", "other"),
+                    "created_at": entry.get("created_at", datetime.utcnow().isoformat()),
+                    "metadata": json.dumps(entry, default=str)
+                }
+            )
+
         db.commit()
         logging.info(f"✅ Saved {len(data)} metadata entries for user {user_id}")
+
     except Exception as e:
         logging.error(f"❌ Error saving metadata for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error saving metadata")
