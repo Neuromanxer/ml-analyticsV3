@@ -1179,16 +1179,6 @@ async def label_clusters(
         response_data = await run_in_threadpool(task.get)
         return response_data
 
-def download_file_from_supabase(file_path: str, local_path: str):
-    """Download file from Supabase storage to local path"""
-    try:
-        response = supabase.storage.from_(SUPABASE_BUCKET).download(file_path)
-        with open(local_path, "wb") as f:
-            f.write(response)
-        return local_path
-    except Exception as e:
-        raise Exception(f"Download failed: {str(e)}")
-
 def process_uploaded_file(file_path: str):
     """Process a CSV file from Supabase storage and return the DataFrame"""
     try:
@@ -1368,7 +1358,7 @@ class VisualizationResponse(BaseModel):
 class VisualizationListResponse(BaseModel):
     visualizations: List[VisualizationResponse]
     total: int
-from .worker import _load_metadata, _save_metadata
+from .auth import _load_metadata, _save_metadata
 
 
 # Additional utility functions you might need
@@ -1400,76 +1390,57 @@ async def delete_visualization(
         logging.error(f"Error deleting visualization: {str(e)}")
         raise HTTPException(status_code=500, detail="Error deleting visualization")
 
-
 @app.get("/visualizations/{visualization_id}")
 async def get_visualization(
     visualization_id: str,
-    current_user: User = Depends(get_current_active_user)
-):
-    """Get a specific visualization."""
-    try:
-        metadata = _load_metadata(current_user.id)
-        
-        # Find the visualization
-        for item in metadata:
-            if item.get('id') == visualization_id:
-                return item
-        
-        raise HTTPException(status_code=404, detail="Visualization not found")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error getting visualization: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error retrieving visualization")
-
-@app.get("/visualizations")
-async def list_visualizations(
     current_user: User = Depends(get_current_active_user),
-    override_id: Optional[str] = Query(None),
-) -> List[Dict[str, Any]]:
-    try:
-        logging.info(f"Fetching visualizations for user: {current_user.id}")
-        
-        user_id = current_user.id
-        if override_id:
-            user_id = override_id
-        
-        # Load metadata using the helper function
-        metadata = _load_metadata(user_id)
-        
-        logging.info(f"Found {len(metadata)} visualizations for user {user_id}")
-        return metadata
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions (like from _load_metadata)
-        raise
-    except Exception as e:
-        logging.error(f"Error in list_visualizations: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    db: Session = Depends(get_master_db_session)
+):
+    result = db.execute(
+        """
+        SELECT metadata FROM visualizations_metadata
+        WHERE user_id = :user_id AND metadata->>'id' = :viz_id
+        """,
+        {"user_id": current_user.id, "viz_id": visualization_id}
+    ).fetchone()
 
+    if not result:
+        raise HTTPException(status_code=404, detail="Visualization not found")
 
+    return json.loads(result[0])
+
+from .auth import get_master_db_session
+@app.get("/visualizations")
+def list_visualizations(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_master_db_session),
+):
+    return _load_metadata(user_id=current_user.id, db=db)
 @app.get("/visualizations/{viz_id}/download")
 async def download_visualization(
     viz_id: str,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_master_db_session)
 ):
-    user_id = current_user.id
-    meta = _load_metadata(user_id)
+    result = db.execute(
+        """
+        SELECT metadata FROM visualizations_metadata
+        WHERE user_id = :user_id AND metadata->>'id' = :viz_id
+        """,
+        {"user_id": current_user.id, "viz_id": viz_id}
+    ).fetchone()
 
-    entry = next((e for e in meta if e["id"] == viz_id), None)
-    if not entry:
+    if not result:
         raise HTTPException(status_code=404, detail="Visualization not found")
 
-    # Try all keys
+    entry = json.loads(result[0])
+
     img_url = (
         entry.get("imageUrl") or
         entry.get("feature_importance_detailed_url") or
         entry.get("feature_importance_detailed") or
         entry.get("imageData")
     )
-
-    logging.info(f"[DOWNLOAD] img_url raw: {repr(img_url)[:100]}")
 
     if not img_url or img_url.strip() == "":
         raise HTTPException(status_code=404, detail="No image found")
@@ -1486,48 +1457,41 @@ async def download_visualization(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to decode base64 image: {str(e)}")
 
-    # fallback for file path
     file_path = PathL(img_url.lstrip("/"))
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found on disk")
 
     return FileResponse(str(file_path), media_type="image/png", filename=f"visualization-{viz_id}.png")
 
-@app.delete("/visualizations/{viz_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/visualizations/{visualization_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_visualization(
-    viz_id: str,
-    current_user: User = Depends(get_current_active_user)
+    visualization_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_master_db_session)
 ):
-    user_id = current_user.id
-    meta = _load_metadata(user_id)
+    result = db.execute(
+        """
+        DELETE FROM visualizations_metadata
+        WHERE user_id = :user_id AND metadata->>'id' = :viz_id
+        RETURNING metadata
+        """,
+        {"user_id": current_user.id, "viz_id": visualization_id}
+    ).fetchone()
 
-    print(f"[DELETE] Looking for viz_id: {viz_id}")
-    print(f"[DELETE] Available IDs: {[e.get('id', '<missing>') for e in meta]}")
-
-    idx = next((i for i, e in enumerate(meta) if e["id"] == viz_id), None)
-    if idx is None:
+    if not result:
         raise HTTPException(status_code=404, detail="Visualization not found")
 
-    entry = meta.pop(idx)
-
-    def _try_remove(url_key: str):
-        url = entry.get(url_key)
-        if not url or url.startswith("data:image"):
-            return
-        file_path = PathL(url.lstrip("/"))
-        if file_path.exists():
-            try:
-                file_path.unlink()
-            except Exception as e:
-                print(f"Failed to delete file {file_path}: {e}")
-
-    _try_remove("thumbnailData")
-    _try_remove("imageData")
-    _try_remove("imageUrl")
-    _try_remove("feature_importance")
-    _try_remove("feature_importance_detailed")
-
-    _save_metadata(user_id, meta)
+    # Optional: try removing associated image files
+    entry = json.loads(result[0])
+    for key in ["thumbnailData", "imageData", "imageUrl", "feature_importance", "feature_importance_detailed"]:
+        url = entry.get(key)
+        if url and not url.startswith("data:image"):
+            path = PathL(url.lstrip("/"))
+            if path.exists():
+                try:
+                    path.unlink()
+                except Exception as e:
+                    logging.warning(f"Failed to delete file {path}: {e}")
 
 @app.post("/segment_analysis/")
 async def segment_analysis(

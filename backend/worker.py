@@ -33,7 +33,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 # -- replace these imports with your actual module paths --
 from .preprocessing import preprocess_data
 from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .ai import generate_insights
+from .auth import master_db_cm
 from queue import Queue
 from threading import Thread
 
@@ -84,121 +84,11 @@ def plot_to_base64(fig):
     plt.close(fig)  # ✅ Close the figure properly
     return img_base64
 
-import json
-import logging
-from typing import List, Optional, Dict, Any
-from pathlib import Path as PathL  # Your existing alias
-from fastapi import HTTPException, Depends, Query
 from fastapi.responses import FileResponse, StreamingResponse
-from io import BytesIO
-
 # Assuming you have these imports for your auth system
 # from your_auth_module import get_current_active_user, User
 
-def _get_meta_path(user_id: str) -> PathL:
-    """Get the metadata file path for a user."""
-    meta_dir = PathL("data") / "visualizations"
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    safe_user_id = str(user_id).replace("/", "_").replace("\\", "_")
-    return meta_dir / f"{safe_user_id}.json"
-
-
-def _load_metadata(user_id: str) -> List[Dict[str, Any]]:
-    """Load metadata for a user, ensuring it returns a list."""
-    meta_path = _get_meta_path(user_id)
-    
-    if not meta_path.exists():
-        logging.info(f"No metadata file found for user {user_id}")
-        return []
-    
-    try:
-        content = meta_path.read_text(encoding='utf-8')
-        if not content.strip():
-            logging.warning(f"Empty metadata file for user {user_id}")
-            return []
-        
-        data = json.loads(content)
-        
-        # Ensure we always return a list
-        if isinstance(data, list):
-            return data
-        elif isinstance(data, dict):
-            # If it's a single dict, wrap it in a list
-            logging.warning(f"Found dict instead of list in metadata for user {user_id}, wrapping in list")
-            return [data]
-        else:
-            logging.error(f"Unexpected data type in metadata for user {user_id}: {type(data)}")
-            return []
-            
-    except json.JSONDecodeError as e:
-        logging.error(f"Could not parse metadata for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Could not parse metadata file")
-    except Exception as e:
-        logging.error(f"Error loading metadata for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error loading metadata")
-
-
-def _save_metadata(user_id: str, data: List[Dict[str, Any]]) -> None:
-    """Save metadata for a user."""
-    if not isinstance(data, list):
-        raise ValueError("Data must be a list")
-    
-    meta_path = _get_meta_path(user_id)
-    
-    try:
-        # Ensure the directory exists
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Write the data
-        meta_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
-        logging.info(f"Saved {len(data)} metadata entries for user {user_id}")
-        
-    except Exception as e:
-        logging.error(f"Error saving metadata for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error saving metadata")
-
-
-def _append_metadata(user_id: str, new_entry: Dict[str, Any]) -> None:
-    """Append a new entry to user's metadata."""
-    try:
-        # Load existing metadata
-        existing_data = _load_metadata(user_id)
-        
-        # Append new entry
-        existing_data.append(new_entry)
-        
-        # Save back
-        _save_metadata(user_id, existing_data)
-        
-    except Exception as e:
-        logging.error(f"Error appending metadata for user {user_id}: {str(e)}")
-        raise
-def _append_limited_metadata(user_id: str, new_entry: Dict[str, Any], max_entries: int = 5):
-    """Append a new entry and keep only the most recent ones for that entry's type."""
-    try:
-        existing_data = _load_metadata(user_id)
-
-        # Separate existing metadata by type
-        current_type = new_entry.get("type", "other")
-        same_type = [e for e in existing_data if e.get("type") == current_type]
-        other_types = [e for e in existing_data if e.get("type") != current_type]
-
-        # Add the new entry first
-        same_type.append(new_entry)
-
-        # Sort descending by creation time
-        same_type = sorted(same_type, key=lambda x: x.get("created_at", ""), reverse=True)
-
-        # Trim to max_entries (keeping the most recent)
-        same_type = same_type[:max_entries]
-
-        # Combine with other types
-        final_data = other_types + same_type
-        _save_metadata(user_id, final_data)
-
-    except Exception as e:
-        logging.error(f"❌ Failed to append limited metadata for {user_id}: {e}")
-        raise
+from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
 def do_classification(
     user_id: str,
     file_path: str = None,
@@ -482,8 +372,6 @@ def do_classification(
                     text=True,
                     timeout=300
                 )
-
-                
                 if result.returncode != 0:
                     print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
                     print(f"[⚠️] STDERR: {result.stderr}")
@@ -562,13 +450,7 @@ def do_classification(
                     "actual_positive": int(sum(y_test)),
                     "conversion_rate": round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0,
                 }
-            else:
-                impact_metrics = {
-                    "n_samples": len(y_test),
-                    "correct_predictions": int((preds == y_test).sum()),
-                    "total_classes": int(len(set(y_test))),
-                }
-            
+
             entry = {
                 "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
@@ -585,7 +467,8 @@ def do_classification(
                 "thumbnailData": f"data:image/png;base64,{fi_shap_bar or fi_shap_dot or ''}",
                 "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
                 "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-                "conversion_rate": conversion_rate
+                "conversion_rate": conversion_rate,
+                "impact_metrics": impact_metrics
             }
             
             # Add additional visualizations
@@ -631,14 +514,6 @@ def do_classification(
                 response_data["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
             if classification_report_base64:
                 response_data["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
-
-            # Optional: Generate Insights
-            try:
-                insights = generate_insights("classification", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             return response_data
             
@@ -904,7 +779,8 @@ def do_classification_predict(
             }
 
             try:
-                _append_limited_metadata(user_id, entry)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Failed to save prediction metadata: {meta_error}")
 
@@ -1232,7 +1108,7 @@ def do_clustering(
             response_data = {
                 "status": "success",
                 "user_id": user_id,
-                "id": str(uuid.uuid4()),
+                "id": entry["id"],  # Use the same one
                 "created_at": datetime.utcnow().isoformat(),
                 "type": "clustering",
                 "dataset": dataset_name,
@@ -1263,16 +1139,8 @@ def do_clustering(
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
             
-            # Generate insights (optional)
-            try:
-                insights = generate_insights("clustering", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
-            
             entry = {
-                "id": str(uuid.uuid4()),
+                "id": entry["id"],  # Use the same one
                 "created_at": datetime.utcnow().isoformat(),
                 "type": "segmentation",
                 "dataset": dataset_name,
@@ -1592,7 +1460,7 @@ def do_segment_analysis(
             response_data = {
                 "status": "success",
                 "user_id": user_id,
-                "id": str(uuid.uuid4()),
+                "id": entry["id"],  # Use the same one
                 "created_at": datetime.utcnow().isoformat(),
                 "type": "segmentation",
                 "dataset": dataset_name,
@@ -1626,14 +1494,6 @@ def do_segment_analysis(
                 response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
-
-            # Generate insights
-            try:
-                insights = generate_insights("segmentation", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             # ───────────── Save metadata for gallery ─────────────
             entry = {
@@ -1905,14 +1765,6 @@ def do_label_clusters(
                 response_data["visualizations"]["scatter"] = f"data:image/png;base64,{cluster_viz_base64}"
             if distribution_viz_base64:
                 response_data["visualizations"]["distribution"] = f"data:image/png;base64,{distribution_viz_base64}"
-
-            # ───────────── Generate insights (optional) ─────────────
-            try:
-                insights = generate_insights("label_clusters", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                logger.warning(f"Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             # ───────────── Save metadata for gallery ─────────────
             entry = {
@@ -2897,16 +2749,6 @@ def do_visualization(
 
             if pdp_b64:
                 response_data["visualizations"]["pdp_plot"] = f"data:image/png;base64,{pdp_b64}"
-
-            # Generate insights
-            try:
-                insights = generate_insights("visualization", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
-
-            # Return full response
             return response_data
             
     except Exception as e:
@@ -3582,13 +3424,6 @@ def do_counterfactual(
             # Clean response data for JSON serialization
             response_data = clean_data_for_json(response_data)
 
-            # Generate insights
-            try:
-                insights = generate_insights("counterfactual_dice", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
     except Exception as e:
         print(f"[⚠️] Error in do_counterfactual: {e}")
         raise e
@@ -4117,14 +3952,6 @@ def do_survival(
             if risk_fig_base64:
                 response_data["visualizations"]["risk_distribution"] = f"data:image/png;base64,{risk_fig_base64}"
 
-            # Generate insights
-            try:
-                insights = generate_insights("survival", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
-
             return response_data
 
     except Exception as e:
@@ -4380,13 +4207,6 @@ def do_what_if(
                 "insights": {}
             }
 
-            # Generate insights
-            try:
-                insights = generate_insights("what_if_analysis", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             # Return full response
             return response_data
@@ -4614,13 +4434,6 @@ def do_risk_analysis(
             if risk_fig_base64:
                 response_data["visualizations"]["risk_plot"] = f"data:image/png;base64,{risk_fig_base64}"
 
-            # Generate insights
-            try:
-                insights = generate_insights("risk_analysis", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             # Return full response
             return response_data
@@ -4852,14 +4665,6 @@ def do_decision_paths(
                 "summary_stats_headers": summary_stats_headers,
                 "decision_rules": rules_list
             }
-
-            # ───────────── Generate insights ─────────────
-            try:
-                insights = generate_insights("decision_paths", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights."
 
             # Return full response
             return response_data
@@ -5106,15 +4911,7 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
                             }
                         except Exception:
                             continue
-            
-            # Generate insights
-            try:
-                insights = generate_insights("forecast", response_data)
-                response_data["insights"] = insights
-            except Exception as insight_err:
-                print(f"[⚠️] Insight generation failed: {insight_err}")
-                response_data["insights"] = "Could not generate insights for forecast."
-            
+
             # Save metadata to Supabase (similar to visualization)
             try:
                 # Create entry for metadata
