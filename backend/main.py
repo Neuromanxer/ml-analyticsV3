@@ -787,17 +787,16 @@ async def download_dataset(
             detail=f"Internal error downloading dataset: {e}"
         )
 
-# CSV upload endpoint for compatibility
 @app.post("/upload_csv/")
 async def upload_csv(
     file: UploadFile = File(...),
     drop_columns: str = Form(None),
     target_column: str = Form(None),
-    feature_column: str = Form(None)    
+    feature_column: str = Form(None)
 ):
     logger.info("✅ /upload_csv/ endpoint called")
     try:
-        # Read and save file content
+        # Attempt to read the file
         file_content = await file.read()
 
         os.makedirs("temp", exist_ok=True)
@@ -806,23 +805,48 @@ async def upload_csv(
         with open(file_path, "wb") as buffer:
             buffer.write(file_content)
 
-        # Process drop_columns, target_column, and feature_column if provided
+        # Process optional form fields
         drop_cols = drop_columns.split(",") if drop_columns else []
         target_col = target_column if target_column else None
         feature_cols = feature_column.split(",") if feature_column and not isinstance(feature_column, type(Form)) else []
 
-        # Log the received data
+        # Log for debugging
         logger.info(f"Drop Columns: {drop_cols}")
         logger.info(f"Target Column: {target_col}")
         logger.info(f"Feature Columns: {feature_cols}")
 
-        return {"message": f"CSV file '{file.filename}' processed successfully"}
-    except Exception as e:
-        logger.error(f"❌ Error in /upload_csv: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return JSONResponse(status_code=500, content={"message": "Error storing CSV data", "error": str(e)})
+        return {"message": f"✅ CSV file '{file.filename}' processed successfully"}
 
+    except ValueError as ve:
+        logger.warning(f"⚠️ Value error in /upload_csv: {str(ve)}")
+        return JSONResponse(
+            status_code=HTTP_400_BAD_REQUEST,
+            content={"message": "Invalid form data", "error": str(ve)}
+        )
+
+    except OSError as ioe:
+        # Common for: I/O operation on closed file
+        logger.error(f"❌ I/O error in /upload_csv: {str(ioe)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=HTTP_400_BAD_REQUEST,
+            content={
+                "message": "I/O error: It looks like the file stream was closed or corrupted. "
+                           "Please reupload your file and try again.",
+                "error": str(ioe)
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in /upload_csv: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "message": "Unexpected error storing CSV data. Please try again.",
+                "error": str(e)
+            }
+        )
 @app.post("/classification/")
 async def classification(
     file: UploadFile = File(None),

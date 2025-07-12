@@ -67,6 +67,20 @@ celery_app = Celery(
 
 
 # celery_app = Celery("worker", broker="redis://redis:6379/0")
+import numpy as np
+
+def ensure_json_serializable(obj):
+    if isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    elif isinstance(obj, (list, tuple)):
+        return [ensure_json_serializable(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: ensure_json_serializable(v) for k, v in obj.items()}
+    return obj
 
 import base64
 from io import BytesIO
@@ -450,37 +464,37 @@ def do_classification(
                     "actual_positive": int(sum(y_test)),
                     "conversion_rate": round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0,
                 }
-
-            entry = {
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "classification",
-                "dataset": dataset_name,
-                "parameters": {"drop_columns": drop_columns},
-                "test_scores": test_scores,
-                "cv_scores": cv_table,
-                "target_column": target_column,
-                "visualizations": {
-                    "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-                    "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else "",
-                },
-                "thumbnailData": f"data:image/png;base64,{fi_shap_bar or fi_shap_dot or ''}",
-                "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
-                "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-                "conversion_rate": conversion_rate,
-                "impact_metrics": impact_metrics
-            }
-            
-            # Add additional visualizations
-            if class_dist_base64:
-                entry["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
-            if confusion_matrix_base64:
-                entry["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
-            if classification_report_base64:
-                entry["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "classification",
+                    "dataset": dataset_name,
+                    "parameters": {"drop_columns": drop_columns},
+                    "test_scores": test_scores,
+                    "cv_scores": cv_table,
+                    "target_column": target_column,
+                    "visualizations": {
+                        "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                        "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else "",
+                    },
+                    "thumbnailData": f"data:image/png;base64,{fi_shap_bar or fi_shap_dot or ''}",
+                    "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
+                    "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                    "conversion_rate": conversion_rate,
+                    "impact_metrics": impact_metrics
+                }
+                
+                # Add additional visualizations
+                if class_dist_base64:
+                    entry["visualizations"]["class_distribution"] = f"data:image/png;base64,{class_dist_base64}"
+                if confusion_matrix_base64:
+                    entry["visualizations"]["confusion_matrix"] = f"data:image/png;base64,{confusion_matrix_base64}"
+                if classification_report_base64:
+                    entry["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -757,33 +771,35 @@ def do_classification_predict(
                     "low_confidence_count": int(np.sum(max_probs < 0.7)),
                     "high_confidence_count": int(np.sum(max_probs > 0.9))
                 })
-            
-            entry = {
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "classification_prediction",
-                "target_col": target_column_actual,
-                "dataset": dataset_name,
-                "conversion_rate": conversion_rate if true_labels is not None else None,
-                "metrics": pred_stats,
-                "output_file": supabase_output_path,
-                "signed_url": signed_url,
-                "visualizations": visualizations,
-                "thumbnailData": visualizations.get("prediction_distribution"),
-                "imageData": visualizations.get("confidence_distribution"),
-                "feature_alignment": {
-                    "training_features": int(len(training_columns)),
-                    "prediction_features": int(len(X_pred.columns)),
-                    "missing_features_added": list(missing_cols),
-                    "extra_features_removed": list(extra_cols)
-                }
-            }
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "classification_prediction",
+                    "target_col": target_column_actual,
+                    "dataset": dataset_name,
+                    "conversion_rate": conversion_rate if true_labels is not None else None,
+                    "metrics": pred_stats,
+                    "output_file": supabase_output_path,
+                    "signed_url": signed_url,
+                    "visualizations": visualizations,
+                    "thumbnailData": visualizations.get("prediction_distribution"),
+                    "imageData": visualizations.get("confidence_distribution"),
+                    "feature_alignment": {
+                        "training_features": int(len(training_columns)),
+                        "prediction_features": int(len(X_pred.columns)),
+                        "missing_features_added": list(missing_cols),
+                        "extra_features_removed": list(extra_cols)
+                    }
+                }
+
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
-                print(f"[⚠️] Failed to save prediction metadata: {meta_error}")
+                print(f"[⚠️] Metadata save error: {meta_error}")
+
 
             # Prepare response - CONVERT ALL NUMPY TYPES
             response_data = {
@@ -1139,40 +1155,41 @@ def do_clustering(
                 response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
-            
-            entry = {
-                "id": entry["id"],  # Use the same one
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "segmentation",
-                "dataset": dataset_name,
-                "parameters": {
-                    "target_column": target_column,
-                    "drop_columns": drop_columns,
-                    "optimal_k": best_k
-                },
-                "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
-                "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
-                "visualizations": {
-                    "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                    "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
-                },
-                "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
-                "metrics": clustering_metrics,
-                "cluster_stats": cluster_stats,
-                "cluster_feature_differences": cluster_feature_diffs_dict,
-                # ✅ Add uploaded file references
-                "model_url": model_url,
-                "data_url": data_url,
-                "model_path": model_upload_path,
-                "data_path": data_upload_path
-            }
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                entry = {
+                    "id": entry["id"],  # Use the same one
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "segmentation",
+                    "dataset": dataset_name,
+                    "parameters": {
+                        "target_column": target_column,
+                        "drop_columns": drop_columns,
+                        "optimal_k": best_k
+                    },
+                    "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
+                    "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                    "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
+                    "visualizations": {
+                        "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                        "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
+                    },
+                    "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
+                    "metrics": clustering_metrics,
+                    "cluster_stats": cluster_stats,
+                    "cluster_feature_differences": cluster_feature_diffs_dict,
+                    # ✅ Add uploaded file references
+                    "model_url": model_url,
+                    "data_url": data_url,
+                    "model_path": model_upload_path,
+                    "data_path": data_upload_path
+                }
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
+
             
             return response_data
             
@@ -1496,43 +1513,44 @@ def do_segment_analysis(
                 response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
-
-            # ───────────── Save metadata for gallery ─────────────
-            entry = {
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "segmentation",
-                "dataset": dataset_name,
-                "parameters": {
-                    "target_column": target_column,
-                    "drop_columns": drop_columns,
-                    "optimal_k": best_k
-                },
-                "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
-                "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
-                "visualizations": {
-                    "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                    "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
-                },
-                "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
-                "metrics": clustering_metrics,
-                "cluster_stats": cluster_stats,
-                "cluster_feature_differences": cluster_feature_diffs_dict,
-                # ✅ Add uploaded file references to metadata
-                "model_url": model_url,
-                "scaler_url": scaler_url,
-                "data_url": data_url,
-                "model_path": model_upload_path,
-                "scaler_path": scaler_upload_path,
-                "data_path": data_upload_path
-            }
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                # ───────────── Save metadata for gallery ─────────────
+                entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "segmentation",
+                    "dataset": dataset_name,
+                    "parameters": {
+                        "target_column": target_column,
+                        "drop_columns": drop_columns,
+                        "optimal_k": best_k
+                    },
+                    "cluster_counts": {str(i): int(count) for i, count in cluster_counts.items()},
+                    "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                    "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
+                    "visualizations": {
+                        "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                        "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
+                    },
+                    "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
+                    "metrics": clustering_metrics,
+                    "cluster_stats": cluster_stats,
+                    "cluster_feature_differences": cluster_feature_diffs_dict,
+                    # ✅ Add uploaded file references to metadata
+                    "model_url": model_url,
+                    "scaler_url": scaler_url,
+                    "data_url": data_url,
+                    "model_path": model_upload_path,
+                    "scaler_path": scaler_upload_path,
+                    "data_path": data_upload_path
+                }
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
+
 
             return response_data
 
@@ -1768,37 +1786,36 @@ def do_label_clusters(
                 response_data["visualizations"]["scatter"] = f"data:image/png;base64,{cluster_viz_base64}"
             if distribution_viz_base64:
                 response_data["visualizations"]["distribution"] = f"data:image/png;base64,{distribution_viz_base64}"
-
-            # ───────────── Save metadata for gallery ─────────────
-            entry = {
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "label_clusters",
-                "dataset": dataset_name,
-                "parameters": {
-                    "feature_columns": available_features
-                },
-                "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                "imageData": f"data:image/png;base64,{cluster_viz_base64 or distribution_viz_base64}",
-                "visualizations": {
-                    "scatter": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
-                    "distribution": f"data:image/png;base64,{distribution_viz_base64}" if distribution_viz_base64 else ""
-                },
-                "segments_summary": segments_summary,
-                "segment_stats": segment_stats,
-                "segment_insights": segment_insights,
-                # ✅ Add uploaded file references to metadata
-                "labeled_data_url": labeled_data_url,
-                "labeled_data_path": labeled_data_upload_path
-            }
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                # ───────────── Save metadata for gallery ─────────────
+                entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "label_clusters",
+                    "dataset": dataset_name,
+                    "parameters": {
+                        "feature_columns": available_features
+                    },
+                    "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                    "imageData": f"data:image/png;base64,{cluster_viz_base64 or distribution_viz_base64}",
+                    "visualizations": {
+                        "scatter": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                        "distribution": f"data:image/png;base64,{distribution_viz_base64}" if distribution_viz_base64 else ""
+                    },
+                    "segments_summary": segments_summary,
+                    "segment_stats": segment_stats,
+                    "segment_insights": segment_insights,
+                    # ✅ Add uploaded file references to metadata
+                    "labeled_data_url": labeled_data_url,
+                    "labeled_data_path": labeled_data_upload_path
+                }
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
 
-            logger.info(f"✅ Cluster labeling completed for user_id: {user_id}")
 
             return response_data
 
@@ -2123,49 +2140,41 @@ def do_regression(
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
                 # ───────────── Generate Insights ─────────────
-                try:
                     insights = generate_regression_insights(
                         pred_stats=pred_stats,
                         top_features=imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                         financial_inputs=financial_inputs
                     )
-                    
-                    # Save Metadata for Gallery
-                    entry = {
-                        "id": str(uuid.uuid4()),
-                        "created_at": datetime.utcnow().isoformat(),
-                        "type": "regression",
-                        "dataset": dataset_name,
-                        "parameters": {
-                            "target_column": target_column,
-                            "drop_columns": drop_columns
-                        },
-                        "metrics": results.get("metrics", {}),
-                        "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-                        "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
-                        "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-                        "visualizations": {
-                            "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-                            "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
-                        },
-                        "pred_stats": pred_stats,
-                        "insights": insights,
-                        "model_url": model_url if 'model_url' in locals() else "",
-                        "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
-                        "data_url": data_url if 'data_url' in locals() else ""
-                    }
-
-                    
                     try:
-                        with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        # Save Metadata for Gallery
+                        entry = {
+                            "id": str(uuid.uuid4()),
+                            "created_at": datetime.utcnow().isoformat(),
+                            "type": "regression",
+                            "dataset": dataset_name,
+                            "parameters": {
+                                "target_column": target_column,
+                                "drop_columns": drop_columns
+                            },
+                            "metrics": results.get("metrics", {}),
+                            "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                            "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
+                            "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                            "visualizations": {
+                                "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                                "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
+                            },
+                            "pred_stats": pred_stats,
+                            "insights": insights,
+                            "model_url": model_url if 'model_url' in locals() else "",
+                            "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
+                            "data_url": data_url if 'data_url' in locals() else ""
+                        }
+                        entry = ensure_json_serializable(entry)
+                        with master_db_cm() as db:
                             _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                     except Exception as meta_error:
                         print(f"[⚠️] Metadata save error: {meta_error}")
-
-                except Exception as insight_err:
-                    print(f"[⚠️] Insight generation failed: {insight_err}")
-                    insights = "Could not generate insights."
-
                 # ───────────── Final API Response ─────────────
                 response_data = {
                     "status": "success",
@@ -2199,7 +2208,6 @@ def do_regression(
                     response_data["visualizations"]["shap_dot"] = f"data:image/png;base64,{fi_shap_dot}"
 
                 return response_data
-
             except Exception as viz_global_error:
                 print(f"[⚠️] Visualization pipeline error: {viz_global_error}")
                 return {"status": "failed", "error": str(viz_global_error)}
@@ -2451,33 +2459,33 @@ def do_regression_predict(
                 top_features=None,
                 financial_inputs=None
             )
-            
-            # Create metadata entry
-            entry = {
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "regression_prediction",
-                "target_col": target_column_actual,
-                "dataset": dataset_name,
-                "parameters": {"drop_columns": drop_columns},
-                "metrics": pred_stats,
-                "output_file": supabase_output_path,
-                "signed_url": signed_url,
-                "visualizations": visualizations,
-                "thumbnailData": visualizations.get("prediction_distribution"),
-                "imageData": visualizations.get("actual_vs_predicted"),
-                "feature_alignment": {
-                    "training_features": int(len(training_columns)),
-                    "prediction_features": int(len(df_processed.columns)),
-                    "missing_features_added": list(missing_cols),
-                    "extra_features_removed": list(extra_cols)
-                },
-                "evaluation_metrics": evaluation_metrics,
-                "insights": insights
-            }
-
             try:
-                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                # Create metadata entry
+                entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "regression_prediction",
+                    "target_col": target_column_actual,
+                    "dataset": dataset_name,
+                    "parameters": {"drop_columns": drop_columns},
+                    "metrics": pred_stats,
+                    "output_file": supabase_output_path,
+                    "signed_url": signed_url,
+                    "visualizations": visualizations,
+                    "thumbnailData": visualizations.get("prediction_distribution"),
+                    "imageData": visualizations.get("actual_vs_predicted"),
+                    "feature_alignment": {
+                        "training_features": int(len(training_columns)),
+                        "prediction_features": int(len(df_processed.columns)),
+                        "missing_features_added": list(missing_cols),
+                        "extra_features_removed": list(extra_cols)
+                    },
+                    "evaluation_metrics": evaluation_metrics,
+                    "insights": insights
+                }
+
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
                     _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -2728,15 +2736,12 @@ def do_visualization(
                 if pdp_b64:
                     entry["visualizations"]["pdp_plot"] = f"data:image/png;base64,{pdp_b64}"
 
-                # Use the same metadata saving function as classification
-                try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
-                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-                except Exception as meta_error:
-                    print(f"[⚠️] Metadata save error: {meta_error}")
-
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
+
 
             # ───────────── Build response ─────────────
             response_data = {
@@ -2759,11 +2764,12 @@ def do_visualization(
 
             if pdp_b64:
                 response_data["visualizations"]["pdp_plot"] = f"data:image/png;base64,{pdp_b64}"
-            return response_data
-            
+            return response_data  
+                
     except Exception as e:
         print(f"[⚠️] Error in do_visualization: {e}")
-        raise e
+        raise e        
+
 
 
 def clean_data_for_json(data):
@@ -3400,9 +3406,9 @@ def do_counterfactual(
                 # Clean entry for JSON serialization
                 entry = clean_data_for_json(entry)
 
-                # Use the same metadata saving function as classification
                 try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
                         _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                 except Exception as meta_error:
                     print(f"[⚠️] Metadata save error: {meta_error}")
@@ -3941,9 +3947,9 @@ def do_survival(
                 if risk_fig_base64:
                     entry["visualizations"]["risk_distribution"] = f"data:image/png;base64,{risk_fig_base64}"
 
-                # Use the same metadata saving function as visualization
                 try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
                         _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                 except Exception as meta_error:
                     print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4195,9 +4201,9 @@ def do_what_if(
                     "metrics": impact_metrics
                 }
 
-                # Use the same metadata saving function as visualization
                 try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
                         _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                 except Exception as meta_error:
                     print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4426,9 +4432,9 @@ def do_risk_analysis(
                     }
                 }
 
-                # Use the same metadata saving function as visualization
                 try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
                         _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                 except Exception as meta_error:
                     print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4664,9 +4670,9 @@ def do_decision_paths(
                     }
                 }
 
-                # Use the same metadata saving function as visualization
                 try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
                         _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                 except Exception as meta_error:
                     print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4962,16 +4968,12 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
                         "adf_test": response_data["adf_test"]
                     }
                 }
-
-                # Use the same metadata saving function as visualization
-                try:
-                    with master_db_cm() as db:  # ✅ safely create and commit DB session
-                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-                except Exception as meta_error:
-                    print(f"[⚠️] Metadata save error: {meta_error}")
-
+                entry = ensure_json_serializable(entry)
+                with master_db_cm() as db:
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
+
             
             return response_data
             
