@@ -367,7 +367,7 @@ def do_classification(
                 # Run the subprocess with proper error handling
                 result = subprocess.run(
                     ["python3", "-m", "backend.shap_runner", str(request_json.resolve())],
-                    cwd=str(current_dir.parent),  # 🚨 Go up one level so `backend/` is importable
+                    cwd=str(current_dir.parent),  
                     capture_output=True,
                     text=True,
                     timeout=300
@@ -480,7 +480,8 @@ def do_classification(
                 entry["visualizations"]["classification_report"] = f"data:image/png;base64,{classification_report_base64}"
 
             try:
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
 
