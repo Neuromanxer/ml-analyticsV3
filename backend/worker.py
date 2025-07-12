@@ -1169,7 +1169,8 @@ def do_clustering(
             }
 
             try:
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
             
@@ -1528,7 +1529,8 @@ def do_segment_analysis(
             }
 
             try:
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
 
@@ -1791,9 +1793,10 @@ def do_label_clusters(
             }
 
             try:
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
-                logger.error(f"Metadata save error: {meta_error}")
+                print(f"[⚠️] Metadata save error: {meta_error}")
 
             logger.info(f"✅ Cluster labeling completed for user_id: {user_id}")
 
@@ -2154,7 +2157,8 @@ def do_regression(
 
                     
                     try:
-                        _append_limited_metadata(user_id, entry, max_entries=5)
+                        with master_db_cm() as db:  # ✅ safely create and commit DB session
+                            _append_limited_metadata(user_id, entry, db=db, max_entries=5)
                     except Exception as meta_error:
                         print(f"[⚠️] Metadata save error: {meta_error}")
 
@@ -2473,9 +2477,10 @@ def do_regression_predict(
             }
 
             try:
-                _append_limited_metadata(user_id, entry)
+                with master_db_cm() as db:  # ✅ safely create and commit DB session
+                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
             except Exception as meta_error:
-                print(f"[⚠️] Failed to save prediction metadata: {meta_error}")
+                print(f"[⚠️] Metadata save error: {meta_error}")
 
             # Prepare response - CONVERT ALL NUMPY TYPES
             response_data = {
@@ -2724,7 +2729,11 @@ def do_visualization(
                     entry["visualizations"]["pdp_plot"] = f"data:image/png;base64,{pdp_b64}"
 
                 # Use the same metadata saving function as classification
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -3392,7 +3401,11 @@ def do_counterfactual(
                 entry = clean_data_for_json(entry)
 
                 # Use the same metadata saving function as classification
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -3929,7 +3942,11 @@ def do_survival(
                     entry["visualizations"]["risk_distribution"] = f"data:image/png;base64,{risk_fig_base64}"
 
                 # Use the same metadata saving function as visualization
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4179,7 +4196,11 @@ def do_what_if(
                 }
 
                 # Use the same metadata saving function as visualization
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4406,7 +4427,11 @@ def do_risk_analysis(
                 }
 
                 # Use the same metadata saving function as visualization
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4640,7 +4665,11 @@ def do_decision_paths(
                 }
 
                 # Use the same metadata saving function as visualization
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")
@@ -4935,7 +4964,11 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
                 }
 
                 # Use the same metadata saving function as visualization
-                _append_limited_metadata(user_id, entry, max_entries=5)
+                try:
+                    with master_db_cm() as db:  # ✅ safely create and commit DB session
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
 
             except Exception as meta_error:
                 print(f"[⚠️] Metadata save error: {meta_error}")

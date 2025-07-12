@@ -734,7 +734,6 @@ def _save_metadata(user_id: str, data: List[Dict[str, Any]], db: Session) -> Non
 
 import logging
 import traceback
-
 def _load_metadata(user_id: str, db: Session) -> List[Dict[str, Any]]:
     """Load metadata for a user from PostgreSQL."""
     try:
@@ -746,7 +745,8 @@ def _load_metadata(user_id: str, db: Session) -> List[Dict[str, Any]]:
             ORDER BY created_at DESC
         """), {"user_id": str(user_id)})
         
-        metadata_list = [json.loads(row[0]) for row in result.fetchall()]
+        # Do NOT use json.loads since it's already a dict
+        metadata_list = [row[0] for row in result.fetchall()]
         logging.info(f"✅ Loaded {len(metadata_list)} metadata entries for user {user_id}")
         
         return metadata_list
