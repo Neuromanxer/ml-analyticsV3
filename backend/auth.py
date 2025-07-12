@@ -684,76 +684,69 @@ import logging
 from typing import List, Optional, Dict, Any
 from pathlib import Path as PathL  # Your existing alias
 from fastapi import HTTPException, Depends, Query
-
+import uuid
 from io import BytesIO
-
+from sqlalchemy import text
 def _get_meta_path(user_id: str) -> PathL:
     """Get the metadata file path for a user."""
     meta_dir = PathL("data") / "visualizations"
     meta_dir.mkdir(parents=True, exist_ok=True)
     safe_user_id = str(user_id).replace("/", "_").replace("\\", "_")
     return meta_dir / f"{safe_user_id}.json"
-
-
+from sqlalchemy import text
 def _save_metadata(user_id: str, data: List[Dict[str, Any]], db: Session) -> None:
     """Overwrite all metadata for a user (not common, but preserved)."""
     try:
-        db.execute("DELETE FROM visualizations_metadata WHERE user_id = :user_id", {"user_id": user_id})
+        db.execute(text("DELETE FROM visualizations_metadata WHERE user_id = :user_id"), {"user_id": user_id})
         for entry in data:
-            db.execute(
-                """
+            db.execute(text("""
                 INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
                 VALUES (:id, :user_id, :type, :created_at, :metadata)
-                """,
-                {
-                    "id": str(uuid4()),
-                    "user_id": str(user_id),
-                    "type": entry.get("type", "other"),
-                    "created_at": entry.get("created_at", datetime.utcnow().isoformat()),
-                    "metadata": json.dumps(entry)
-                }
-            )
+            """), {
+                "id": str(uuid4()),
+                "user_id": str(user_id),
+                "type": entry.get("type", "other"),
+                "created_at": entry.get("created_at", datetime.utcnow().isoformat()),
+                "metadata": json.dumps(entry)
+            })
         db.commit()
         logging.info(f"✅ Saved {len(data)} metadata entries for user {user_id}")
     except Exception as e:
         logging.error(f"❌ Error saving metadata for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error saving metadata")
-    
+
+
 def _load_metadata(user_id: str, db: Session) -> List[Dict[str, Any]]:
     """Load metadata for a user from PostgreSQL."""
     try:
-        result = db.execute(
-            """
+        result = db.execute(text("""
             SELECT metadata FROM visualizations_metadata
             WHERE user_id = :user_id
             ORDER BY created_at DESC
-            """,
-            {"user_id": str(user_id)}
-        )
+        """), {"user_id": str(user_id)})
         metadata_list = [json.loads(row[0]) for row in result.fetchall()]
         return metadata_list
     except Exception as e:
         logging.error(f"❌ Error loading metadata for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error loading metadata")
+
+
 def _append_metadata(user_id: str, new_entry: Dict[str, Any], db: Session) -> None:
     """Append a new metadata entry to the user's record."""
     try:
         metadata_id = new_entry.get("id") or str(uuid4())
         new_entry["id"] = metadata_id  # Ensure ID is set in metadata too
 
-        db.execute(
-            """
+        db.execute(text("""
             INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
             VALUES (:id, :user_id, :type, :created_at, :metadata)
-            """,
-            {
-                "id": metadata_id,
-                "user_id": str(user_id),
-                "type": new_entry.get("type", "other"),
-                "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
-                "metadata": json.dumps(new_entry)
-            }
-        )
+        """), {
+            "id": metadata_id,
+            "user_id": str(user_id),
+            "type": new_entry.get("type", "other"),
+            "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
+            "metadata": json.dumps(new_entry)
+        })
         db.commit()
         logging.info(f"✅ Appended metadata entry {metadata_id} for user {user_id}")
 
@@ -767,36 +760,33 @@ def _append_limited_metadata(user_id: str, new_entry: Dict[str, Any], db: Sessio
         current_type = new_entry.get("type", "other")
 
         # Fetch entries of same type
-        result = db.execute(
-            """
+        result = db.execute(text("""
             SELECT id, created_at FROM visualizations_metadata
             WHERE user_id = :user_id AND type = :type
             ORDER BY created_at DESC
-            """,
-            {"user_id": str(user_id), "type": current_type}
-        )
+        """), {"user_id": str(user_id), "type": current_type})
         entries = result.fetchall()
 
         # Delete oldest if over the limit
         if len(entries) >= max_entries:
             to_delete = entries[max_entries - 1:]
             for row in to_delete:
-                db.execute("DELETE FROM visualizations_metadata WHERE id = :id", {"id": row[0]})
+                db.execute(text("""
+                    DELETE FROM visualizations_metadata WHERE id = :id
+                """), {"id": row[0]})
 
         # Insert the new entry
-        db.execute(
-            """
+        db.execute(text("""
             INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
             VALUES (:id, :user_id, :type, :created_at, :metadata)
-            """,
-            {
-                "id": new_entry["id"],
-                "user_id": str(user_id),
-                "type": current_type,
-                "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
-                "metadata": json.dumps(new_entry)
-            }
-        )
+        """), {
+            "id": new_entry["id"],
+            "user_id": str(user_id),
+            "type": current_type,
+            "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
+            "metadata": json.dumps(new_entry)
+        })
+
         db.commit()
         logging.info(f"✅ Saved metadata entry for user {user_id} [type={current_type}]")
 
