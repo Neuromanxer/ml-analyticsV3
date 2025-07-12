@@ -732,21 +732,29 @@ def _save_metadata(user_id: str, data: List[Dict[str, Any]], db: Session) -> Non
         logging.error(f"❌ Error saving metadata for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error saving metadata")
 
+import logging
+import traceback
 
 def _load_metadata(user_id: str, db: Session) -> List[Dict[str, Any]]:
     """Load metadata for a user from PostgreSQL."""
     try:
+        logging.info(f"📥 Attempting to load metadata for user_id: {user_id}")
+        
         result = db.execute(text("""
             SELECT metadata FROM visualizations_metadata
             WHERE user_id = :user_id
             ORDER BY created_at DESC
         """), {"user_id": str(user_id)})
+        
         metadata_list = [json.loads(row[0]) for row in result.fetchall()]
+        logging.info(f"✅ Loaded {len(metadata_list)} metadata entries for user {user_id}")
+        
         return metadata_list
+
     except Exception as e:
         logging.error(f"❌ Error loading metadata for user {user_id}: {str(e)}")
+        logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Error loading metadata")
-
 
 def _append_metadata(user_id: str, new_entry: Dict[str, Any], db: Session) -> None:
     """Append a new metadata entry to the user's record."""

@@ -797,15 +797,12 @@ async def upload_csv(
 ):
     logger.info("✅ /upload_csv/ endpoint called")
     try:
-        # Save the uploaded file temporarily
-        file_path = f"temp/{file.filename}"
-        os.makedirs("temp", exist_ok=True)
-        
-        # Reset file position to beginning before reading
-        await file.seek(0)
-        
         # Read and save file content
         file_content = await file.read()
+
+        os.makedirs("temp", exist_ok=True)
+        file_path = f"temp/{file.filename}"
+
         with open(file_path, "wb") as buffer:
             buffer.write(file_content)
 
@@ -825,6 +822,7 @@ async def upload_csv(
         import traceback
         logger.error(traceback.format_exc())
         return JSONResponse(status_code=500, content={"message": "Error storing CSV data", "error": str(e)})
+
 @app.post("/classification/")
 async def classification(
     file: UploadFile = File(None),
