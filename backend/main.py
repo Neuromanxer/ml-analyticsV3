@@ -262,6 +262,22 @@ async def try_get_current_user(request: Request) -> User | None:
             next(db_gen)  # commit and close
         except Exception:
             pass
+from jose import jwt, JWTError
+from fastapi import Request
+from app.core.config import settings
+
+def decode_user_from_request(request: Request):
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return None
+    token = auth.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload  # You can also fetch the user from DB using payload["sub"] or payload["user_id"]
+    except JWTError:
+        return None
+
 class UsageTrackerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.monotonic()
@@ -304,7 +320,13 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
         try:
             db = next(db_gen)
             try:
-                user = await get_current_active_user(request)
+                payload = decode_user_from_request(request)
+                if not payload:
+                    return response
+
+                user_email = payload.get("sub")  # Or user_id, depending on what you encoded
+                user = db.query(User).filter(User.email == user_email).first()
+
 
                 if user:
                     if user.tokens is None:
@@ -361,7 +383,13 @@ class AITokenBillingMiddleware(BaseHTTPMiddleware):
             db = next(db_gen)
 
             # Pull current user
-            user = await get_current_active_user(request)
+            payload = decode_user_from_request(request)
+            if not payload:
+                return response
+
+            user_email = payload.get("sub")  # Or user_id, depending on what you encoded
+            user = db.query(User).filter(User.email == user_email).first()
+
             if not user:
                 return response
 
