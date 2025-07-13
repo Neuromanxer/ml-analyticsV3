@@ -7,13 +7,21 @@ import base64
 from pathlib import Path
 from datetime import datetime
 import uuid
-from .feature_importance import safe_generate_feature_importance
 
 
 def main():
     import sys
+    from pathlib import Path
+
     print(f"[SHAP DEBUG] Starting SHAP runner with args: {sys.argv}")
-    
+
+    # Ensure project root is in sys.path
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    # ✅ Now do absolute import
+    from backend.feature_importance import safe_generate_feature_importance
     try:
         if len(sys.argv) != 2:
             raise ValueError("Expected one argument: path to request.json")
