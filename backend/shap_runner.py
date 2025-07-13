@@ -1,4 +1,4 @@
-# shap_runner.py
+# enhanced_shap_runner.py
 
 import json
 import sys
@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from datetime import datetime
 import traceback
+import signal
+import time
 
 # Force immediate output flushing
 import logging
@@ -18,11 +20,20 @@ def flush_print(*args, **kwargs):
     sys.stdout.flush()
     sys.stderr.flush()
 
+def timeout_handler(signum, frame):
+    """Handle timeout signal"""
+    flush_print("⏰ SHAP RUNNER: Timeout reached, terminating process")
+    raise TimeoutError("SHAP generation timed out")
+
 def main():
     flush_print("🔥 SHAP RUNNER: Starting execution")
     flush_print(f"🔥 SHAP RUNNER: Python version: {sys.version}")
     flush_print(f"🔥 SHAP RUNNER: Current working directory: {os.getcwd()}")
     flush_print(f"🔥 SHAP RUNNER: Script arguments: {sys.argv}")
+    
+    # Set up timeout handler (5 minutes)
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(300)  # 5 minutes timeout
     
     try:
         # Basic argument validation
@@ -82,10 +93,10 @@ def main():
             
             # Try to import feature_importance
             try:
-                from feature_importance import safe_generate_feature_importance
-                flush_print("[SHAP DEBUG] ✓ feature_importance imported")
+                from enhanced_feature_importance import safe_generate_feature_importance
+                flush_print("[SHAP DEBUG] ✓ enhanced_feature_importance imported")
             except ImportError as e:
-                flush_print(f"[SHAP ERROR] Failed to import feature_importance: {e}")
+                flush_print(f"[SHAP ERROR] Failed to import enhanced_feature_importance: {e}")
                 flush_print(f"[SHAP DEBUG] Current directory contents: {list(Path('.').iterdir())}")
                 raise
                 
@@ -137,8 +148,11 @@ def main():
             flush_print(f"[SHAP ERROR] Failed to load model: {e}")
             raise
 
-        # Generate feature importance
+        # Generate feature importance with progress tracking
         flush_print("[SHAP DEBUG] Starting feature importance generation...")
+        flush_print(f"[SHAP DEBUG] Process ID: {os.getpid()}")
+        flush_print(f"[SHAP DEBUG] Timestamp: {datetime.now()}")
+        
         try:
             result = safe_generate_feature_importance(
                 model=model,
@@ -149,18 +163,23 @@ def main():
                 return_base64=True
             )
             flush_print(f"[SHAP DEBUG] Feature importance completed successfully")
-            flush_print(f"[SHAP DEBUG] Result keys: {list(result.keys())}")
+            flush_print(f"[SHAP DEBUG] Result keys: {list(result.keys()) if result else 'None'}")
             
         except Exception as e:
             flush_print(f"[SHAP ERROR] Feature importance generation failed: {e}")
             traceback.print_exc()
             # Set default values
-            result = {"shap_bar": None, "shap_dot": None, "imp_df": pd.DataFrame()}
+            result = {
+                "shap_bar": None, 
+                "shap_dot": None, 
+                "imp_df": pd.DataFrame(),
+                "error": str(e)
+            }
 
         # Extract results
-        shap_bar = result.get("shap_bar")
-        shap_dot = result.get("shap_dot")
-        imp_df = result.get("imp_df", pd.DataFrame())
+        shap_bar = result.get("shap_bar") if result else None
+        shap_dot = result.get("shap_dot") if result else None
+        imp_df = result.get("imp_df", pd.DataFrame()) if result else pd.DataFrame()
 
         flush_print(f"[SHAP DEBUG] Results extracted - bar: {shap_bar is not None}, dot: {shap_dot is not None}, df shape: {imp_df.shape}")
 
@@ -172,7 +191,9 @@ def main():
             result_data = {
                 "shap_bar": shap_bar,
                 "shap_dot": shap_dot,
-                "imp_df": imp_df.to_dict(orient="records") if not imp_df.empty else []
+                "imp_df": imp_df.to_dict(orient="records") if not imp_df.empty else [],
+                "timestamp": datetime.now().isoformat(),
+                "success": shap_bar is not None or shap_dot is not None
             }
             
             with result_json_path.open("w", encoding="utf-8") as f:
@@ -183,7 +204,30 @@ def main():
             flush_print(f"[SHAP ERROR] Failed to save results: {e}")
             raise
 
+        # Cancel the timeout alarm
+        signal.alarm(0)
         flush_print("🎉 SHAP RUNNER: Completed successfully!")
+        
+    except TimeoutError as e:
+        flush_print(f"⏰ SHAP RUNNER: Timeout error: {e}")
+        # Save timeout result
+        try:
+            if 'output_dir' in locals():
+                result_json_path = output_dir / "result.json"
+                timeout_result = {
+                    "shap_bar": None,
+                    "shap_dot": None,
+                    "imp_df": [],
+                    "error": "Timeout: Process took too long to complete",
+                    "timestamp": datetime.now().isoformat(),
+                    "success": False
+                }
+                with result_json_path.open("w", encoding="utf-8") as f:
+                    json.dump(timeout_result, f, indent=2)
+                flush_print(f"[SHAP DEBUG] Timeout result saved to {result_json_path}")
+        except:
+            flush_print("[SHAP ERROR] Failed to save timeout result")
+        sys.exit(1)
         
     except Exception as e:
         flush_print(f"💥 SHAP RUNNER: Fatal error: {e}")
@@ -197,7 +241,9 @@ def main():
                     "shap_bar": None,
                     "shap_dot": None,
                     "imp_df": [],
-                    "error": str(e)
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                    "success": False
                 }
                 with result_json_path.open("w", encoding="utf-8") as f:
                     json.dump(error_result, f, indent=2)
