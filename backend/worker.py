@@ -2082,6 +2082,14 @@ def do_regression(
                         "target_column": target_column,
                         "save_filename": f"{user_id}_feature_importance.png"
                     }, f)
+                # Save training columns needed by SHAP
+                try:
+                    training_columns_path = user_dir / "training_columns.json"
+                    with open(training_columns_path, "w") as f:
+                        json.dump(list(X_full_df.columns), f)
+                    print(f"[✅] Saved training columns to {training_columns_path}")
+                except Exception as col_err:
+                    print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
                 try:
