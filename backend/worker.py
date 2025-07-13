@@ -1854,7 +1854,6 @@ def generate_regression_insights(pred_stats, top_features, financial_inputs=None
         insights.append(f"📈 When scaled by the average unit value, the estimated mean impact is approximately {estimated_value:.2f}.")
 
     return insights
-
 def do_regression(
     user_id: str,
     current_user: dict = None,
@@ -1871,6 +1870,10 @@ def do_regression(
     import os
     import pandas as pd
     from pathlib import Path as PathL
+    import numpy as np
+    import joblib
+    import uuid
+    from datetime import datetime
 
     # Validate upload mode
     if file_path and (train_path or test_path):
@@ -1922,6 +1925,7 @@ def do_regression(
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
             processed_data_path = user_dir / "processed_full_data.csv"
+            
             # ───────────── File processing ─────────────
             train_df = None
             test_df = None
@@ -1977,7 +1981,7 @@ def do_regression(
             )
             print("Model training completed!")
 
-           # ───────────── Save Model & Preprocessor ─────────────
+            # ───────────── Save Model & Preprocessor ─────────────
             model_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
             preprocessor_path = PathL(model_dir) / f"{user_id}_preprocessor.pkl"
 
@@ -1985,41 +1989,9 @@ def do_regression(
             joblib.dump(results["preprocessor"], preprocessor_path)
             print(f"[💾] Models saved to: {model_path} and {preprocessor_path}")
 
-            # ───────────── Upload to Supabase ─────────────
+            # ───────────── Generate Visualizations & Process Data ─────────────
             try:
-                model_filename = model_path.name
-                preprocessor_filename = preprocessor_path.name
-
-                # Upload model and preprocessor
-                model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
-                preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
-            
-                # Upload processed dataset
-                data_filename = processed_data_path.name
-                data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
-
-                # Get signed URLs for frontend access (1-hour expiration)
-                model_url = get_file_url(model_supabase_path, expires_in=3600)
-                preprocessor_url = get_file_url(preprocessor_supabase_path, expires_in=3600)
-                data_url = get_file_url(data_supabase_path, expires_in=3600)
-
-                print(f"[✅] Uploaded model: {model_url}")
-                print(f"[✅] Uploaded preprocessor: {preprocessor_url}")
-                print(f"[✅] Uploaded processed data: {data_url}")
-
-                # Append to response_data
-                response_data.update({
-                    "model_url": model_url,
-                    "preprocessor_url": preprocessor_url,
-                    "data_url": data_url
-                })
-
-            except Exception as upload_error:
-                print(f"[⚠️] Failed to upload regression artifacts to Supabase: {upload_error}")
-
-
-            # ───────────── Generate Visualizations ─────────────
-            try:
+                # Prepare full dataset for processing
                 if local_file_path:
                     full_df = pd.read_csv(local_file_path)
                     full_df = full_df.dropna(subset=[target_column])
@@ -2068,9 +2040,35 @@ def do_regression(
                 with open(training_columns_path, "w") as f:
                     json.dump(list(X_full_df.columns), f)
 
-                # Save processed data for SHAP
-
+                # Save processed data for SHAP - CREATE FILE BEFORE UPLOAD
                 X_full_df.to_csv(processed_data_path, index=False)
+
+                # ───────────── Upload to Supabase (AFTER creating processed data) ─────────────
+                try:
+                    model_filename = model_path.name
+                    preprocessor_filename = preprocessor_path.name
+                    data_filename = processed_data_path.name
+
+                    # Upload model, preprocessor, and processed dataset
+                    model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
+                    preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
+                    data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
+
+                    # Get signed URLs for frontend access (1-hour expiration)
+                    model_url = get_file_url(model_supabase_path, expires_in=3600)
+                    preprocessor_url = get_file_url(preprocessor_supabase_path, expires_in=3600)
+                    data_url = get_file_url(data_supabase_path, expires_in=3600)
+
+                    print(f"[✅] Uploaded model: {model_url}")
+                    print(f"[✅] Uploaded preprocessor: {preprocessor_url}")
+                    print(f"[✅] Uploaded processed data: {data_url}")
+
+                except Exception as upload_error:
+                    print(f"[⚠️] Failed to upload regression artifacts to Supabase: {upload_error}")
+                    # Set default values if upload fails
+                    model_url = ""
+                    preprocessor_url = ""
+                    data_url = ""
 
                 # Create request JSON for SHAP
                 request_json = user_dir / "request.json"
@@ -2080,26 +2078,13 @@ def do_regression(
                         "model_path": str(model_path.resolve()),
                         "data_path": str(processed_data_path.resolve()),
                         "output_dir": str(user_dir.resolve()),
-                        "model_type": "regressor",
+                        "model_type": "regression",
                         "target_column": target_column,
-                        "drop_columns": drop_columns,
+                        "save_filename": f"{user_id}_feature_importance.png"
                     }, f)
 
-               
+                # ───────────── SHAP Analysis ─────────────
                 try:
-                    # Build request.json for regression SHAP
-                    request_json = user_dir / "request.json"
-                    with open(request_json, "w") as f:
-                        json.dump({
-                            "user_id": str(user_id),
-                            "model_path": str(model_path.resolve()),
-                            "data_path": str(processed_data_path.resolve()),
-                            "output_dir": str(user_dir.resolve()),
-                            "model_type": "regression",  # <- updated model_type
-                            "target_column": target_column,
-                            "save_filename": f"{user_id}_feature_importance.png"
-                        }, f)
-
                     # SHAP subprocess
                     current_dir = PathL(__file__).parent
                     result = subprocess.run(
@@ -2141,41 +2126,43 @@ def do_regression(
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
                 # ───────────── Generate Insights ─────────────
-                    insights = generate_regression_insights(
-                        pred_stats=pred_stats,
-                        top_features=imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-                        financial_inputs=financial_inputs
-                    )
-                    try:
-                        # Save Metadata for Gallery
-                        entry = {
-                            "id": str(uuid.uuid4()),
-                            "created_at": datetime.utcnow().isoformat(),
-                            "type": "regression",
-                            "dataset": dataset_name,
-                            "parameters": {
-                                "target_column": target_column,
-                                "drop_columns": drop_columns
-                            },
-                            "metrics": results.get("metrics", {}),
-                            "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-                            "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
-                            "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
-                            "visualizations": {
-                                "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
-                                "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
-                            },
-                            "pred_stats": pred_stats,
-                            "insights": insights,
-                            "model_url": model_url if 'model_url' in locals() else "",
-                            "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
-                            "data_url": data_url if 'data_url' in locals() else ""
-                        }
-                        entry = ensure_json_serializable(entry)
-                        with master_db_cm() as db:
-                            _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-                    except Exception as meta_error:
-                        print(f"[⚠️] Metadata save error: {meta_error}")
+                insights = generate_regression_insights(
+                    pred_stats=pred_stats,
+                    top_features=imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                    financial_inputs=financial_inputs
+                )
+
+                # ───────────── Save Metadata for Gallery ─────────────
+                try:
+                    entry = {
+                        "id": str(uuid.uuid4()),
+                        "created_at": datetime.utcnow().isoformat(),
+                        "type": "regression",
+                        "dataset": dataset_name,
+                        "parameters": {
+                            "target_column": target_column,
+                            "drop_columns": drop_columns
+                        },
+                        "metrics": results.get("metrics", {}),
+                        "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                        "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
+                        "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                        "visualizations": {
+                            "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
+                            "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
+                        },
+                        "pred_stats": pred_stats,
+                        "insights": insights,
+                        "model_url": model_url,
+                        "preprocessor_url": preprocessor_url,
+                        "data_url": data_url
+                    }
+                    entry = ensure_json_serializable(entry)
+                    with master_db_cm() as db:
+                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+                except Exception as meta_error:
+                    print(f"[⚠️] Metadata save error: {meta_error}")
+
                 # ───────────── Final API Response ─────────────
                 response_data = {
                     "status": "success",
@@ -2191,24 +2178,19 @@ def do_regression(
                     "metrics": results.get("metrics", {}),
                     "message": "Regression model training completed",
                     "pred_stats": pred_stats,
-                    "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else {},
-                    "insights": insights if 'insights' in locals() else "Could not generate insights.",
+                    "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
+                    "insights": insights,
                     "visualizations": {
                         "shap_bar": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
                         "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
                     },
-                    "model_url": model_url if 'model_url' in locals() else "",
-                    "preprocessor_url": preprocessor_url if 'preprocessor_url' in locals() else "",
-                    "data_url": data_url if 'data_url' in locals() else ""
+                    "model_url": model_url,
+                    "preprocessor_url": preprocessor_url,
+                    "data_url": data_url
                 }
 
-
-                if fi_shap_bar:
-                    response_data["visualizations"]["shap_bar"] = f"data:image/png;base64,{fi_shap_bar}"
-                if fi_shap_dot:
-                    response_data["visualizations"]["shap_dot"] = f"data:image/png;base64,{fi_shap_dot}"
-
                 return response_data
+
             except Exception as viz_global_error:
                 print(f"[⚠️] Visualization pipeline error: {viz_global_error}")
                 return {"status": "failed", "error": str(viz_global_error)}
