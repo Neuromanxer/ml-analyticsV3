@@ -2070,7 +2070,7 @@ def do_regression(
                     preprocessor_url = ""
                     data_url = ""
 
-                # Create request JSON for SHAP
+               # Create request JSON for SHAP
                 request_json = user_dir / "request.json"
                 with open(request_json, "w") as f:
                     json.dump({
@@ -2082,6 +2082,7 @@ def do_regression(
                         "target_column": target_column,
                         "save_filename": f"{user_id}_feature_importance.png"
                     }, f)
+
                 # Save training columns needed by SHAP
                 try:
                     training_columns_path = user_dir / "training_columns.json"
@@ -2092,24 +2093,22 @@ def do_regression(
                     print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
-               
+                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 try:
-                    # Dynamically locate the path to shap_runner.py relative to this file
-                    current_dir = PathL(__file__).parent
-                    shap_runner_path = current_dir / "shap_runner.py"
-
+                    shap_runner_path = PathL(__file__).parent / "shap_runner.py"
                     print(f"[DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
-
+                    import sys
                     result = subprocess.run(
-                        ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
+                        [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())],
                         capture_output=True,
                         text=True,
                         timeout=300,
                         check=True
                     )
+
                     print(f"[SHAP STDOUT]:\n{result.stdout}")
                     print(f"[SHAP STDERR]:\n{result.stderr}")
-                    # Load result
+
                     result_path = user_dir / "result.json"
                     if result_path.exists():
                         with open(result_path) as f:
@@ -2119,20 +2118,16 @@ def do_regression(
                         imp_df = pd.DataFrame(shap_result.get("imp_df", []))
                     else:
                         print("[⚠️] SHAP result.json not found")
-                        fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-                except subprocess.TimeoutExpired:
-                    print("[⚠️] SHAP subprocess timed out after 5 minutes")
-                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                except subprocess.TimeoutExpired as e:
+                    print(f"[⚠️] SHAP subprocess timed out. STDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
                 except subprocess.CalledProcessError as e:
-                    print(f"[⚠️] SHAP subprocess failed: {e}")
+                    print(f"[⚠️] SHAP subprocess failed. Return code: {e.returncode}")
                     print(f"[⚠️] STDOUT:\n{e.stdout}")
                     print(f"[⚠️] STDERR:\n{e.stderr}")
-                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-                except Exception as viz_error:
-                    print(f"[⚠️] Visualization error: {viz_error}")
+                except Exception as e:
+                    print(f"[⚠️] Unexpected SHAP subprocess error: {e}")
                     import traceback
                     traceback.print_exc()
-                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
                 # ───────────── Generate Insights ─────────────
                 insights = generate_regression_insights(
@@ -2140,6 +2135,7 @@ def do_regression(
                     top_features=imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                     financial_inputs=financial_inputs
                 )
+
 
                 # ───────────── Save Metadata for Gallery ─────────────
                 try:
