@@ -2095,7 +2095,7 @@ def do_regression(
                
                 try:
                     # Dynamically locate the path to shap_runner.py relative to this file
-                    current_dir = Path(__file__).parent
+                    current_dir = PathL(__file__).parent
                     shap_runner_path = current_dir / "shap_runner.py"
 
                     print(f"[DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
