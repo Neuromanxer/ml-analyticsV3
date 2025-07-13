@@ -1920,7 +1920,7 @@ def do_regression(
             # Prepare model directory
             model_dir = os.path.join(temp_dir, "models")
             os.makedirs(model_dir, exist_ok=True)
-            
+
             # Create user directory for outputs
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
@@ -2092,22 +2092,23 @@ def do_regression(
                     print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
+               
                 try:
+                    # Dynamically locate the path to shap_runner.py relative to this file
+                    current_dir = Path(__file__).parent
+                    shap_runner_path = current_dir / "shap_runner.py"
+
+                    print(f"[DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
+
                     result = subprocess.run(
-                            ["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=True
-                        )
+                        ["python3", str(shap_runner_path.resolve()), str(request_json.resolve())],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                        check=True
+                    )
                     print(f"[SHAP STDOUT]:\n{result.stdout}")
                     print(f"[SHAP STDERR]:\n{result.stderr}")
-                    if result.returncode != 0:
-                        print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
-                        print(f"[⚠️] STDERR: {result.stderr}")
-                        print(f"[⚠️] STDOUT: {result.stdout}")
-                        raise subprocess.CalledProcessError(result.returncode, result.args)
-
                     # Load result
                     result_path = user_dir / "result.json"
                     if result_path.exists():
@@ -2119,7 +2120,6 @@ def do_regression(
                     else:
                         print("[⚠️] SHAP result.json not found")
                         fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-
                 except subprocess.TimeoutExpired:
                     print("[⚠️] SHAP subprocess timed out after 5 minutes")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
