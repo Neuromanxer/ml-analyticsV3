@@ -2092,26 +2092,21 @@ def do_regression(
                     print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
-               try:
-                result = subprocess.run(
-                    ["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    check=True
-                )
-                print(f"[SHAP STDOUT]:\n{result.stdout}")
-                print(f"[SHAP STDERR]:\n{result.stderr}")
-
-            except subprocess.CalledProcessError as e:
-                print(f"[⚠️] SHAP subprocess failed with return code {e.returncode}")
-                print(f"[⚠️] STDOUT:\n{e.stdout}")
-                print(f"[⚠️] STDERR:\n{e.stderr}")
-                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-
-            except subprocess.TimeoutExpired:
-                print("[⚠️] SHAP subprocess timed out after 5 minutes")
-                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                try:
+                    result = subprocess.run(
+                            ["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=True
+                        )
+                    print(f"[SHAP STDOUT]:\n{result.stdout}")
+                    print(f"[SHAP STDERR]:\n{result.stderr}")
+                    if result.returncode != 0:
+                        print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
+                        print(f"[⚠️] STDERR: {result.stderr}")
+                        print(f"[⚠️] STDOUT: {result.stdout}")
+                        raise subprocess.CalledProcessError(result.returncode, result.args)
 
                     # Load result
                     result_path = user_dir / "result.json"
@@ -2130,6 +2125,8 @@ def do_regression(
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except subprocess.CalledProcessError as e:
                     print(f"[⚠️] SHAP subprocess failed: {e}")
+                    print(f"[⚠️] STDOUT:\n{e.stdout}")
+                    print(f"[⚠️] STDERR:\n{e.stderr}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except Exception as viz_error:
                     print(f"[⚠️] Visualization error: {viz_error}")
