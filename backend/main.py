@@ -21,7 +21,7 @@ from .ecs_launcher import launch_job_on_ecs
 from .worker import make_json_safe
 from starlette.middleware.base import BaseHTTPMiddleware
 from sklearn.model_selection import train_test_split
-
+from .auth import Base, master_engine, decode_user_from_request
 from .tokens import TokenUsageLogResponse, TokenUsageLog
 from sklearn.model_selection import train_test_split, KFold
 from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
@@ -262,22 +262,6 @@ async def try_get_current_user(request: Request) -> User | None:
             next(db_gen)  # commit and close
         except Exception:
             pass
-from jose import jwt, JWTError
-from fastapi import Request
-from app.core.config import settings
-
-def decode_user_from_request(request: Request):
-    auth = request.headers.get("Authorization")
-    if not auth or not auth.startswith("Bearer "):
-        return None
-    token = auth.split(" ")[1]
-
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload  # You can also fetch the user from DB using payload["sub"] or payload["user_id"]
-    except JWTError:
-        return None
-
 class UsageTrackerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.monotonic()
@@ -474,7 +458,7 @@ class DatasetQuery(BaseModel):
 def startup_event():
     """Initialize database on startup"""
     init_dataset_master_db()
-    from .auth import Base, master_engine  # (make sure you import Base from wherever your User model lives)
+      # (make sure you import Base from wherever your User model lives)
     Base.metadata.create_all(bind=master_engine)
     logger.info("Application started and database initialized")
     

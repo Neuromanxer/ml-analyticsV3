@@ -66,8 +66,9 @@ Base = declarative_base()
 Base.metadata.create_all(bind=master_engine)
 IMAGES_DIR = "images"
 # Auth configuration - move to environment variables in production
-SECRET_KEY = "printing"  # CHANGE THIS IN PRODUCTION!
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY", "")  # fallback for local testing
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Time for access token expiry
@@ -294,6 +295,21 @@ def decode_token(token: str):
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+# For decoding in middleware or routes
+from jose import jwt, JWTError
+from fastapi import Request
+
+def decode_user_from_request(request: Request):
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return None
+
+    token = auth.split(" ")[1]
+    try:
+        payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM", "HS256")])
+        return payload
+    except JWTError:
+        return None
 
 def authenticate_user(email: str, password: str, db: Session):
     user = get_user_by_email(db, email)
