@@ -10,18 +10,25 @@ import uuid
 
 
 def main():
+    print("[SHAP INIT] shap_runner.py file loaded")
+
+    # DEBUG: ensure PYTHONPATH includes project root
     import sys
     from pathlib import Path
 
-    print(f"[SHAP DEBUG] Starting SHAP runner with args: {sys.argv}")
-
-    # Ensure project root is in sys.path
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-    # ✅ Now do absolute import
-    from backend.feature_importance import safe_generate_feature_importance
+    try:
+        from backend.feature_importance import safe_generate_feature_importance
+        print("[SHAP INIT] safe_generate_feature_importance imported successfully")
+    except Exception as import_err:
+        print(f"[SHAP CRASH] Failed to import safe_generate_feature_importance: {import_err}")
+        import traceback
+        traceback.print_exc()
+        raise  # Ensures this gets caught by the subprocess
+
     try:
         if len(sys.argv) != 2:
             raise ValueError("Expected one argument: path to request.json")
