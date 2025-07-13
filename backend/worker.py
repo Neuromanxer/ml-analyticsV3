@@ -2093,16 +2093,15 @@ def do_regression(
 
                 # ───────────── SHAP Analysis ─────────────
                 try:
-                    # SHAP subprocess
-                    current_dir = PathL(__file__).parent
                     result = subprocess.run(
-                        ["python3", "-m", "backend.shap_runner", str(request_json.resolve())],
-                        cwd=str(current_dir.parent),  # run from parent of "backend/"
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-
+                            ["python3", str(PathL("shap_runner.py").resolve()), str(request_json.resolve())],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=True
+                        )
+                    print(f"[SHAP STDOUT]:\n{result.stdout}")
+                    print(f"[SHAP STDERR]:\n{result.stderr}")
                     if result.returncode != 0:
                         print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
                         print(f"[⚠️] STDERR: {result.stderr}")
@@ -5063,14 +5062,18 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
             print(f"[⚠️] Forecast runner not found at: {runner_script}")
             raise FileNotFoundError(f"Forecast runner script not found: {runner_script}")
 
-        # Run the subprocess
+        # Run the subprocess using the Python interpreter currently running the script
         result = subprocess.run(
-            ["python3", "-m", "backend.forecast_runner", str(request_path.resolve())],
-            cwd=str(current_dir.parent),  # go up so `backend` is importable
+            [sys.executable, str(runner_script.resolve()), str(request_path.resolve())],
+            check=True,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=300  # 5 minute timeout
         )
+
+        # Optional: Always log output for debugging
+        print(f"[FORECAST STDOUT]:\n{result.stdout}")
+        print(f"[FORECAST STDERR]:\n{result.stderr}")
 
 
         if result.returncode != 0:
