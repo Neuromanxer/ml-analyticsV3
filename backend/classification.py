@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.metrics import root_mean_squared_error
 # XGBoost Parameters for Classification
 xgb_params_c = {
-    "objective": "binary:logistic",  # For binary classification
+    "objective": "binary:logistic",
     "n_estimators": 2000,
     "max_depth": 6,
     "learning_rate": 0.05,
@@ -28,23 +28,24 @@ xgb_params_c = {
     "reg_lambda": 1.0,
     "min_child_weight": 10,
     "random_state": 42,
-    "use_label_encoder": False
+    "use_label_encoder": False,
+    "verbosity": 1  # Info-level logs; verbose handled in fit()
 }
 
 # LightGBM Parameters for Classification
 lgb_params_c = {
-    "objective": "binary",  # For binary classification
+    "objective": "binary",
     "n_estimators": 2000,
     "learning_rate": 0.05,
-    "max_depth": -1,  # No limit on tree depth
+    "max_depth": -1,
     "num_leaves": 31,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "min_child_samples": 20,
     "reg_alpha": 0.1,
     "reg_lambda": 1.0,
-    "random_state": 42,
-    "verbose": 500 
+    "random_state": 42
+    # verbose removed: use callback in fit
 }
 
 # CatBoost Parameters for Classification
@@ -56,29 +57,20 @@ cat_params_c = {
     "random_strength": 1.0,
     "bagging_temperature": 1.0,
     "border_count": 254,
-    "loss_function": "Logloss",  # For binary classification
+    "loss_function": "Logloss",
     "random_state": 42,
-    "verbose": 500
+    "verbose": 500  # Supported directly
 }
+from lightgbm import log_evaluation
+
 class ModelClassifyingTrainer:
     def __init__(self, data: pd.DataFrame, n_splits: int = 5):
-        """
-        data: a DataFrame containing ALL training rows, including the target column.
-        n_splits: number of CV folds.
-        """
         self.raw = data.copy()
         self.n_splits = n_splits
 
     def train_model(self, params: dict, target: str, title: str):
-        """
-        Runs Stratified K-Fold CV on the passed data.
-
-        Returns:
-          - models: list of fitted models, one per fold
-          - oof_preds: numpy array of out-of-fold predictions (length = n_samples)
-        """
         df = self.raw
-        X = df.drop(columns=['ID', target], errors='ignore')
+        X = df.drop(columns=["ID", target], errors="ignore")
         y = df[target]
 
         oof_preds = np.zeros(len(X))
@@ -89,41 +81,22 @@ class ModelClassifyingTrainer:
             X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
             y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
-            # Instantiate the right classifier with common structure
-            if title.startswith('LightGBM'):
+            if title.startswith("LightGBM"):
                 model = LGBMClassifier(**params)
                 model.fit(
                     X_tr, y_tr,
                     eval_set=[(X_val, y_val)],
-                    eval_metric='binary_logloss',
-                    verbose=500
+                    eval_metric="binary_logloss",
+                    callbacks=[log_evaluation(period=500)]
                 )
-
-            elif title.startswith('CatBoost'):
+            elif title.startswith("CatBoost"):
                 model = CatBoostClassifier(**params)
-                model.fit(
-                    X_tr, y_tr,
-                    eval_set=[(X_val, y_val)],
-                    verbose=500,
-                    use_best_model=False  # Prevents error if you’re not using early stopping
-                )
-
-            else:  # XGBoost
+                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], use_best_model=False)
+            else:
                 model = XGBClassifier(**params)
-                model.fit(
-                    X_tr, y_tr,
-                    eval_set=[(X_val, y_val)],
-                    eval_metric='logloss',
-                    verbose=500
-                )
+                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], eval_metric="logloss", verbose=500)
 
-
-            # fit on fold
-            model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])
             models.append(model)
-
-            # store OOF predictions
             oof_preds[val_idx] = model.predict(X_val)
 
         return models, oof_preds
-
