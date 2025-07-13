@@ -1206,7 +1206,7 @@ function renderFlatTable(headers, rows) {
   function buildMetricsHtml(data) {
     return `
       <div class="gallery-metrics">
-        ${data.metrics ? `<div>📈 Decision Tree Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
+        ${data.metrics ? `<div>📈 Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
         ${data.parameters ? `<div>⚙️ Parameters: ${formatKeyValObject(data.parameters)}</div>` : ""}
         ${data.summary_stats ? `<div>📊 Summary Stats: ${renderFlatTable(data.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"], data.summary_stats)}</div>` : ""}
         ${data.decision_rules ? `
