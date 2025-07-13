@@ -2096,38 +2096,45 @@ def do_regression(
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 try:
                     shap_runner_path = PathL(__file__).parent / "shap_runner.py"
-                    print(f"[DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
-                    import sys
+                    print(f"[SHAP DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
+
+                    shap_runner_path = PathL(__file__).parent / "shap_runner.py"
+
                     result = subprocess.run(
                         [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())],
+                        cwd=str(shap_runner_path.parent),  # stay in backend/
                         capture_output=True,
                         text=True,
                         timeout=300,
                         check=True
                     )
 
+                    print(f"[SHAP RETURN CODE]: {result.returncode}")
                     print(f"[SHAP STDOUT]:\n{result.stdout}")
                     print(f"[SHAP STDERR]:\n{result.stderr}")
 
-                    result_path = user_dir / "result.json"
-                    if result_path.exists():
-                        with open(result_path) as f:
-                            shap_result = json.load(f)
-                        fi_shap_bar = shap_result.get("shap_bar")
-                        fi_shap_dot = shap_result.get("shap_dot")
-                        imp_df = pd.DataFrame(shap_result.get("imp_df", []))
-                    else:
-                        print("[⚠️] SHAP result.json not found")
+                    # Load results
+                    with open(user_dir / "result.json") as f:
+                        shap_result = json.load(f)
+
+                    fi_shap_bar = shap_result.get("shap_bar")
+                    fi_shap_dot = shap_result.get("shap_dot")
+                    imp_df = pd.DataFrame(shap_result.get("imp_df", []))
+
                 except subprocess.TimeoutExpired as e:
                     print(f"[⚠️] SHAP subprocess timed out. STDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except subprocess.CalledProcessError as e:
-                    print(f"[⚠️] SHAP subprocess failed. Return code: {e.returncode}")
+                    print(f"[⚠️] SHAP subprocess failed with return code {e.returncode}")
                     print(f"[⚠️] STDOUT:\n{e.stdout}")
                     print(f"[⚠️] STDERR:\n{e.stderr}")
-                except Exception as e:
-                    print(f"[⚠️] Unexpected SHAP subprocess error: {e}")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                except Exception as viz_error:
+                    print(f"[⚠️] Visualization error: {viz_error}")
                     import traceback
                     traceback.print_exc()
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
 
                 # ───────────── Generate Insights ─────────────
                 insights = generate_regression_insights(
