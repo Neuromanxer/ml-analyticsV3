@@ -93,7 +93,7 @@ def main():
             
             # Try to import feature_importance
             try:
-                from enhanced_feature_importance import safe_generate_feature_importance
+                from feature_importance import safe_generate_feature_importance
                 flush_print("[SHAP DEBUG] ✓ enhanced_feature_importance imported")
             except ImportError as e:
                 flush_print(f"[SHAP ERROR] Failed to import enhanced_feature_importance: {e}")
