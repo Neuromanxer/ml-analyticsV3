@@ -89,13 +89,34 @@ class ModelClassifyingTrainer:
             X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
             y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
-            # instantiate the right classifier
+            # Instantiate the right classifier with common structure
             if title.startswith('LightGBM'):
                 model = LGBMClassifier(**params)
+                model.fit(
+                    X_tr, y_tr,
+                    eval_set=[(X_val, y_val)],
+                    eval_metric='binary_logloss',
+                    verbose=500
+                )
+
             elif title.startswith('CatBoost'):
                 model = CatBoostClassifier(**params)
-            else:
+                model.fit(
+                    X_tr, y_tr,
+                    eval_set=[(X_val, y_val)],
+                    verbose=500,
+                    use_best_model=False  # Prevents error if you’re not using early stopping
+                )
+
+            else:  # XGBoost
                 model = XGBClassifier(**params)
+                model.fit(
+                    X_tr, y_tr,
+                    eval_set=[(X_val, y_val)],
+                    eval_metric='logloss',
+                    verbose=500
+                )
+
 
             # fit on fold
             model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])
