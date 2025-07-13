@@ -2093,10 +2093,11 @@ def do_regression(
                     print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
-                # ───────────── SHAP Analysis ─────────────
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 try:
                     import sys
+                    import subprocess
+                    import time
                     
                     # Get the current script directory (where do_regression is located)
                     current_dir = PathL(__file__).parent
@@ -2120,55 +2121,137 @@ def do_regression(
                             "model_type": "regression",
                             "target_column": target_column,
                             "save_filename": f"{user_id}_feature_importance.png"
-                        }, f)
+                        }, f, indent=2)
                     
                     print(f"[SHAP DEBUG] Request JSON created: {request_json}")
                     print(f"[SHAP DEBUG] Request JSON exists: {request_json.exists()}")
+                    
+                    # Verify request JSON content
+                    with open(request_json, "r") as f:
+                        request_content = json.load(f)
+                    print(f"[SHAP DEBUG] Request content: {request_content}")
 
-                    # Run SHAP subprocess
-                    result = subprocess.run(
-                        [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())],
-                        cwd=str(current_dir),  # Set working directory to where shap_runner.py is located
-                        capture_output=True,
+                    # Set up the subprocess command
+                    cmd = [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())]
+                    print(f"[SHAP DEBUG] Command: {' '.join(cmd)}")
+                    print(f"[SHAP DEBUG] Working directory: {current_dir}")
+                    
+                    # Add environment variables for better error reporting
+                    env = os.environ.copy()
+                    env['PYTHONUNBUFFERED'] = '1'  # Force unbuffered output
+                    env['PYTHONIOENCODING'] = 'utf-8'  # Ensure proper encoding
+                    
+                    print(f"[SHAP DEBUG] Starting subprocess at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # Run SHAP subprocess with real-time output
+                    process = subprocess.Popen(
+                        cmd,
+                        cwd=str(current_dir),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,  # Merge stderr into stdout
                         text=True,
-                        timeout=300,
-                        check=True
+                        bufsize=1,  # Line buffered
+                        env=env,
+                        universal_newlines=True
                     )
-
-                    print(f"[SHAP RETURN CODE]: {result.returncode}")
-                    print(f"[SHAP STDOUT]:\n{result.stdout}")
-                    if result.stderr:
-                        print(f"[SHAP STDERR]:\n{result.stderr}")
+                    
+                    # Read output in real-time
+                    output_lines = []
+                    timeout_seconds = 300  # 5 minutes
+                    start_time = time.time()
+                    
+                    while True:
+                        # Check if process has finished
+                        if process.poll() is not None:
+                            # Process finished, read any remaining output
+                            remaining_output = process.stdout.read()
+                            if remaining_output:
+                                output_lines.append(remaining_output)
+                                print(f"[SHAP SUBPROCESS] {remaining_output.strip()}")
+                            break
+                        
+                        # Check for timeout
+                        if time.time() - start_time > timeout_seconds:
+                            print(f"[SHAP ERROR] Subprocess timed out after {timeout_seconds} seconds")
+                            process.terminate()
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait()
+                            raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+                        
+                        # Read output line by line
+                        line = process.stdout.readline()
+                        if line:
+                            output_lines.append(line)
+                            print(f"[SHAP SUBPROCESS] {line.strip()}")
+                        else:
+                            time.sleep(0.1)  # Small delay to prevent busy waiting
+                    
+                    # Get the return code
+                    return_code = process.returncode
+                    full_output = ''.join(output_lines)
+                    
+                    print(f"[SHAP DEBUG] Process completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"[SHAP DEBUG] Return code: {return_code}")
+                    print(f"[SHAP DEBUG] Full output length: {len(full_output)} characters")
+                    
+                    if return_code != 0:
+                        raise subprocess.CalledProcessError(return_code, cmd, output=full_output)
 
                     # Load results
                     result_json_path = user_dir / "result.json"
+                    print(f"[SHAP DEBUG] Looking for result file: {result_json_path}")
+                    print(f"[SHAP DEBUG] Result file exists: {result_json_path.exists()}")
+                    
                     if result_json_path.exists():
-                        with open(result_json_path) as f:
-                            shap_result = json.load(f)
+                        try:
+                            with open(result_json_path) as f:
+                                shap_result = json.load(f)
+                            print(f"[SHAP DEBUG] Result JSON loaded successfully")
+                            print(f"[SHAP DEBUG] Result keys: {list(shap_result.keys())}")
 
-                        fi_shap_bar = shap_result.get("shap_bar")
-                        fi_shap_dot = shap_result.get("shap_dot")
-                        imp_df_data = shap_result.get("imp_df", [])
-                        imp_df = pd.DataFrame(imp_df_data) if imp_df_data else pd.DataFrame()
-                        
-                        print(f"[SHAP DEBUG] Results loaded - bar: {fi_shap_bar is not None}, dot: {fi_shap_dot is not None}, df shape: {imp_df.shape}")
+                            fi_shap_bar = shap_result.get("shap_bar")
+                            fi_shap_dot = shap_result.get("shap_dot")
+                            imp_df_data = shap_result.get("imp_df", [])
+                            imp_df = pd.DataFrame(imp_df_data) if imp_df_data else pd.DataFrame()
+                            
+                            print(f"[SHAP DEBUG] Results extracted - bar: {fi_shap_bar is not None}, dot: {fi_shap_dot is not None}, df shape: {imp_df.shape}")
+                            
+                            # Check for errors in the result
+                            if "error" in shap_result:
+                                print(f"[SHAP WARNING] SHAP process reported error: {shap_result['error']}")
+                                
+                        except Exception as e:
+                            print(f"[SHAP ERROR] Failed to parse result JSON: {e}")
+                            print(f"[SHAP DEBUG] Raw result file content:")
+                            try:
+                                with open(result_json_path, 'r') as f:
+                                    print(f.read())
+                            except:
+                                print("[SHAP ERROR] Could not read result file")
+                            fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                     else:
                         print(f"[SHAP ERROR] Result file not found: {result_json_path}")
+                        print(f"[SHAP DEBUG] Files in output directory: {list(user_dir.iterdir())}")
                         fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
                 except subprocess.TimeoutExpired as e:
-                    print(f"[⚠️] SHAP subprocess timed out after 300 seconds")
-                    print(f"[⚠️] STDOUT:\n{e.stdout}")
-                    print(f"[⚠️] STDERR:\n{e.stderr}")
+                    print(f"[⚠️] SHAP subprocess timed out after {timeout_seconds} seconds")
+                    print(f"[⚠️] Command: {' '.join(e.cmd)}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                    
                 except subprocess.CalledProcessError as e:
                     print(f"[⚠️] SHAP subprocess failed with return code {e.returncode}")
-                    print(f"[⚠️] STDOUT:\n{e.stdout}")
-                    print(f"[⚠️] STDERR:\n{e.stderr}")
+                    print(f"[⚠️] Command: {' '.join(e.cmd)}")
+                    print(f"[⚠️] Output: {e.output}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                    
                 except FileNotFoundError as e:
                     print(f"[⚠️] SHAP runner file not found: {e}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                    
                 except Exception as viz_error:
                     print(f"[⚠️] SHAP visualization error: {viz_error}")
                     import traceback
