@@ -61,16 +61,25 @@ cat_params_c = {
     "random_state": 42,
     "verbose": 500  # Supported directly
 }
-from lightgbm import log_evaluation
-
 class ModelClassifyingTrainer:
     def __init__(self, data: pd.DataFrame, n_splits: int = 5):
+        """
+        data: a DataFrame containing ALL training rows, including the target column.
+        n_splits: number of CV folds.
+        """
         self.raw = data.copy()
         self.n_splits = n_splits
 
     def train_model(self, params: dict, target: str, title: str):
+        """
+        Runs Stratified K-Fold CV on the passed data.
+
+        Returns:
+          - models: list of fitted models, one per fold
+          - oof_preds: numpy array of out-of-fold predictions (length = n_samples)
+        """
         df = self.raw
-        X = df.drop(columns=["ID", target], errors="ignore")
+        X = df.drop(columns=['ID', target], errors='ignore')
         y = df[target]
 
         oof_preds = np.zeros(len(X))
@@ -81,22 +90,20 @@ class ModelClassifyingTrainer:
             X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
             y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
 
-            if title.startswith("LightGBM"):
+            # instantiate the right classifier
+            if title.startswith('LightGBM'):
                 model = LGBMClassifier(**params)
-                model.fit(
-                    X_tr, y_tr,
-                    eval_set=[(X_val, y_val)],
-                    eval_metric="binary_logloss",
-                    callbacks=[log_evaluation(period=500)]
-                )
-            elif title.startswith("CatBoost"):
+            elif title.startswith('CatBoost'):
                 model = CatBoostClassifier(**params)
-                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], use_best_model=False)
             else:
                 model = XGBClassifier(**params)
-                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], eval_metric="logloss", verbose=500)
 
+            # fit on fold
+            model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)])
             models.append(model)
+
+            # store OOF predictions
             oof_preds[val_idx] = model.predict(X_val)
 
         return models, oof_preds
+
