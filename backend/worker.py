@@ -2093,16 +2093,42 @@ def do_regression(
                     print(f"[⚠️] Failed to save training columns: {col_err}")
 
                 # ───────────── SHAP Analysis ─────────────
+                # ───────────── SHAP Analysis ─────────────
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 try:
-                    shap_runner_path = PathL(__file__).parent / "shap_runner.py"
-                    print(f"[SHAP DEBUG] Launching SHAP script from: {shap_runner_path.resolve()}")
+                    import sys
+                    
+                    # Get the current script directory (where do_regression is located)
+                    current_dir = PathL(__file__).parent
+                    shap_runner_path = current_dir / "shap_runner.py"
+                    
+                    print(f"[SHAP DEBUG] Current directory: {current_dir}")
+                    print(f"[SHAP DEBUG] SHAP runner path: {shap_runner_path}")
+                    print(f"[SHAP DEBUG] SHAP runner exists: {shap_runner_path.exists()}")
+                    
+                    if not shap_runner_path.exists():
+                        raise FileNotFoundError(f"shap_runner.py not found at {shap_runner_path}")
+                    
+                    # Create request JSON for SHAP
+                    request_json = user_dir / "request.json"
+                    with open(request_json, "w") as f:
+                        json.dump({
+                            "user_id": str(user_id),
+                            "model_path": str(model_path.resolve()),
+                            "data_path": str(processed_data_path.resolve()),
+                            "output_dir": str(user_dir.resolve()),
+                            "model_type": "regression",
+                            "target_column": target_column,
+                            "save_filename": f"{user_id}_feature_importance.png"
+                        }, f)
+                    
+                    print(f"[SHAP DEBUG] Request JSON created: {request_json}")
+                    print(f"[SHAP DEBUG] Request JSON exists: {request_json.exists()}")
 
-                    shap_runner_path = PathL(__file__).parent / "shap_runner.py"
-
+                    # Run SHAP subprocess
                     result = subprocess.run(
                         [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())],
-                        cwd=str(shap_runner_path.parent),  # stay in backend/
+                        cwd=str(current_dir),  # Set working directory to where shap_runner.py is located
                         capture_output=True,
                         text=True,
                         timeout=300,
@@ -2111,26 +2137,40 @@ def do_regression(
 
                     print(f"[SHAP RETURN CODE]: {result.returncode}")
                     print(f"[SHAP STDOUT]:\n{result.stdout}")
-                    print(f"[SHAP STDERR]:\n{result.stderr}")
+                    if result.stderr:
+                        print(f"[SHAP STDERR]:\n{result.stderr}")
 
                     # Load results
-                    with open(user_dir / "result.json") as f:
-                        shap_result = json.load(f)
+                    result_json_path = user_dir / "result.json"
+                    if result_json_path.exists():
+                        with open(result_json_path) as f:
+                            shap_result = json.load(f)
 
-                    fi_shap_bar = shap_result.get("shap_bar")
-                    fi_shap_dot = shap_result.get("shap_dot")
-                    imp_df = pd.DataFrame(shap_result.get("imp_df", []))
+                        fi_shap_bar = shap_result.get("shap_bar")
+                        fi_shap_dot = shap_result.get("shap_dot")
+                        imp_df_data = shap_result.get("imp_df", [])
+                        imp_df = pd.DataFrame(imp_df_data) if imp_df_data else pd.DataFrame()
+                        
+                        print(f"[SHAP DEBUG] Results loaded - bar: {fi_shap_bar is not None}, dot: {fi_shap_dot is not None}, df shape: {imp_df.shape}")
+                    else:
+                        print(f"[SHAP ERROR] Result file not found: {result_json_path}")
+                        fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
 
                 except subprocess.TimeoutExpired as e:
-                    print(f"[⚠️] SHAP subprocess timed out. STDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}")
+                    print(f"[⚠️] SHAP subprocess timed out after 300 seconds")
+                    print(f"[⚠️] STDOUT:\n{e.stdout}")
+                    print(f"[⚠️] STDERR:\n{e.stderr}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except subprocess.CalledProcessError as e:
                     print(f"[⚠️] SHAP subprocess failed with return code {e.returncode}")
                     print(f"[⚠️] STDOUT:\n{e.stdout}")
                     print(f"[⚠️] STDERR:\n{e.stderr}")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+                except FileNotFoundError as e:
+                    print(f"[⚠️] SHAP runner file not found: {e}")
+                    fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 except Exception as viz_error:
-                    print(f"[⚠️] Visualization error: {viz_error}")
+                    print(f"[⚠️] SHAP visualization error: {viz_error}")
                     import traceback
                     traceback.print_exc()
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
