@@ -1922,7 +1922,7 @@ function callRealAPI(endpoint, params) {
 
   // 3) Pull the stored JWT
   const token = localStorage.getItem('access_token');
-  if (!token) {
+  if (!token || isTokenExpired(token)) {
     loader.style.display = 'none';
     alert('Session expired—please log in again.');
     window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
