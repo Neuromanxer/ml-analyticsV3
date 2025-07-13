@@ -422,6 +422,7 @@ def do_classification(
                 model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
 
                 # Upload processed dataset
+                
                 data_filename = PathL(data_path).name
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
@@ -1920,7 +1921,7 @@ def do_regression(
             # Create user directory for outputs
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-            
+            processed_data_path = user_dir / "processed_full_data.csv"
             # ───────────── File processing ─────────────
             train_df = None
             test_df = None
@@ -1992,7 +1993,7 @@ def do_regression(
                 # Upload model and preprocessor
                 model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
                 preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
-
+            
                 # Upload processed dataset
                 data_filename = processed_data_path.name
                 data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
@@ -2068,7 +2069,7 @@ def do_regression(
                     json.dump(list(X_full_df.columns), f)
 
                 # Save processed data for SHAP
-                processed_data_path = user_dir / "processed_full_data.csv"
+
                 X_full_df.to_csv(processed_data_path, index=False)
 
                 # Create request JSON for SHAP
