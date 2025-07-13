@@ -344,14 +344,15 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt import ExpiredSignatureError, PyJWTError
 from sqlalchemy.orm import Session
-
+from jose import jwt, JWTError, ExpiredSignatureError
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_master_db_session),
 ) -> User:
-    # 1) First, try API‐key lookup
+    # 1) Check for API key match first
     user = (
         db.query(User)
           .filter(
@@ -363,32 +364,37 @@ async def get_current_user(
     if user:
         return user
 
-    # 2) Then treat it as a JWT
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
+    # 2) Otherwise, treat token as JWT
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if not email:
-            raise credentials_exception
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid JWT payload: missing email.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
+            detail="⏰ Session expired. Please reload and log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except PyJWTError:
-        raise credentials_exception
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="⚠️ Invalid token. Please try again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # 3) Look up the user by email in the DB
-    user = get_user_by_email(db, email)
-    if not user:
-        raise credentials_exception
-
+    # 3) Look up user by email from JWT
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+    
     return user
 async def get_current_active_user(current_user: User = Depends(get_current_user),) -> User:
     if not current_user.is_active:
@@ -411,6 +417,7 @@ def verify_password_reset_token(token: str) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
         )
+    
 from pydantic import BaseModel, EmailStr
 
 class PasswordResetRequest(BaseModel):
