@@ -1123,7 +1123,7 @@ def do_clustering(
             response_data = {
                 "status": "success",
                 "user_id": user_id,
-                "id": entry["id"],  # Use the same one
+                "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
                 "type": "clustering",
                 "dataset": dataset_name,
@@ -1155,7 +1155,7 @@ def do_clustering(
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
             try:
                 entry = {
-                    "id": entry["id"],  # Use the same one
+                    "id": response_data["id"],  # Use the same one
                     "created_at": datetime.utcnow().isoformat(),
                     "type": "segmentation",
                     "dataset": dataset_name,
