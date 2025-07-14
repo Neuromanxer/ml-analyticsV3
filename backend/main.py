@@ -947,8 +947,6 @@ async def classification(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing classification: {str(e)}")
-from supabase import SupabaseStorageException  
-
 
 @app.post("/classification/predict/")
 async def classification_predict(
