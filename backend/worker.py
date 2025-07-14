@@ -562,7 +562,7 @@ def do_classification_predict(
     try:
         # Setup paths - models are still stored locally, but data files are in Supabase
         
-        model_supabase_path = f"{user_id}/models/{user_id}_best_classifier.pkl"
+        model_supabase_path = f"{user_id}/{user_id}_best_classifier.pkl"
 
         try:
             print(f"[📦] Downloading model from Supabase: {model_supabase_path}")
@@ -2381,9 +2381,33 @@ def do_regression_predict(
             raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
         
         # Load the trained model and preprocessor (still stored locally)
-        print(f"[📁] Loading model from {model_path}")
-        model = joblib.load(model_path)
-        preprocessor = joblib.load(preprocessor_path)
+        # Define Supabase paths
+        model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
+        preprocessor_supabase_path = f"{user_id}/{user_id}_preprocessor.pkl"
+
+
+        # Download model from Supabase
+        try:
+            model_data = download_file_from_supabase(model_supabase_path)
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as temp_model_file:
+                temp_model_file.write(model_data)
+                model_path = temp_model_file.name
+                print(f"[📁] Downloaded model to temporary file: {model_path}")
+                model = joblib.load(model_path)
+        except Exception as e:
+            raise FileNotFoundError(f"Could not download or load model from Supabase: {e}")
+
+        # Download preprocessor from Supabase
+        try:
+            preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as temp_pre_file:
+                temp_pre_file.write(preprocessor_data)
+                preprocessor_path = temp_pre_file.name
+                print(f"[📁] Downloaded preprocessor to temporary file: {preprocessor_path}")
+                preprocessor = joblib.load(preprocessor_path)
+        except Exception as e:
+            raise FileNotFoundError(f"Could not download or load preprocessor from Supabase: {e}")
+
         
         # Create temporary file to load CSV data
         with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
