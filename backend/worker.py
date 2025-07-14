@@ -2352,331 +2352,307 @@ def do_regression_predict(
             return obj
 
     try:
-        # Setup paths - models are still stored locally, but data files are in Supabase
-        model_path = PathL("models") / f"{user_id}_best_regressor.pkl"
-        preprocessor_path = PathL("models") / f"{user_id}_preprocessor.pkl"
-        
-        # For training columns, we'll also store this in Supabase
-        training_columns_supabase_path = f"{user_id}/training_columns.json"
-
-        # Validate required files exist
-        if not model_path.exists() or not preprocessor_path.exists():
-            raise FileNotFoundError(f"No trained model or preprocessor found for user {user_id}. Please train a model first.")
-        
         if file_path is None:
             raise ValueError("You must provide a file_path for prediction input.")
 
-        # Download training columns from Supabase
+        # Supabase paths
+        model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
+        preprocessor_supabase_path = f"{user_id}/{user_id}_preprocessor.pkl"
+        training_columns_supabase_path = f"{user_id}/training_columns.json"
+
+        # ───── Download training columns ─────
         try:
             training_columns_data = download_file_from_supabase(training_columns_supabase_path)
             training_columns = json.loads(training_columns_data.decode('utf-8'))
         except Exception as e:
-            raise FileNotFoundError(f"Training columns metadata not found for user {user_id} in Supabase: {str(e)}")
-        
-        # Download prediction data from Supabase
+            raise FileNotFoundError(f"Training columns metadata not found in Supabase: {str(e)}")
+
+        # ───── Download model ─────
+        try:
+            print(f"[📦] Downloading model from Supabase: {model_supabase_path}")
+            model_data = download_file_from_supabase(model_supabase_path)
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
+                tmp.write(model_data)
+                model = joblib.load(tmp.name)
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to download/load model: {e}")
+
+        # ───── Download preprocessor ─────
+        try:
+            print(f"[📦] Downloading preprocessor from Supabase: {preprocessor_supabase_path}")
+            preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
+                tmp.write(preprocessor_data)
+                preprocessor = joblib.load(tmp.name)
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to download/load preprocessor: {e}")
+
+        # ───── Download prediction CSV ─────
         try:
             prediction_data = download_file_from_supabase(file_path)
-            dataset_name = os.path.basename(file_path)
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
+                temp_file.write(prediction_data)
+                temp_csv_path = temp_file.name
         except Exception as e:
-            raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
+            raise FileNotFoundError(f"Failed to download prediction file: {e}")
+
+        # ───── Load and preprocess prediction data ─────
+        print(f"[📊] Loading prediction data from: {file_path}")
+        df = pd.read_csv(temp_csv_path)
+        original_df = df.copy()
+        original_shape = df.shape
+        dataset_name = Path(file_path).stem
+
+        # Store original ID column if present
+        id_column = None
+        if 'ID' in df.columns:
+            id_column = df['ID'].copy()
+
+        # Save target column (if known or common name exists)
+        known_targets = ['target', 'label', 'y', 'Target', 'Label', 'Y']
+        target_column_actual = None
+        for col in known_targets:
+            if col in df.columns:
+                target_column_actual = col
+                break
+
+        # Save target values if found (for evaluation metrics)
+        true_labels = df[target_column_actual].copy() if target_column_actual else None
+
+        # Drop ID and target ONLY from features going into model
+        drop_features = ['ID']
+        if target_column_actual:
+            drop_features.append(target_column_actual)
+
+        # Drop specified columns
+        if drop_columns:
+            drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
+            df.drop(columns=drops, inplace=True)
+            print(f"[🗑️] Dropped columns: {drops}")
         
-        # Load the trained model and preprocessor (still stored locally)
-        # Define Supabase paths
-        model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
-        preprocessor_supabase_path = f"{user_id}/{user_id}_preprocessor.pkl"
+        df.drop(columns=drop_features, inplace=True, errors='ignore')
 
-
-        # Download model from Supabase
-        try:
-            model_data = download_file_from_supabase(model_supabase_path)
-            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as temp_model_file:
-                temp_model_file.write(model_data)
-                model_path = temp_model_file.name
-                print(f"[📁] Downloaded model to temporary file: {model_path}")
-                model = joblib.load(model_path)
-        except Exception as e:
-            raise FileNotFoundError(f"Could not download or load model from Supabase: {e}")
-
-        # Download preprocessor from Supabase
-        try:
-            preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
-            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as temp_pre_file:
-                temp_pre_file.write(preprocessor_data)
-                preprocessor_path = temp_pre_file.name
-                print(f"[📁] Downloaded preprocessor to temporary file: {preprocessor_path}")
-                preprocessor = joblib.load(preprocessor_path)
-        except Exception as e:
-            raise FileNotFoundError(f"Could not download or load preprocessor from Supabase: {e}")
-
+        # Preprocess the data using the same function as training
+        print("[🔄] Preprocessing prediction data...")
+        df_processed, cats, nums = preprocess_data(df)
         
-        # Create temporary file to load CSV data
-        with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
-            temp_file.write(prediction_data)
-            temp_csv_path = temp_file.name
+        # Align columns with training data
+        print("[🔧] Aligning features with training data...")
+        missing_cols = set(training_columns) - set(df_processed.columns)
+        extra_cols = set(df_processed.columns) - set(training_columns)
         
-        try:
-            # Load and preprocess prediction data
-            print(f"[📊] Loading prediction data from Supabase: {file_path}")
-            df = pd.read_csv(temp_csv_path)
-            original_shape = df.shape
+        # Add missing columns with default values
+        for col in missing_cols:
+            df_processed[col] = 0
             
-            # Store original dataframe for final output
-            original_df = df.copy()
-            
-            # Store original ID column if present
-            id_column = None
-            if 'ID' in df.columns:
-                id_column = df['ID'].copy()
-
-            # Save target column (if known or common name exists)
-            known_targets = ['target', 'label', 'y', 'Target', 'Label', 'Y']
-            target_column_actual = None
-            for col in known_targets:
-                if col in df.columns:
-                    target_column_actual = col
-                    break
-
-            # Save target values if found (for evaluation metrics)
-            true_labels = df[target_column_actual].copy() if target_column_actual else None
-
-            # Drop ID and target ONLY from features going into model
-            drop_features = ['ID']
-            if target_column_actual:
-                drop_features.append(target_column_actual)
-
-            # Drop specified columns
-            if drop_columns:
-                drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
-                df.drop(columns=drops, inplace=True)
-                print(f"[🗑️] Dropped columns: {drops}")
-            
-            df.drop(columns=drop_features, inplace=True, errors='ignore')
-
-            # Preprocess the data using the same function as training
-            print("[🔄] Preprocessing prediction data...")
-            df_processed, cats, nums = preprocess_data(df)
-            
-            # Align columns with training data
-            print("[🔧] Aligning features with training data...")
-            missing_cols = set(training_columns) - set(df_processed.columns)
-            extra_cols = set(df_processed.columns) - set(training_columns)
-            
-            # Add missing columns with default values
-            for col in missing_cols:
-                df_processed[col] = 0
-                
-            # Remove extra columns
-            df_processed.drop(columns=list(extra_cols), inplace=True, errors='ignore')
-            
-            # Reorder columns to match training
-            df_processed = df_processed.reindex(columns=training_columns, fill_value=0)
-            
-            print(f"[✅] Feature alignment complete: {len(training_columns)} features")
-            
-            # Transform and predict
-            X_transformed = preprocessor.transform(df_processed)
-            predictions = model.predict(X_transformed)
-            
-            # Create output dataframe by adding predictions to original data
-            output_df = original_df.copy()
-            output_df['prediction'] = predictions
-            
-            # Calculate evaluation metrics if true labels are available
-            evaluation_metrics = None
-            if true_labels is not None:
-                try:
-                    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-                    evaluation_metrics = {
-                        "mae": float(mean_absolute_error(true_labels, predictions)),
-                        "mse": float(mean_squared_error(true_labels, predictions)),
-                        "rmse": float(np.sqrt(mean_squared_error(true_labels, predictions))),
-                        "r2": float(r2_score(true_labels, predictions))
-                    }
-                except Exception as e:
-                    print(f"[⚠️] Could not calculate evaluation metrics: {e}")
-            
-            # Generate visualizations
-            visualizations = {}
-            
-            # 1. Prediction distribution
+        # Remove extra columns
+        df_processed.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+        
+        # Reorder columns to match training
+        df_processed = df_processed.reindex(columns=training_columns, fill_value=0)
+        
+        print(f"[✅] Feature alignment complete: {len(training_columns)} features")
+        
+        # Transform and predict
+        X_transformed = preprocessor.transform(df_processed)
+        predictions = model.predict(X_transformed)
+        
+        # Create output dataframe by adding predictions to original data
+        output_df = original_df.copy()
+        output_df['prediction'] = predictions
+        
+        # Calculate evaluation metrics if true labels are available
+        evaluation_metrics = None
+        if true_labels is not None:
             try:
-                fig_dist = plt.figure(figsize=(8, 6))
-                plt.hist(predictions, bins=30, alpha=0.7, edgecolor='black')
-                plt.title("Prediction Distribution")
-                plt.xlabel("Predicted Value")
-                plt.ylabel("Frequency")
-                plt.axvline(np.mean(predictions), color='red', linestyle='--', 
-                           label=f'Mean: {np.mean(predictions):.3f}')
-                plt.legend()
-                visualizations["prediction_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_dist)}"
-                plt.close(fig_dist)
-            except Exception as e:
-                print(f"[⚠️] Prediction distribution plot failed: {e}")
-            
-            # 2. Actual vs Predicted scatter plot (if true labels available)
-            if true_labels is not None:
-                try:
-                    fig_scatter = plt.figure(figsize=(8, 6))
-                    plt.scatter(true_labels, predictions, alpha=0.6)
-                    plt.plot([true_labels.min(), true_labels.max()], 
-                            [true_labels.min(), true_labels.max()], 'r--', lw=2)
-                    plt.xlabel("Actual Values")
-                    plt.ylabel("Predicted Values")
-                    plt.title("Actual vs Predicted Values")
-                    if evaluation_metrics:
-                        plt.text(0.05, 0.95, f"R² = {evaluation_metrics['r2']:.3f}", 
-                                transform=plt.gca().transAxes, verticalalignment='top')
-                    visualizations["actual_vs_predicted"] = f"data:image/png;base64,{plot_to_base64(fig_scatter)}"
-                    plt.close(fig_scatter)
-                except Exception as e:
-                    print(f"[⚠️] Actual vs predicted plot failed: {e}")
-            
-            # 3. Residuals plot (if true labels available)
-            if true_labels is not None:
-                try:
-                    residuals = true_labels - predictions
-                    fig_residuals = plt.figure(figsize=(8, 6))
-                    plt.scatter(predictions, residuals, alpha=0.6)
-                    plt.axhline(y=0, color='r', linestyle='--')
-                    plt.xlabel("Predicted Values")
-                    plt.ylabel("Residuals")
-                    plt.title("Residuals Plot")
-                    visualizations["residuals"] = f"data:image/png;base64,{plot_to_base64(fig_residuals)}"
-                    plt.close(fig_residuals)
-                except Exception as e:
-                    print(f"[⚠️] Residuals plot failed: {e}")
-            
-            # Save predictions to temporary file, then upload to Supabase
-            output_filename = f"predictions_{PathL(file_path).stem}.csv"
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_output:
-                output_df.to_csv(temp_output.name, index=False)
-                temp_output_path = temp_output.name
-            
-            try:
-                # Upload predictions to Supabase
-                supabase_output_path = upload_file_to_supabase(
-                    user_id=str(user_id),
-                    file_path=temp_output_path,
-                    filename=output_filename
-                )
-
-                # Get signed URL as a string (not a dict)
-                signed_url = get_file_url(supabase_output_path, expires_in=3600)
-
-                print(f"[💾] Predictions uploaded to Supabase: {supabase_output_path}")
-                print(f"[🔗] Signed URL: {signed_url}")
-
-            finally:
-                # Clean up temporary output file
-                if os.path.exists(temp_output_path):
-                    os.unlink(temp_output_path)
-
-            
-            # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
-            pred_stats = {
-                'count': int(len(predictions)),
-                'mean': float(np.mean(predictions)),
-                'std': float(np.std(predictions)),
-                'min': float(np.min(predictions)),
-                'max': float(np.max(predictions)),
-                'median': float(np.median(predictions)),
-                'original_data_shape': [int(x) for x in original_shape],
-                'processed_data_shape': [int(x) for x in df_processed.shape]
-            }
-            
-            # Add evaluation metrics if available
-            if evaluation_metrics:
-                pred_stats.update(evaluation_metrics)
-            
-            # Generate insights
-            insights = generate_regression_insights(
-                pred_stats=pred_stats,
-                top_features=None,
-                financial_inputs=None
-            )
-            try:
-                # Create metadata entry
-                entry = {
-                    "id": str(uuid.uuid4()),
-                    "created_at": datetime.utcnow().isoformat(),
-                    "type": "regression_prediction",
-                    "target_col": target_column_actual,
-                    "dataset": dataset_name,
-                    "parameters": {"drop_columns": drop_columns},
-                    "metrics": pred_stats,
-                    "output_file": supabase_output_path,
-                    "signed_url": signed_url,
-                    "visualizations": visualizations,
-                    "thumbnailData": visualizations.get("prediction_distribution"),
-                    "imageData": visualizations.get("actual_vs_predicted"),
-                    "feature_alignment": {
-                        "training_features": int(len(training_columns)),
-                        "prediction_features": int(len(df_processed.columns)),
-                        "missing_features_added": list(missing_cols),
-                        "extra_features_removed": list(extra_cols)
-                    },
-                    "evaluation_metrics": evaluation_metrics,
-                    "insights": insights
+                from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+                evaluation_metrics = {
+                    "mae": float(mean_absolute_error(true_labels, predictions)),
+                    "mse": float(mean_squared_error(true_labels, predictions)),
+                    "rmse": float(np.sqrt(mean_squared_error(true_labels, predictions))),
+                    "r2": float(r2_score(true_labels, predictions))
                 }
+            except Exception as e:
+                print(f"[⚠️] Could not calculate evaluation metrics: {e}")
+        
+        # Generate visualizations
+        visualizations = {}
+        
+        # 1. Prediction distribution
+        try:
+            fig_dist = plt.figure(figsize=(8, 6))
+            plt.hist(predictions, bins=30, alpha=0.7, edgecolor='black')
+            plt.title("Prediction Distribution")
+            plt.xlabel("Predicted Value")
+            plt.ylabel("Frequency")
+            plt.axvline(np.mean(predictions), color='red', linestyle='--', 
+                        label=f'Mean: {np.mean(predictions):.3f}')
+            plt.legend()
+            visualizations["prediction_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_dist)}"
+            plt.close(fig_dist)
+        except Exception as e:
+            print(f"[⚠️] Prediction distribution plot failed: {e}")
+        
+        # 2. Actual vs Predicted scatter plot (if true labels available)
+        if true_labels is not None:
+            try:
+                fig_scatter = plt.figure(figsize=(8, 6))
+                plt.scatter(true_labels, predictions, alpha=0.6)
+                plt.plot([true_labels.min(), true_labels.max()], 
+                        [true_labels.min(), true_labels.max()], 'r--', lw=2)
+                plt.xlabel("Actual Values")
+                plt.ylabel("Predicted Values")
+                plt.title("Actual vs Predicted Values")
+                if evaluation_metrics:
+                    plt.text(0.05, 0.95, f"R² = {evaluation_metrics['r2']:.3f}", 
+                            transform=plt.gca().transAxes, verticalalignment='top')
+                visualizations["actual_vs_predicted"] = f"data:image/png;base64,{plot_to_base64(fig_scatter)}"
+                plt.close(fig_scatter)
+            except Exception as e:
+                print(f"[⚠️] Actual vs predicted plot failed: {e}")
+        
+        # 3. Residuals plot (if true labels available)
+        if true_labels is not None:
+            try:
+                residuals = true_labels - predictions
+                fig_residuals = plt.figure(figsize=(8, 6))
+                plt.scatter(predictions, residuals, alpha=0.6)
+                plt.axhline(y=0, color='r', linestyle='--')
+                plt.xlabel("Predicted Values")
+                plt.ylabel("Residuals")
+                plt.title("Residuals Plot")
+                visualizations["residuals"] = f"data:image/png;base64,{plot_to_base64(fig_residuals)}"
+                plt.close(fig_residuals)
+            except Exception as e:
+                print(f"[⚠️] Residuals plot failed: {e}")
+        
+        # Save predictions to temporary file, then upload to Supabase
+        output_filename = f"predictions_{Path(file_path).stem}.csv"
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_output:
+            output_df.to_csv(temp_output.name, index=False)
+            temp_output_path = temp_output.name
+        
+        try:
+            # Upload predictions to Supabase
+            supabase_output_path = upload_file_to_supabase(
+                user_id=str(user_id),
+                file_path=temp_output_path,
+                filename=output_filename
+            )
 
-                entry = ensure_json_serializable(entry)
-                with master_db_cm() as db:
-                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-            except Exception as meta_error:
-                print(f"[⚠️] Metadata save error: {meta_error}")
+            # Get signed URL as a string (not a dict)
+            signed_url = get_file_url(supabase_output_path, expires_in=3600)
 
-            # Prepare response - CONVERT ALL NUMPY TYPES
-            response_data = {
-                "status": "success",
-                "user_id": user_id,
+            print(f"[💾] Predictions uploaded to Supabase: {supabase_output_path}")
+            print(f"[🔗] Signed URL: {signed_url}")
+
+        finally:
+            # Clean up temporary output file
+            if os.path.exists(temp_output_path):
+                os.unlink(temp_output_path)
+
+        # Calculate prediction statistics - CONVERT NUMPY TYPES HERE
+        pred_stats = {
+            'count': int(len(predictions)),
+            'mean': float(np.mean(predictions)),
+            'std': float(np.std(predictions)),
+            'min': float(np.min(predictions)),
+            'max': float(np.max(predictions)),
+            'median': float(np.median(predictions)),
+            'original_data_shape': [int(x) for x in original_shape],
+            'processed_data_shape': [int(x) for x in df_processed.shape]
+        }
+        
+        # Add evaluation metrics if available
+        if evaluation_metrics:
+            pred_stats.update(evaluation_metrics)
+        
+        # Generate insights
+        insights = generate_regression_insights(
+            pred_stats=pred_stats,
+            top_features=None,
+            financial_inputs=None
+        )
+        
+        try:
+            # Create metadata entry
+            entry = {
+                "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
-                "type": "regression",
+                "type": "regression_prediction",
+                "target_col": target_column_actual,
                 "dataset": dataset_name,
-                "file": file_path,
-                "output_file": supabase_output_path,
-                "output_file_name": output_filename,
-                "signed_url": signed_url,
                 "parameters": {"drop_columns": drop_columns},
-                "predictions_count": int(len(predictions)),
-                "data_preview": output_df.head(10).to_dict('records'),  # Show first 10 rows as preview
-                "total_rows": int(len(output_df)),
-                "columns_added": ["prediction"],
-                "prediction_statistics": pred_stats,
-                "model_info": {
-                    "model_type": type(model).__name__,
-                    "feature_count": int(X_transformed.shape[1]) if hasattr(X_transformed, 'shape') else None
-                },
                 "metrics": pred_stats,
+                "output_file": supabase_output_path,
+                "signed_url": signed_url,
                 "visualizations": visualizations,
-                "insights": insights,
+                "thumbnailData": visualizations.get("prediction_distribution"),
+                "imageData": visualizations.get("actual_vs_predicted"),
                 "feature_alignment": {
                     "training_features": int(len(training_columns)),
                     "prediction_features": int(len(df_processed.columns)),
                     "missing_features_added": list(missing_cols),
                     "extra_features_removed": list(extra_cols)
                 },
-                "evaluation_metrics": evaluation_metrics
+                "evaluation_metrics": evaluation_metrics,
+                "insights": insights
             }
-            
-            # Convert all numpy types in the response
-            response_data = convert_numpy_types(response_data)
-            
-            print(f"[🎉] Regression prediction completed successfully!")
-            print(f"    • Total predictions: {len(predictions)}")
-            print(f"    • Prediction range: {pred_stats['min']:.3f} to {pred_stats['max']:.3f}")
-            print(f"    • Mean prediction: {pred_stats['mean']:.3f}")
-            print(f"    • Output file: {supabase_output_path}")
-            print(f"    • Signed URL: {signed_url}")
-            if evaluation_metrics:
-                print(f"    • R² Score: {evaluation_metrics['r2']:.3f}")
-            
-            return response_data
-            
-        finally:
-            # Clean up temporary CSV file
-            os.unlink(temp_csv_path)
 
+            entry = ensure_json_serializable(entry)
+            with master_db_cm() as db:
+                _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+        except Exception as meta_error:
+            print(f"[⚠️] Metadata save error: {meta_error}")
+
+        # Prepare response - CONVERT ALL NUMPY TYPES
+        response_data = {
+            "status": "success",
+            "user_id": user_id,
+            "created_at": datetime.utcnow().isoformat(),
+            "type": "regression",
+            "dataset": dataset_name,
+            "file": file_path,
+            "output_file": supabase_output_path,
+            "output_file_name": output_filename,
+            "signed_url": signed_url,
+            "parameters": {"drop_columns": drop_columns},
+            "predictions_count": int(len(predictions)),
+            "data_preview": output_df.head(10).to_dict('records'),  # Show first 10 rows as preview
+            "total_rows": int(len(output_df)),
+            "columns_added": ["prediction"],
+            "prediction_statistics": pred_stats,
+            "model_info": {
+                "model_type": type(model).__name__,
+                "feature_count": int(X_transformed.shape[1]) if hasattr(X_transformed, 'shape') else None
+            },
+            "metrics": pred_stats,
+            "visualizations": visualizations,
+            "insights": insights,
+            "feature_alignment": {
+                "training_features": int(len(training_columns)),
+                "prediction_features": int(len(df_processed.columns)),
+                "missing_features_added": list(missing_cols),
+                "extra_features_removed": list(extra_cols)
+            },
+            "evaluation_metrics": evaluation_metrics
+        }
+        
+        # Convert all numpy types in the response
+        response_data = convert_numpy_types(response_data)
+        
+        print(f"[🎉] Regression prediction completed successfully!")
+        print(f"    • Total predictions: {len(predictions)}")
+        print(f"    • Prediction range: {pred_stats['min']:.3f} to {pred_stats['max']:.3f}")
+        print(f"    • Mean prediction: {pred_stats['mean']:.3f}")
+        print(f"    • Output file: {supabase_output_path}")
+        print(f"    • Signed URL: {signed_url}")
+        if evaluation_metrics:
+            print(f"    • R² Score: {evaluation_metrics['r2']:.3f}")
+        
+        return response_data
+        
     except Exception as e:
         print(f"[❌] Prediction task error: {e}")
         return {
@@ -2685,6 +2661,10 @@ def do_regression_predict(
             "error_message": str(e),
             "error_type": type(e).__name__
         }
+    finally:
+        # Clean up temporary CSV file
+        if 'temp_csv_path' in locals() and os.path.exists(temp_csv_path):
+            os.unlink(temp_csv_path)
 def do_visualization(
     user_id: str,
     current_user: dict = None,
