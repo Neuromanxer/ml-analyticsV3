@@ -1,45 +1,31 @@
-import os
 import io
 import base64
-import logging
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-from queue import Queue
-from threading import Thread
+import shap
 import time
+import signal
 import traceback
 import gc
-import signal
-import sys
-
-import shap
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
-from sklearn.ensemble import RandomForestClassifier
-
-# Configure matplotlib with more robust settings
-import matplotlib
-matplotlib.use("Agg")  # Use Agg backend
-matplotlib.pyplot.ioff()  # Turn off interactive mode
-plt.rcParams['figure.max_open_warning'] = 0  # Disable max figure warning
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+import os
+from threading import Thread
+from queue import Queue
 
 def flush_print(*args, **kwargs):
     """Print with immediate flush to ensure output appears in logs"""
     print(*args, **kwargs)
+    import sys
     sys.stdout.flush()
     sys.stderr.flush()
 
 def timeout_handler(signum, frame):
-    """Handle timeout for plot generation"""
-    raise TimeoutError("Plot generation timed out")
+    """Handle timeout signal"""
+    flush_print("⏰ TIMEOUT: Process timed out")
+    raise TimeoutError("Process timed out")
 
 def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filename, return_base64, queue):
-    """Main plotting function with enhanced error handling and progress tracking"""
+    """Main plotting function with enhanced error handling and CatBoost-specific fixes"""
     
     def plot_to_base64(fig):
         try:
@@ -79,37 +65,98 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         else:
             save_path = save_filename
 
-        # Prepare sample data - use smaller sample for faster processing
-        sample_size = min(300, len(X))  # Reduced sample size for faster processing
-        flush_print(f"[SHAP PROCESS] Using sample size: {sample_size} out of {len(X)} rows")
+        # CatBoost-specific handling
+        model_class_name = type(model).__name__.lower()
+        is_catboost = 'catboost' in model_class_name
         
-        if len(X) > sample_size:
-            X_sample = X.sample(sample_size, random_state=42)
+        if is_catboost:
+            flush_print("[SHAP PROCESS] CatBoost model detected - using specialized handling")
+            
+            # For CatBoost, use a smaller sample size and specific parameters
+            sample_size = min(100, len(X))  # Much smaller for CatBoost
+            flush_print(f"[SHAP PROCESS] Using CatBoost sample size: {sample_size}")
+            
+            if len(X) > sample_size:
+                X_sample = X.sample(sample_size, random_state=42)
+            else:
+                X_sample = X.copy()
+                
+            # Ensure data is in the right format for CatBoost
+            X_sample = X_sample.astype(float)
+            
+            try:
+                # For CatBoost, try creating explainer with specific parameters
+                flush_print("[SHAP PROCESS] Creating CatBoost TreeExplainer...")
+                explainer = shap.TreeExplainer(model, X_sample.iloc[:50])  # Use background data
+                flush_print("[SHAP PROCESS] CatBoost TreeExplainer created successfully")
+                
+                # Use even smaller sample for SHAP computation
+                shap_sample = X_sample.iloc[:50]
+                flush_print(f"[SHAP PROCESS] Using mini-sample for SHAP computation: {shap_sample.shape}")
+                
+            except Exception as e:
+                flush_print(f"[SHAP ERROR] CatBoost TreeExplainer failed: {e}")
+                # Try alternative approach for CatBoost
+                try:
+                    flush_print("[SHAP PROCESS] Trying CatBoost with no background data...")
+                    explainer = shap.TreeExplainer(model)
+                    shap_sample = X_sample.iloc[:25]  # Even smaller
+                    flush_print(f"[SHAP PROCESS] Alternative CatBoost approach, sample: {shap_sample.shape}")
+                except Exception as e2:
+                    flush_print(f"[SHAP ERROR] Alternative CatBoost approach failed: {e2}")
+                    raise e2
+                    
         else:
-            X_sample = X.copy()
-        
+            # Non-CatBoost models
+            sample_size = min(300, len(X))
+            flush_print(f"[SHAP PROCESS] Using standard sample size: {sample_size}")
+            
+            if len(X) > sample_size:
+                X_sample = X.sample(sample_size, random_state=42)
+            else:
+                X_sample = X.copy()
+                
+            shap_sample = X_sample
+            
+            try:
+                explainer = shap.TreeExplainer(model)
+                flush_print("[SHAP PROCESS] Standard TreeExplainer created successfully")
+            except Exception as e:
+                flush_print(f"[SHAP ERROR] Standard TreeExplainer failed: {e}")
+                raise
+
         # Ensure column names are strings
-        X_sample.columns = [str(c) for c in X_sample.columns]
-        flush_print(f"[SHAP PROCESS] Sample prepared, shape: {X_sample.shape}")
+        shap_sample.columns = [str(c) for c in shap_sample.columns]
+        flush_print(f"[SHAP PROCESS] Final sample prepared, shape: {shap_sample.shape}")
 
-        # Try SHAP TreeExplainer
-        flush_print("[SHAP PROCESS] Creating TreeExplainer...")
-        try:
-            explainer = shap.TreeExplainer(model)
-            flush_print("[SHAP PROCESS] TreeExplainer created successfully")
-        except Exception as e:
-            flush_print(f"[SHAP ERROR] TreeExplainer failed: {e}")
-            raise
-
-        # Generate SHAP values
+        # Generate SHAP values with timeout and progress tracking
         flush_print("[SHAP PROCESS] Computing SHAP values...")
         shap_start = time.time()
+        
         try:
-            shap_values = explainer.shap_values(X_sample)
+            # Set a signal alarm for SHAP computation timeout
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)  # 1 minute timeout for SHAP computation
+            
+            # Try to compute SHAP values
+            if is_catboost:
+                # For CatBoost, try with check_additivity=False
+                flush_print("[SHAP PROCESS] Computing CatBoost SHAP values (check_additivity=False)...")
+                shap_values = explainer.shap_values(shap_sample, check_additivity=False)
+            else:
+                shap_values = explainer.shap_values(shap_sample)
+                
+            signal.alarm(0)  # Cancel timeout
             shap_time = time.time() - shap_start
             flush_print(f"[SHAP PROCESS] SHAP values computed in {shap_time:.2f} seconds")
+            
+        except TimeoutError:
+            flush_print("[SHAP ERROR] SHAP computation timed out")
+            signal.alarm(0)
+            raise
         except Exception as e:
             flush_print(f"[SHAP ERROR] SHAP values computation failed: {e}")
+            signal.alarm(0)
             raise
 
         # Handle different SHAP value formats
@@ -155,8 +202,8 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         # Check dimensions
         if hasattr(shap_values_plot, 'shape'):
             flush_print(f"[SHAP PROCESS] SHAP values shape: {shap_values_plot.shape}")
-            if len(shap_values_plot.shape) == 2 and X_sample.shape[1] != shap_values_plot.shape[1]:
-                flush_print(f"[SHAP ERROR] Shape mismatch - X: {X_sample.shape[1]}, SHAP: {shap_values_plot.shape[1]}")
+            if len(shap_values_plot.shape) == 2 and shap_sample.shape[1] != shap_values_plot.shape[1]:
+                flush_print(f"[SHAP ERROR] Shape mismatch - X: {shap_sample.shape[1]}, SHAP: {shap_values_plot.shape[1]}")
                 raise ValueError("SHAP and feature dimension mismatch")
         else:
             flush_print(f"[SHAP ERROR] SHAP values has no shape attribute: {type(shap_values_plot)}")
@@ -166,7 +213,7 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         flush_print("[SHAP PROCESS] Creating feature importance DataFrame...")
         try:
             feature_importance = pd.DataFrame({
-                "Feature": X_sample.columns,
+                "Feature": shap_sample.columns,
                 "Importance": np.abs(shap_values_plot).mean(axis=0)
             }).sort_values("Importance", ascending=False)
             flush_print(f"[SHAP PROCESS] Feature importance DataFrame created with {len(feature_importance)} features")
@@ -195,7 +242,7 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
                 shap.plots.bar(shap_values_plot, max_display=min(top_n, 15), show=False)
             except:
                 # Fallback to old API
-                shap.summary_plot(shap_values_plot, X_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
+                shap.summary_plot(shap_values_plot, shap_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
             
             plt.tight_layout()
             signal.alarm(0)  # Cancel timeout
@@ -239,7 +286,7 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
                 shap.plots.beeswarm(shap_values_plot, max_display=min(top_n, 10), show=False)
             except:
                 # Fallback to old API
-                shap.summary_plot(shap_values_plot, X_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
+                shap.summary_plot(shap_values_plot, shap_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
             
             plt.tight_layout()
             signal.alarm(0)  # Cancel timeout
@@ -363,7 +410,7 @@ def safe_generate_feature_importance(
     save_filename="feature_importance.png",
     top_n=20,
     return_base64=True,
-    timeout=180  # Reduced to 3 minutes
+    timeout=120  # Reduced to 2 minutes for CatBoost
 ):
     """
     Safely generate feature importance with timeout and error handling
