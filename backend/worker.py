@@ -2507,7 +2507,7 @@ def do_regression_predict(
         df = pd.read_csv(temp_csv_path)
         original_df = df.copy()
         original_shape = df.shape
-        dataset_name = Path(file_path).stem
+        dataset_name = PathL(file_path).stem
 
         # Store original ID column if present
         id_column = None
@@ -2633,7 +2633,7 @@ def do_regression_predict(
                 print(f"[⚠️] Residuals plot failed: {e}")
         
         # Save predictions to temporary file, then upload to Supabase
-        output_filename = f"predictions_{Path(file_path).stem}.csv"
+        output_filename = f"predictions_{PathL(file_path).stem}.csv"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_output:
             output_df.to_csv(temp_output.name, index=False)
