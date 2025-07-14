@@ -3282,7 +3282,11 @@ def do_counterfactual(
                     sample_features_df = prepare_features_for_model(
                         pd.DataFrame([row]), expected_features, target_column
                     )
-                    
+                    for col in expected_features:
+                        if col in training_data.columns and col in sample_features_df.columns:
+                            train_min = training_data[col].min()
+                            train_max = training_data[col].max()
+                            sample_features_df[col] = sample_features_df[col].clip(lower=train_min, upper=train_max)
                     print(f"Sample {i} features shape: {sample_features_df.shape}")
                     print(f"Sample {i} features columns: {list(sample_features_df.columns)}")
                     
@@ -3562,7 +3566,7 @@ def do_counterfactual(
 
             # Clean response data for JSON serialization
             response_data = clean_data_for_json(response_data)
-
+            return response_data
     except Exception as e:
         print(f"[⚠️] Error in do_counterfactual: {e}")
         raise e
