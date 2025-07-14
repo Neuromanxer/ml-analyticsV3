@@ -247,9 +247,18 @@ def do_classification(
             
             # Save training columns for SHAP alignment
             training_columns = list(X_train.columns)
-            with open(user_dir / "training_columns.json", "w") as f:
+            training_columns_path = user_dir / "training_columns.json"
+            with open(training_columns_path, "w") as f:
                 json.dump(training_columns, f)
-            
+
+            # ✅ Upload to Supabase so prediction can access it
+            upload_file_to_supabase(
+                user_id=user_id,
+                file_path=str(training_columns_path),
+                filename="training_columns.json"
+            )
+
+
             # Pick Best Model
             best_name = max(cv_scores, key=lambda m: cv_scores[m]["f1"])
             best_models = {
@@ -2033,7 +2042,11 @@ def do_regression(
                 training_columns_path = user_dir / "training_columns.json"
                 with open(training_columns_path, "w") as f:
                     json.dump(list(X_full_df.columns), f)
-
+                upload_file_to_supabase(
+                    user_id=user_id,
+                    file_path=str(training_columns_path),
+                    filename="training_columns.json"
+                )
                 # Save processed data for SHAP - CREATE FILE BEFORE UPLOAD
                 X_full_df.to_csv(processed_data_path, index=False)
 
