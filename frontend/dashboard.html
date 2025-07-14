@@ -1215,6 +1215,7 @@ function renderFlatTable(headers, rows) {
           </div>` : ""}
           
         ${data.test_scores ? `<div>🧪 Test Scores: ${formatKeyValObject(data.test_scores)}</div>` : ""}
+        ${data.pred_stats ? `<div>📊 Prediction Stats: ${formatKeyValObject(data.pred_stats)}</div>` : ""}
         ${data.cv_scores ? `<div>🔁 CV Scores: ${formatKeyValObject(data.cv_scores)}</div>` : ""}
         ${data.cluster_stats ? `<div>📦 Cluster Stats: ${formatKeyValObject(data.cluster_stats)}</div>` : ""}
         ${data.cluster_feature_differences ? `<div>🧠 Feature Differences: ${formatKeyValObject(data.cluster_feature_differences)}</div>` : ""}

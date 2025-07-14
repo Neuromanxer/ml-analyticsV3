@@ -930,7 +930,6 @@ def do_clustering(
             if local_file_path:
                 # Single file mode
                 df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[target_column])
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
                     df.drop(columns=drops, inplace=True)
@@ -943,8 +942,6 @@ def do_clustering(
                 # Train/test pair mode
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 
                 if drop_columns:
@@ -1280,14 +1277,11 @@ def do_segment_analysis(
             if local_file_path:
                 # Single file mode
                 df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 # Train/test pair mode
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)} + {os.path.basename(test_path)}"
 
@@ -2278,7 +2272,7 @@ def do_regression(
                             "target_column": target_column,
                             "drop_columns": drop_columns
                         },
-                        "metrics": results.get("metrics", {}),
+                        "metrics": results.get("test_scores", {}),
                         "thumbnailData": f"data:image/png;base64,{fi_shap_bar}" if fi_shap_bar else "",
                         "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
                         "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
@@ -2743,13 +2737,10 @@ def do_visualization(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[target_column])
                 dataset_name = os.path.basename(file_path)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
@@ -3683,7 +3674,7 @@ def do_survival(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[target_column])
+                df = df.dropna(subset=[event_col])
                 dataset_name = os.path.basename(file_path)
 
                 if drop_cols:
@@ -3720,8 +3711,8 @@ def do_survival(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
+                train_df = train_df.dropna(subset=[event_col])
+                test_df = test_df.dropna(subset=[event_col])
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
                 
                 if drop_cols:
