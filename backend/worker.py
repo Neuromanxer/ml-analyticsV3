@@ -3051,16 +3051,20 @@ def do_counterfactual(
 
             # ──────── Load trained model ────────
             model_path = None
-            classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
-            regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            
-            # Try to download model from Supabase if it exists
-            classifier_path_on_supabase = f"user-uploads/{user_id}/{user_id}_best_classifier.pkl"
-            regressor_path_on_supabase = f"user-uploads/{user_id}/{user_id}_best_regressor.pkl"
+
+            # Construct local and Supabase paths
+            classifier_filename = f"{user_id}_best_classifier.pkl"
+            regressor_filename = f"{user_id}_best_regressor.pkl"
+
+            classifier_path = PathL(model_dir) / classifier_filename
+            regressor_path = PathL(model_dir) / regressor_filename
+
+            # ✅ Use correct Supabase bucket name and path format
+            classifier_path_on_supabase = f"user_uploads/{user_id}/{classifier_filename}"
+            regressor_path_on_supabase = f"user_uploads/{user_id}/{regressor_filename}"
 
             try:
                 if not classifier_path.exists():
-                    # Try to download classifier model from Supabase
                     model_bytes = download_file_from_supabase(classifier_path_on_supabase)
                     with open(classifier_path, 'wb') as f:
                         f.write(model_bytes)
@@ -3070,7 +3074,6 @@ def do_counterfactual(
 
             try:
                 if not model_path and not regressor_path.exists():
-                    # Try to download regressor model from Supabase
                     model_bytes = download_file_from_supabase(regressor_path_on_supabase)
                     with open(regressor_path, 'wb') as f:
                         f.write(model_bytes)
@@ -3078,7 +3081,7 @@ def do_counterfactual(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to download regressor model from {regressor_path_on_supabase}: {e}")
 
-            # Use whichever model exists
+            # Fallback if one of the files was already present
             if not model_path:
                 if classifier_path.exists():
                     model_path = classifier_path
@@ -3087,8 +3090,10 @@ def do_counterfactual(
                 else:
                     raise ValueError("No trained model found for this user")
 
+            # Load the model
             model = joblib.load(model_path)
             estimator = model
+
 
             # Store expected training feature names
             if hasattr(estimator, "feature_names_in_"):
