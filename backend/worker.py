@@ -3049,48 +3049,52 @@ def do_counterfactual(
             test_df = test_df.replace([np.inf, -np.inf], np.nan).fillna(0)
             full_df = full_df.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-            # ──────── Load trained model ────────
-            model_path = None
+                    # Determine target type
+            target_is_continuous = False
+            if target_column and target_column in train_df.columns:
+                target_series = train_df[target_column]
+                # Heuristic: continuous if numeric and > N unique values
+                if pd.api.types.is_numeric_dtype(target_series):
+                    unique_vals = target_series.dropna().unique()
+                    if len(unique_vals) > 10:
+                        target_is_continuous = True
 
-            # Construct local and Supabase paths
+
+
+            # File names
             classifier_filename = f"{user_id}_best_classifier.pkl"
             regressor_filename = f"{user_id}_best_regressor.pkl"
 
-            classifier_path = PathL(model_dir) / classifier_filename
-            regressor_path = PathL(model_dir) / regressor_filename
+            # Supabase path (no folder nesting)
+            classifier_path_on_supabase = f"{classifier_filename}"
+            regressor_path_on_supabase = f"{regressor_filename}"
 
-            # ✅ Use correct Supabase bucket name and path format
-            classifier_path_on_supabase = f"user_uploads/{user_id}/{classifier_filename}"
-            regressor_path_on_supabase = f"user_uploads/{user_id}/{regressor_filename}"
+            # When calling download:
+            model_bytes = download_file_from_supabase(classifier_path_on_supabase)
 
-            try:
-                if not classifier_path.exists():
-                    model_bytes = download_file_from_supabase(classifier_path_on_supabase)
-                    with open(classifier_path, 'wb') as f:
-                        f.write(model_bytes)
-                    model_path = classifier_path
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to download classifier model from {classifier_path_on_supabase}: {e}")
+            model_path = None
 
             try:
-                if not model_path and not regressor_path.exists():
+                if target_is_continuous:
+                    # Download regressor
                     model_bytes = download_file_from_supabase(regressor_path_on_supabase)
                     with open(regressor_path, 'wb') as f:
                         f.write(model_bytes)
                     model_path = regressor_path
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to download regressor model from {regressor_path_on_supabase}: {e}")
-
-            # Fallback if one of the files was already present
-            if not model_path:
-                if classifier_path.exists():
-                    model_path = classifier_path
-                elif regressor_path.exists():
-                    model_path = regressor_path
+                    logger.info(f"✅ Downloaded regressor model from {regressor_path_on_supabase}")
                 else:
-                    raise ValueError("No trained model found for this user")
+                    # Download classifier
+                    model_bytes = download_file_from_supabase(classifier_path_on_supabase)
+                    with open(classifier_path, 'wb') as f:
+                        f.write(model_bytes)
+                    model_path = classifier_path
+                    logger.info(f"✅ Downloaded classifier model from {classifier_path_on_supabase}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to download model from Supabase: {e}")
 
-            # Load the model
+            if model_path is None:
+                raise ValueError("No trained model found for this user")
+
             model = joblib.load(model_path)
             estimator = model
 
