@@ -378,52 +378,134 @@ def do_classification(
             
             # Run SHAP Visualizations subprocess
             try:
-                # Get the current script's directory to find shap_runner.py
+                import sys
+                import subprocess
+                import time
+                import os
+
+                # Set up paths
                 current_dir = PathL(__file__).parent
                 shap_runner_path = current_dir / "shap_runner.py"
-                
-                # Ensure shap_runner.py exists
+
+                print(f"[SHAP DEBUG] Current directory: {current_dir}")
+                print(f"[SHAP DEBUG] SHAP runner path: {shap_runner_path}")
+                print(f"[SHAP DEBUG] SHAP runner exists: {shap_runner_path.exists()}")
+
                 if not shap_runner_path.exists():
-                    print(f"[⚠️] SHAP runner not found at: {shap_runner_path}")
-                    raise FileNotFoundError(f"SHAP runner script not found: {shap_runner_path}")
-                
-                # Run the subprocess with proper error handling
-                result = subprocess.run(
-                    ["python3", "-m", "backend.shap_runner", str(request_json.resolve())],
-                    cwd=str(current_dir.parent),  
-                    capture_output=True,
+                    raise FileNotFoundError(f"shap_runner.py not found at {shap_runner_path}")
+
+                # Create request JSON
+                request_json = user_dir / "request.json"
+                with open(request_json, "w") as f:
+                    json.dump({
+                        "user_id": str(user_id),
+                        "model_path": str(model_path.resolve()),
+                        "data_path": str(data_path.resolve()),
+                        "output_dir": str(user_dir.resolve()),
+                        "model_type": "classification",
+                        "target_column": target_column,
+                        "save_filename": f"{user_id}_feature_importance.png"
+                    }, f, indent=2)
+
+                print(f"[SHAP DEBUG] Request JSON created at: {request_json}")
+                print(f"[SHAP DEBUG] JSON contents: {request_json.read_text()}")
+
+                # Prepare subprocess command
+                cmd = [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())]
+                env = os.environ.copy()
+                env['PYTHONUNBUFFERED'] = '1'
+                env['PYTHONIOENCODING'] = 'utf-8'
+
+                print(f"[SHAP DEBUG] Launching subprocess with command: {' '.join(cmd)}")
+
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=str(current_dir),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=300
+                    bufsize=1,
+                    env=env,
+                    universal_newlines=True
                 )
-                if result.returncode != 0:
-                    print(f"[⚠️] SHAP subprocess failed with return code {result.returncode}")
-                    print(f"[⚠️] STDERR: {result.stderr}")
-                    print(f"[⚠️] STDOUT: {result.stdout}")
-                    raise subprocess.CalledProcessError(result.returncode, result.args)
-                
-                # Load results from SHAP processing
-                result_path = user_dir / "result.json"
-                if result_path.exists():
-                    with open(result_path) as f:
-                        shap_result = json.load(f)
-                    fi_shap_bar = shap_result.get("shap_bar")
-                    fi_shap_dot = shap_result.get("shap_dot")
-                    imp_df = pd.DataFrame(shap_result.get("imp_df", []))
+
+                # Stream output
+                output_lines = []
+                timeout_seconds = 300
+                start_time = time.time()
+
+                while True:
+                    if process.poll() is not None:
+                        remaining_output = process.stdout.read()
+                        if remaining_output:
+                            output_lines.append(remaining_output)
+                            print(f"[SHAP SUBPROCESS] {remaining_output.strip()}")
+                        break
+
+                    if time.time() - start_time > timeout_seconds:
+                        print(f"[SHAP ERROR] Subprocess timed out after {timeout_seconds} seconds")
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+
+                    line = process.stdout.readline()
+                    if line:
+                        output_lines.append(line)
+                        print(f"[SHAP SUBPROCESS] {line.strip()}")
+                    else:
+                        time.sleep(0.1)
+
+                return_code = process.returncode
+                full_output = ''.join(output_lines)
+
+                print(f"[SHAP DEBUG] Process finished with code {return_code}")
+                if return_code != 0:
+                    raise subprocess.CalledProcessError(return_code, cmd, output=full_output)
+
+                # Load SHAP result
+                result_json_path = user_dir / "result.json"
+                print(f"[SHAP DEBUG] Checking result: {result_json_path.exists()}")
+                if result_json_path.exists():
+                    try:
+                        with open(result_json_path) as f:
+                            shap_result = json.load(f)
+                        print(f"[SHAP DEBUG] SHAP result loaded")
+
+                        fi_shap_bar = shap_result.get("shap_bar")
+                        fi_shap_dot = shap_result.get("shap_dot")
+                        imp_df_data = shap_result.get("imp_df", [])
+                        imp_df = pd.DataFrame(imp_df_data) if imp_df_data else pd.DataFrame()
+
+                    except Exception as e:
+                        print(f"[SHAP ERROR] Failed to load SHAP result: {e}")
+                        fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
                 else:
-                    print("[⚠️] SHAP result.json not found")
+                    print(f"[SHAP ERROR] result.json not found")
                     fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
-                    
-            except subprocess.TimeoutExpired:
-                print("[⚠️] SHAP subprocess timed out after 5 minutes")
+
+            except subprocess.TimeoutExpired as e:
+                print(f"[⚠️] SHAP subprocess timed out: {e}")
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
             except subprocess.CalledProcessError as e:
                 print(f"[⚠️] SHAP subprocess failed: {e}")
+                print(f"[⚠️] Output: {e.output}")
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
+            except FileNotFoundError as e:
+                print(f"[⚠️] SHAP runner not found: {e}")
+                fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
             except Exception as viz_error:
-                print(f"[⚠️] Visualization error: {viz_error}")
+                print(f"[⚠️] SHAP visualization error: {viz_error}")
                 import traceback
                 traceback.print_exc()
                 fi_shap_bar, fi_shap_dot, imp_df = None, None, pd.DataFrame()
+
             response_data = {}
             try:
                 # Upload trained model
@@ -492,7 +574,8 @@ def do_classification(
                     "imageData": f"data:image/png;base64,{fi_shap_dot or fi_shap_bar or ''}",
                     "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                     "conversion_rate": conversion_rate,
-                    "impact_metrics": impact_metrics
+                    "impact_metrics": impact_metrics,
+                    "training_columns": training_columns
                 }
                 
                 # Add additional visualizations
@@ -2297,7 +2380,7 @@ def do_regression(
                         "insights": insights,
                         "model_url": model_url,
                         "preprocessor_url": preprocessor_url,
-                        "data_url": data_url
+                        "data_url": data_url,
                     }
                     entry = ensure_json_serializable(entry)
                     with master_db_cm() as db:
