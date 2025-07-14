@@ -1169,15 +1169,23 @@ function signOutUser() {
   });
   
  
-  function formatKeyValObject(obj) {
+  function formatKeyValObject(obj, indent = 0) {
   if (!obj || typeof obj !== "object") return "";
+
+  const pad = "&nbsp;".repeat(indent * 4); // indent with 4 spaces per level
   return Object.entries(obj)
     .map(([k, v]) => {
-      const val = typeof v === "number" ? v.toFixed(4) : v;
-      return `<strong>${k.replace(/_/g, " ")}:</strong> ${val}`;
+      if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+        // Recursive rendering for nested objects
+        return `${pad}<strong>${k.replace(/_/g, " ")}:</strong><br>${formatKeyValObject(v, indent + 1)}`;
+      } else {
+        const val = typeof v === "number" ? v.toFixed(4) : v;
+        return `${pad}<strong>${k.replace(/_/g, " ")}:</strong> ${val}`;
+      }
     })
-    .join(" | ");
+    .join("<br>");
 }
+
 
 function formatArray(arr) {
   return Array.isArray(arr) ? arr.map(v => `<code>${v}</code>`).join(", ") : "N/A";

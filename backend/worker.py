@@ -1505,7 +1505,7 @@ def do_segment_analysis(
 
             # Add visualizations if they exist
             if cluster_viz_base64:
-                response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
+                response_data["visualizations"]["cluster_viz"] = f"data:image/png;base64,{cluster_viz_base64}"
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
             try:
@@ -3688,7 +3688,8 @@ def do_survival(
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[event_col])
+                if event_col in df.columns:
+                    df = df.dropna(subset=[event_col])
                 dataset_name = os.path.basename(file_path)
 
                 if drop_cols:
@@ -3725,8 +3726,12 @@ def do_survival(
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[event_col])
-                test_df = test_df.dropna(subset=[event_col])
+                if event_col in train_df.columns:
+                    train_df = train_df.dropna(subset=[event_col])
+
+                # Only drop in test if it has the event_col
+                if event_col in test_df.columns:
+                    test_df = test_df.dropna(subset=[event_col])
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
                 
                 if drop_cols:
