@@ -1340,11 +1340,20 @@ async def regression_predict(
     test_path = None
 
     if file:
-        contents = await file.read()
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-        temp_file.write(contents)
-        temp_file.close()
-        file_path = temp_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_path = temp_file.name
+
+        # Upload to Supabase and use that path
+        supabase_path = upload_file_to_supabase(
+            user_id=str(user_id),
+            file_path=temp_path,
+            filename=f"predict_{file.filename}"
+        )
+
+        os.remove(temp_path)  # Optional cleanup
+        file_path = supabase_path  # ✅ Set this to Supabase path for task
+
 
     if train_file and test_file:
         train_contents = await train_file.read()
