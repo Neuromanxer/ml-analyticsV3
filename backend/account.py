@@ -285,7 +285,14 @@ async def change_plan(
             }],
             success_url=f"{DOMAIN}/account?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{DOMAIN}/account?canceled=true",
+
+            # ✅ Add this metadata block
+            metadata={
+                "user_id": str(current_user.id),
+                "plan": new_plan.lower()
+            }
         )
+
         print("✅ Stripe Checkout URL:", checkout_session.url)
     except stripe.error.StripeError as e:
         raise HTTPException(
@@ -301,6 +308,12 @@ async def change_plan(
         checkoutUrl=checkout_session.url,
     )
 
+TOKEN_AMOUNTS_BY_PLAN = {
+    "starter": 35,
+    "professional": 80,
+    "enterprise": 150
+}
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 @router.post("/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
@@ -308,31 +321,45 @@ async def stripe_webhook(
 ):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
+
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
         )
     except ValueError:
-        raise HTTPException(status_code=400)
+        raise HTTPException(status_code=400, detail="Invalid payload")
     except stripe.error.SignatureVerificationError:
-        raise HTTPException(status_code=400)
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        # customer subscribed → find your user by session.customer
-        cust_id = session["customer"]
-        plan_price = session["display_items"][0]["price"]["id"]
-        # map price back to planName...
-        plan_name = {v:k for k,v in PRICE_IDS.items()}[plan_price]
 
-        # Update user in DB:
+        # ✅ Preferred: use metadata (most reliable)
+        plan_name = session.get("metadata", {}).get("plan")
+        cust_id = session.get("customer")
+
+        if not plan_name or not cust_id:
+            raise HTTPException(status_code=400, detail="Missing customer or plan info in metadata")
+
+        plan_name = plan_name.lower()
+        tokens_to_add = TOKEN_AMOUNTS_BY_PLAN.get(plan_name)
+
+        if tokens_to_add is None:
+            raise HTTPException(status_code=400, detail=f"No token amount mapped for plan: {plan_name}")
+
+        # Lookup user by stripe_customer_id
         user = db.query(User).filter(User.stripe_customer_id == cust_id).first()
+
         if user:
             user.subscription = plan_name
+            user.tokens = (user.tokens or 0) + tokens_to_add
             db.add(user)
             db.commit()
 
+            print(f"✅ Added {tokens_to_add} tokens to user {user.email} for plan '{plan_name}'")
+
     return {"received": True}
+
 
 @router.get("/dashboard", response_model=DashboardOut)
 async def get_account_dashboard(

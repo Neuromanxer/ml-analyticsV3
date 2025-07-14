@@ -382,14 +382,14 @@ class AITokenBillingMiddleware(BaseHTTPMiddleware):
 
             # OpenAI Pricing (e.g., GPT-4 Vision or GPT-4o)
             OPENAI_COST_PER_1K = 0.04  # your actual OpenAI rate
-            MARKUP = 4.0               # 4x markup for profit
+            MARKUP = 2.0               # 4x markup for profit
 
             ai_cost_usd = (openai_tokens_used / 1000) * OPENAI_COST_PER_1K
             ai_charge = round(ai_cost_usd * MARKUP, 3)
 
             # ─── Add time-based and size-based charges ─────────
-            PRICE_PER_MB = 0.25
-            PRICE_PER_SECOND = 0.50
+            PRICE_PER_MB =  0.125
+            PRICE_PER_SECOND = 0.25
 
             content_length = request.headers.get("content-length")
             bytes_processed = int(content_length) if content_length and content_length.isdigit() else 0
@@ -917,33 +917,21 @@ async def classification(
         else:
             raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
-        # ───────── Choose execution mode ───────────
-        if current_user.subscription in ["Pro", "Enterprise"]:
-            response = launch_job_on_ecs(
-                user_id=user_id,
-                file_path=file_path,
-                train_path=train_path,
-                test_path=test_path,
-                target_column=target_column,
-                drop_columns=drop_columns
-            )
-            return {"status": "queued_on_ecs", "ecs_response": response}
-        else:
-            task = run_classification.delay(
-                user_id=user_id,
-                current_user={
-                    "id": current_user.id,
-                    "email": current_user.email,
-                    "subscription": current_user.subscription
-                },
-                file_path=file_path,
-                train_path=train_path,
-                test_path=test_path,
-                target_column=target_column,
-                drop_columns=drop_columns
-            )
-            response_data = await run_in_threadpool(task.get)
-            return response_data
+        task = run_classification.delay(
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
+            target_column=target_column,
+            drop_columns=drop_columns
+        )
+        response_data = await run_in_threadpool(task.get)
+        return response_data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing classification: {str(e)}")
@@ -1055,38 +1043,24 @@ async def clustering(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = isolated ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="cluster"  # Important: ECS must know it's clustering job
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
 
-    else:
-        # Free users = Celery worker
-        task = run_clustering.delay(
-            user_id=user_id,
-            file_path=file_path,   # might be None
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            train_path=train_path, # might be None
-            test_path=test_path,   # might be None
-            target_column=target_column,
-            time_column=time_column,
-            drop_columns=drop_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users = Celery worker
+    task = run_clustering.delay(
+        user_id=user_id,
+        file_path=file_path,   # might be None
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        train_path=train_path, # might be None
+        test_path=test_path,   # might be None
+        target_column=target_column,
+        time_column=time_column,
+        drop_columns=drop_columns
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/segment_analysis/")
 async def segment_analysis(
@@ -1122,37 +1096,22 @@ async def segment_analysis(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = fully isolated ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="segment_analysis"  # Pass job type to ECS handler
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
+    task = run_segment_analysis.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        drop_columns=drop_columns
+    )
 
-    else:
-        task = run_segment_analysis.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/label_clusters/")
 async def label_clusters(
@@ -1187,35 +1146,21 @@ async def label_clusters(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = isolated ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            feature_columns=feature_columns,
-            job_type="label_clusters"  # Pass job type to ECS handler
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-
-    else:
-        # Free users = Celery worker
-        task = run_label_clusters.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            feature_columns=feature_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users = Celery worker
+    task = run_label_clusters.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        feature_columns=feature_columns
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 def process_uploaded_file(file_path: str):
     """Process a CSV file from Supabase storage and return the DataFrame"""
@@ -1274,37 +1219,22 @@ async def regression(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium users -> ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="regression"  # Pass job type to ECS handler
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
+    task = run_regression.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },  # if `current_user` is a Pydantic model
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        drop_columns=drop_columns
+    )
 
-    else:
-        task = run_regression.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },  # if `current_user` is a Pydantic model
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 @app.post("/regression/predict/")
 async def regression_predict(
     file: UploadFile = File(None),
@@ -1368,34 +1298,22 @@ async def regression_predict(
         temp_test.write(test_contents)
         temp_test.close()
         test_path = temp_test.name
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = fully isolated ECS job (optional cloud deployment)
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            drop_columns=drop_columns
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
 
-    else:
-        # Free users = Celery worker
-        task = run_regression_predict.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            drop_columns=drop_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users = Celery worker
+    task = run_regression_predict.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        drop_columns=drop_columns
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 # Response models for visualizations
 class VisualizationParameters(BaseModel):
@@ -1588,37 +1506,22 @@ async def segment_analysis(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium = fully isolated ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="segment_analysis"  # Pass job type to ECS handler
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
+    task = run_segment_analysis.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        drop_columns=drop_columns
+    )
 
-    else:
-        task = run_segment_analysis.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/visualize/")
 async def visualize(
@@ -1654,37 +1557,22 @@ async def visualize(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium users -> ECS job (optional cloud deployment)
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            feature_column=feature_column,
-            job_type="visualization"
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-
-    else:
-        # Free users -> Celery worker
-        task = run_visualization.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            feature_column=feature_column
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users -> Celery worker
+    task = run_visualization.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        feature_column=feature_column
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/counterfactual/")
 async def counterfactual(
@@ -1753,59 +1641,34 @@ async def counterfactual(
         except json.JSONDecodeError:
             editable_features_list = [f.strip() for f in editable_features.split(",")]
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        extra_params = {
-            "sample_id": sample_id,
-            "sample_strategy": sample_strategy,
-            "num_samples": num_samples,
-            "desired_outcome": parsed_desired,
-            "editable_features": editable_features_list,
-            "max_changes": max_changes,
-            "proximity_metric": proximity_metric,
-        }
-        
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="counterfactual",
-            extra_params=extra_params
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-    else:
-        # Ensure all parameters are JSON-serializable
-        sanitized_params = {
-            "user_id": str(user_id),
-            "current_user": {
-                "id": str(current_user.id),
-                "email": str(current_user.email),
-                "subscription": str(current_user.subscription)
-            },
-            "file_path": file_path,
-            "train_path": train_path,
-            "test_path": test_path,
-            "target_column": str(target_column),
-            "drop_columns": str(drop_columns),
-            "sample_id": int(sample_id) if sample_id is not None else None,
-            "sample_strategy": str(sample_strategy),
-            "num_samples": int(num_samples),
-            "desired_outcome": parsed_desired,  # Already processed above
-            "editable_features": editable_features_list,  # Already processed above
-            "max_changes": int(max_changes),
-            "proximity_metric": str(proximity_metric),
-        }
+    sanitized_params = {
+        "user_id": str(user_id),
+        "current_user": {
+            "id": str(current_user.id),
+            "email": str(current_user.email),
+            "subscription": str(current_user.subscription)
+        },
+        "file_path": file_path,
+        "train_path": train_path,
+        "test_path": test_path,
+        "target_column": str(target_column),
+        "drop_columns": str(drop_columns),
+        "sample_id": int(sample_id) if sample_id is not None else None,
+        "sample_strategy": str(sample_strategy),
+        "num_samples": int(num_samples),
+        "desired_outcome": parsed_desired,  # Already processed above
+        "editable_features": editable_features_list,  # Already processed above
+        "max_changes": int(max_changes),
+        "proximity_metric": str(proximity_metric),
+    }
 
-        # Apply additional JSON safety check
-        sanitized_params = make_json_safe(sanitized_params)
-        
-        task = run_counterfactual.delay(**sanitized_params)
-        response_data = await run_in_threadpool(task.get)
-        
-        return response_data
+    # Apply additional JSON safety check
+    sanitized_params = make_json_safe(sanitized_params)
+    
+    task = run_counterfactual.delay(**sanitized_params)
+    response_data = await run_in_threadpool(task.get)
+    
+    return response_data
 
 @app.post("/survival/")
 async def survival(
@@ -1849,44 +1712,28 @@ async def survival(
     else:
         raise HTTPException(400, "Invalid upload state: no valid dataset provided.")
 
-    # ───────── Choose execution mode ───────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium users -> ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            time_col=time_col,
-            event_col=event_col,
-            drop_cols=drop_cols,
-            job_type="survival"  # Pass job type to ECS handler
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
+    kwargs = {
+        "user_id": user_id,
+        "current_user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        "time_col": time_col,
+        "event_col": event_col,
+        "drop_cols": drop_cols,
+    }
 
+    if file_path:
+        kwargs["file_path"] = file_path
     else:
-        kwargs = {
-            "user_id": user_id,
-            "current_user": {
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            "time_col": time_col,
-            "event_col": event_col,
-            "drop_cols": drop_cols,
-        }
+        kwargs["train_path"] = train_path
+        kwargs["test_path"] = test_path
 
-        if file_path:
-            kwargs["file_path"] = file_path
-        else:
-            kwargs["train_path"] = train_path
-            kwargs["test_path"] = test_path
-
-        # Free users -> Celery worker
-        task = run_survival_analysis.delay(**kwargs)
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users -> Celery worker
+    task = run_survival_analysis.delay(**kwargs)
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/what_if_analysis/")
 async def what_if_analysis(
@@ -1923,39 +1770,23 @@ async def what_if_analysis(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # ──────────── Choose execution mode ─────────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        # Premium users -> ECS job
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            sample_id=sample_id,
-            target_column=target_column,
-            feature_changes=feature_changes,
-            job_type="what_if"
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-
-    else:
-        # Free users -> Celery worker
-        task = run_what_if.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            sample_id=sample_id,
-            target_column=target_column,
-            feature_changes=feature_changes
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    # Free users -> Celery worker
+    task = run_what_if.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        sample_id=sample_id,
+        target_column=target_column,
+        feature_changes=feature_changes
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 # Add this to your database functions
 async def store_counterfactual_result(user_id, sample_id, original_features, modified_features, 
                                      original_prediction, modified_prediction):
@@ -2018,35 +1849,21 @@ async def risk_analysis(
     else:
         raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
-    # ──────────── Choose execution mode ─────────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="risk_analysis"
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-
-    else:
-        task = run_risk_analysis.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    task = run_risk_analysis.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        drop_columns=drop_columns
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/decision_paths/")
 async def decision_paths(
@@ -2077,35 +1894,21 @@ async def decision_paths(
     else:
         raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
 
-    # ─────────── ECS vs Celery execution ─────────────
-    if current_user.subscription in ["Pro", "Enterprise"]:
-        response = launch_job_on_ecs(
-            user_id=user_id,
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            job_type="decision_paths"
-        )
-        return {"status": "queued_on_ecs", "ecs_response": response}
-
-    else:
-        task = run_decision_paths.delay(
-            user_id=user_id,
-            current_user={
-                "id": current_user.id,
-                "email": current_user.email,
-                "subscription": current_user.subscription
-            },
-            file_path=file_path,
-            train_path=train_path,
-            test_path=test_path,
-            target_column=target_column,
-            drop_columns=drop_columns
-        )
-        response_data = await run_in_threadpool(task.get)
-        return response_data
+    task = run_decision_paths.delay(
+        user_id=user_id,
+        current_user={
+            "id": current_user.id,
+            "email": current_user.email,
+            "subscription": current_user.subscription
+        },
+        file_path=file_path,
+        train_path=train_path,
+        test_path=test_path,
+        target_column=target_column,
+        drop_columns=drop_columns
+    )
+    response_data = await run_in_threadpool(task.get)
+    return response_data
 
 @app.post("/forecast/")
 async def forecast_time_series(

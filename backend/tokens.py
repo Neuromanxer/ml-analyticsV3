@@ -144,3 +144,4 @@ def verify_payment(
         payment_intent= pi_id,
         amount_charged= cents / 100.0,
     )
+
