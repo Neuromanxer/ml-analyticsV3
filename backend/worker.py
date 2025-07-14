@@ -3061,29 +3061,28 @@ def do_counterfactual(
 
 
 
-            # Model filenames
-            classifier_filename = f"{user_id}_best_classifier.pkl"
-            regressor_filename = f"{user_id}_best_regressor.pkl"
+            # Supabase paths (bucket keys)
+            regressor_filename = f"{user_id}/{user_id}_best_regressor.pkl"
+            classifier_filename = f"{user_id}/{user_id}_best_classifier.pkl"
 
-            # Local save paths
-            classifier_path = PathL(model_dir) / classifier_filename
-            regressor_path = PathL(model_dir) / regressor_filename
+            # Local save filenames (no folder nesting)
+            regressor_local = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
+            classifier_local = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
 
-            # Pick based on target type
             model_path = None
 
             try:
                 if target_is_continuous:
                     model_bytes = download_file_from_supabase(regressor_filename)
-                    with open(regressor_path, "wb") as f:
+                    with open(regressor_local, "wb") as f:
                         f.write(model_bytes)
-                    model_path = regressor_path
+                    model_path = regressor_local
                     logger.info(f"✅ Downloaded regressor model: {regressor_filename}")
                 else:
                     model_bytes = download_file_from_supabase(classifier_filename)
-                    with open(classifier_path, "wb") as f:
+                    with open(classifier_local, "wb") as f:
                         f.write(model_bytes)
-                    model_path = classifier_path
+                    model_path = classifier_local
                     logger.info(f"✅ Downloaded classifier model: {classifier_filename}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to download model: {e}")
@@ -3092,8 +3091,10 @@ def do_counterfactual(
             if model_path is None:
                 raise ValueError("No trained model found for this user")
 
+            # Load the model
             model = joblib.load(model_path)
             estimator = model
+
 
 
             # Store expected training feature names
