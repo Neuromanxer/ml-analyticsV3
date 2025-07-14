@@ -10,14 +10,20 @@ from threading import Thread
 import time
 import traceback
 import gc
+import signal
+import sys
 
 import shap
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
+
+# Configure matplotlib with more robust settings
 import matplotlib
-matplotlib.use("Agg")
+matplotlib.use("Agg")  # Use Agg backend
+matplotlib.pyplot.ioff()  # Turn off interactive mode
+plt.rcParams['figure.max_open_warning'] = 0  # Disable max figure warning
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,9 +31,12 @@ logger.setLevel(logging.INFO)
 def flush_print(*args, **kwargs):
     """Print with immediate flush to ensure output appears in logs"""
     print(*args, **kwargs)
-    import sys
     sys.stdout.flush()
     sys.stderr.flush()
+
+def timeout_handler(signum, frame):
+    """Handle timeout for plot generation"""
+    raise TimeoutError("Plot generation timed out")
 
 def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filename, return_base64, queue):
     """Main plotting function with enhanced error handling and progress tracking"""
@@ -35,7 +44,7 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
     def plot_to_base64(fig):
         try:
             buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')  # Reduced DPI for performance
+            fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', facecolor='white')
             buf.seek(0)
             img_str = base64.b64encode(buf.read()).decode('utf-8')
             buf.close()
@@ -43,6 +52,8 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         except Exception as e:
             flush_print(f"[PLOT ERROR] Failed to convert plot to base64: {e}")
             return None
+        finally:
+            plt.close(fig)
 
     standard_result = None
     detailed_result = None
@@ -69,7 +80,7 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
             save_path = save_filename
 
         # Prepare sample data - use smaller sample for faster processing
-        sample_size = min(500, len(X))  # Reduced from 1000 to 500
+        sample_size = min(300, len(X))  # Reduced sample size for faster processing
         flush_print(f"[SHAP PROCESS] Using sample size: {sample_size} out of {len(X)} rows")
         
         if len(X) > sample_size:
@@ -101,69 +112,57 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
             flush_print(f"[SHAP ERROR] SHAP values computation failed: {e}")
             raise
 
-        # Handle multi-class output
+        # Handle different SHAP value formats
+        flush_print(f"[SHAP PROCESS] Raw SHAP values type: {type(shap_values)}")
+        flush_print(f"[SHAP PROCESS] Model type: {model_type}")
+        
         if model_type == "classifier" and isinstance(shap_values, list) and len(shap_values) > 1:
+            # Multi-class classification
             class_idx = 1 if len(shap_values) == 2 else 0
             shap_values_plot = shap_values[class_idx]
             flush_print(f"[SHAP PROCESS] Using class index {class_idx} for classification plot")
+        elif model_type == "classifier" and isinstance(shap_values, list) and len(shap_values) == 1:
+            # Binary classification with single class output
+            shap_values_plot = shap_values[0]
+            flush_print(f"[SHAP PROCESS] Using single class output for binary classification")
+        elif model_type == "regression" or model_type == "regressor":
+            # Regression - should be a 2D array
+            if isinstance(shap_values, list):
+                if len(shap_values) == 1:
+                    shap_values_plot = shap_values[0]
+                    flush_print(f"[SHAP PROCESS] Regression with list format - using first element")
+                else:
+                    flush_print(f"[SHAP ERROR] Unexpected list format for regression: {len(shap_values)} elements")
+                    shap_values_plot = shap_values[0]  # Try first element anyway
+            else:
+                shap_values_plot = shap_values
+                flush_print(f"[SHAP PROCESS] Regression with array format")
         else:
+            # Default case
             shap_values_plot = shap_values
+            flush_print(f"[SHAP PROCESS] Using default SHAP values format")
 
         # Validate SHAP values
         if isinstance(shap_values_plot, list):
-            flush_print(f"[SHAP ERROR] SHAP values still a list after processing")
-            raise ValueError("SHAP values dimension mismatch")
+            flush_print(f"[SHAP ERROR] SHAP values still a list after processing: {len(shap_values_plot)} elements")
+            # Try to convert to array if it's a list of arrays
+            try:
+                shap_values_plot = np.array(shap_values_plot)
+                flush_print(f"[SHAP PROCESS] Converted list to array, shape: {shap_values_plot.shape}")
+            except:
+                raise ValueError("SHAP values dimension mismatch - cannot convert list to array")
             
-        if X_sample.shape[1] != shap_values_plot.shape[1]:
-            flush_print(f"[SHAP ERROR] Shape mismatch - X: {X_sample.shape[1]}, SHAP: {shap_values_plot.shape[1]}")
-            raise ValueError("SHAP and feature dimension mismatch")
+        # Check dimensions
+        if hasattr(shap_values_plot, 'shape'):
+            flush_print(f"[SHAP PROCESS] SHAP values shape: {shap_values_plot.shape}")
+            if len(shap_values_plot.shape) == 2 and X_sample.shape[1] != shap_values_plot.shape[1]:
+                flush_print(f"[SHAP ERROR] Shape mismatch - X: {X_sample.shape[1]}, SHAP: {shap_values_plot.shape[1]}")
+                raise ValueError("SHAP and feature dimension mismatch")
+        else:
+            flush_print(f"[SHAP ERROR] SHAP values has no shape attribute: {type(shap_values_plot)}")
+            raise ValueError("Invalid SHAP values format")
 
-        flush_print(f"[SHAP PROCESS] SHAP values shape: {shap_values_plot.shape}")
-
-        # Generate standard bar plot
-        flush_print("[SHAP PROCESS] Creating bar plot...")
-        try:
-            fig_standard = plt.figure(figsize=(10, 6))  # Reduced figure size
-            shap.summary_plot(shap_values_plot, X_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
-            plt.tight_layout()
-            
-            if return_base64:
-                standard_result = plot_to_base64(fig_standard)
-            else:
-                fig_standard.savefig(save_path, dpi=150, bbox_inches='tight')
-                standard_result = save_path
-                
-            plt.close(fig_standard)
-            flush_print("[SHAP PROCESS] Bar plot created successfully")
-            
-        except Exception as e:
-            flush_print(f"[SHAP ERROR] Bar plot failed: {e}")
-            if 'fig_standard' in locals():
-                plt.close(fig_standard)
-
-        # Generate detailed dot plot
-        flush_print("[SHAP PROCESS] Creating dot plot...")
-        try:
-            fig_detailed = plt.figure(figsize=(10, 8))  # Reduced figure size
-            shap.summary_plot(shap_values_plot, X_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
-            plt.tight_layout()
-            
-            if return_base64:
-                detailed_result = plot_to_base64(fig_detailed)
-            else:
-                detailed_path = save_path.replace('.png', '_detailed.png')
-                fig_detailed.savefig(detailed_path, dpi=150, bbox_inches='tight')
-                detailed_result = detailed_path
-                
-            plt.close(fig_detailed)
-            flush_print("[SHAP PROCESS] Dot plot created successfully")
-            
-        except Exception as e:
-            flush_print(f"[SHAP ERROR] Dot plot failed: {e}")
-            if 'fig_detailed' in locals():
-                plt.close(fig_detailed)
-
-        # Create feature importance DataFrame
+        # Create feature importance DataFrame first
         flush_print("[SHAP PROCESS] Creating feature importance DataFrame...")
         try:
             feature_importance = pd.DataFrame({
@@ -174,6 +173,95 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         except Exception as e:
             flush_print(f"[SHAP ERROR] Feature importance DataFrame failed: {e}")
             feature_importance = pd.DataFrame()
+
+        # Generate standard bar plot with timeout protection
+        flush_print("[SHAP PROCESS] Creating bar plot...")
+        try:
+            # Set up timeout for plotting
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)  # 30 second timeout for plotting
+            
+            # Clear any existing plots
+            plt.clf()
+            plt.cla()
+            plt.close('all')
+            
+            # Create figure with explicit settings
+            fig_standard = plt.figure(figsize=(10, 6), facecolor='white')
+            plt.rcParams.update({'font.size': 10})
+            
+            # Try the new SHAP API first
+            try:
+                shap.plots.bar(shap_values_plot, max_display=min(top_n, 15), show=False)
+            except:
+                # Fallback to old API
+                shap.summary_plot(shap_values_plot, X_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
+            
+            plt.tight_layout()
+            signal.alarm(0)  # Cancel timeout
+            
+            if return_base64:
+                standard_result = plot_to_base64(fig_standard)
+            else:
+                fig_standard.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
+                standard_result = save_path
+                plt.close(fig_standard)
+                
+            flush_print("[SHAP PROCESS] Bar plot created successfully")
+            
+        except TimeoutError:
+            flush_print("[SHAP ERROR] Bar plot timed out")
+            signal.alarm(0)
+            plt.close('all')
+        except Exception as e:
+            flush_print(f"[SHAP ERROR] Bar plot failed: {e}")
+            signal.alarm(0)
+            plt.close('all')
+
+        # Generate detailed dot plot with timeout protection
+        flush_print("[SHAP PROCESS] Creating dot plot...")
+        try:
+            # Set up timeout for plotting
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)  # 30 second timeout for plotting
+            
+            # Clear any existing plots
+            plt.clf()
+            plt.cla()
+            plt.close('all')
+            
+            # Create figure with explicit settings
+            fig_detailed = plt.figure(figsize=(10, 8), facecolor='white')
+            plt.rcParams.update({'font.size': 10})
+            
+            # Try the new SHAP API first
+            try:
+                shap.plots.beeswarm(shap_values_plot, max_display=min(top_n, 10), show=False)
+            except:
+                # Fallback to old API
+                shap.summary_plot(shap_values_plot, X_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
+            
+            plt.tight_layout()
+            signal.alarm(0)  # Cancel timeout
+            
+            if return_base64:
+                detailed_result = plot_to_base64(fig_detailed)
+            else:
+                detailed_path = save_path.replace('.png', '_detailed.png')
+                fig_detailed.savefig(detailed_path, dpi=100, bbox_inches='tight', facecolor='white')
+                detailed_result = detailed_path
+                plt.close(fig_detailed)
+                
+            flush_print("[SHAP PROCESS] Dot plot created successfully")
+            
+        except TimeoutError:
+            flush_print("[SHAP ERROR] Dot plot timed out")
+            signal.alarm(0)
+            plt.close('all')
+        except Exception as e:
+            flush_print(f"[SHAP ERROR] Dot plot failed: {e}")
+            signal.alarm(0)
+            plt.close('all')
 
         total_time = time.time() - start_time
         flush_print(f"[SHAP PROCESS] SHAP processing completed in {total_time:.2f} seconds")
@@ -203,39 +291,58 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
                 'Importance': importance
             }).sort_values('Importance', ascending=False)
 
-            # Create fallback plot
+            # Create fallback plot with timeout protection
             flush_print("[SHAP PROCESS] Creating fallback plot...")
-            fig_fallback = plt.figure(figsize=(10, 6))
-            top_features = feature_importance.head(min(top_n, len(feature_importance)))
-            plt.barh(range(len(top_features)), top_features['Importance'].values, color="skyblue")
-            plt.yticks(range(len(top_features)), top_features['Feature'].values)
-            plt.xlabel("Feature Importance")
-            plt.ylabel("Feature")
-            plt.title("Feature Importance (Fallback Method)")
-            plt.gca().invert_yaxis()
-            plt.tight_layout()
-            
-            if return_base64:
-                standard_result = plot_to_base64(fig_fallback)
-            else:
-                fig_fallback.savefig(save_path, dpi=150, bbox_inches='tight')
-                standard_result = save_path
+            try:
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
                 
-            plt.close(fig_fallback)
-            flush_print("[SHAP PROCESS] Fallback plot created successfully")
+                plt.clf()
+                plt.cla()
+                plt.close('all')
+                
+                fig_fallback = plt.figure(figsize=(10, 6), facecolor='white')
+                top_features = feature_importance.head(min(top_n, len(feature_importance)))
+                
+                plt.barh(range(len(top_features)), top_features['Importance'].values, color="skyblue")
+                plt.yticks(range(len(top_features)), top_features['Feature'].values)
+                plt.xlabel("Feature Importance")
+                plt.ylabel("Feature")
+                plt.title("Feature Importance (Fallback Method)")
+                plt.gca().invert_yaxis()
+                plt.tight_layout()
+                
+                signal.alarm(0)  # Cancel timeout
+                
+                if return_base64:
+                    standard_result = plot_to_base64(fig_fallback)
+                else:
+                    fig_fallback.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
+                    standard_result = save_path
+                    plt.close(fig_fallback)
+                    
+                flush_print("[SHAP PROCESS] Fallback plot created successfully")
+                
+            except TimeoutError:
+                flush_print("[SHAP ERROR] Fallback plot timed out")
+                signal.alarm(0)
+                plt.close('all')
 
         except Exception as fallback_error:
             flush_print(f"[SHAP ERROR] Fallback feature importance failed: {fallback_error}")
             traceback.print_exc()
+            signal.alarm(0)
             queue.put({"error": str(fallback_error)})
             return
 
-    # Clean up memory
-    try:
-        gc.collect()
-        plt.close('all')
-    except:
-        pass
+    finally:
+        # Comprehensive cleanup
+        try:
+            signal.alarm(0)  # Cancel any remaining alarms
+            plt.close('all')
+            gc.collect()
+        except:
+            pass
 
     # Return results
     result = {
@@ -256,7 +363,7 @@ def safe_generate_feature_importance(
     save_filename="feature_importance.png",
     top_n=20,
     return_base64=True,
-    timeout=240  # 4 minutes timeout
+    timeout=180  # Reduced to 3 minutes
 ):
     """
     Safely generate feature importance with timeout and error handling
@@ -277,8 +384,12 @@ def safe_generate_feature_importance(
     
     if thread.is_alive():
         flush_print(f"[MAIN] Thread timed out after {timeout} seconds")
-        # Note: In production, you might want to forcefully terminate the thread
-        # but Python doesn't have a clean way to do this
+        # Force cleanup
+        try:
+            plt.close('all')
+            gc.collect()
+        except:
+            pass
         raise TimeoutError(f"Feature importance generation timed out after {timeout} seconds")
     
     try:

@@ -94,9 +94,9 @@ def main():
             # Try to import feature_importance
             try:
                 from feature_importance import safe_generate_feature_importance
-                flush_print("[SHAP DEBUG] ✓ enhanced_feature_importance imported")
+                flush_print("[SHAP DEBUG] ✓ feature_importance imported")
             except ImportError as e:
-                flush_print(f"[SHAP ERROR] Failed to import enhanced_feature_importance: {e}")
+                flush_print(f"[SHAP ERROR] Failed to import feature_importance: {e}")
                 flush_print(f"[SHAP DEBUG] Current directory contents: {list(Path('.').iterdir())}")
                 raise
                 
@@ -144,6 +144,20 @@ def main():
         try:
             model = joblib.load(model_path)
             flush_print(f"[SHAP DEBUG] Model loaded successfully, type: {type(model)}")
+            
+            # Auto-detect model type based on model class if not specified correctly
+            model_class_name = type(model).__name__.lower()
+            if 'regressor' in model_class_name or 'regression' in model_class_name:
+                detected_type = "regression"
+            elif 'classifier' in model_class_name or 'classification' in model_class_name:
+                detected_type = "classifier"
+            else:
+                detected_type = model_type  # Keep original
+            
+            if detected_type != model_type:
+                flush_print(f"[SHAP DEBUG] Model type auto-corrected: {model_type} -> {detected_type}")
+                model_type = detected_type
+            
         except Exception as e:
             flush_print(f"[SHAP ERROR] Failed to load model: {e}")
             raise
@@ -152,6 +166,7 @@ def main():
         flush_print("[SHAP DEBUG] Starting feature importance generation...")
         flush_print(f"[SHAP DEBUG] Process ID: {os.getpid()}")
         flush_print(f"[SHAP DEBUG] Timestamp: {datetime.now()}")
+        flush_print(f"[SHAP DEBUG] Final model type: {model_type}")
         
         try:
             result = safe_generate_feature_importance(
@@ -193,7 +208,8 @@ def main():
                 "shap_dot": shap_dot,
                 "imp_df": imp_df.to_dict(orient="records") if not imp_df.empty else [],
                 "timestamp": datetime.now().isoformat(),
-                "success": shap_bar is not None or shap_dot is not None
+                "success": shap_bar is not None or shap_dot is not None,
+                "model_type": model_type
             }
             
             with result_json_path.open("w", encoding="utf-8") as f:
@@ -220,7 +236,8 @@ def main():
                     "imp_df": [],
                     "error": "Timeout: Process took too long to complete",
                     "timestamp": datetime.now().isoformat(),
-                    "success": False
+                    "success": False,
+                    "model_type": locals().get('model_type', 'unknown')
                 }
                 with result_json_path.open("w", encoding="utf-8") as f:
                     json.dump(timeout_result, f, indent=2)
@@ -243,7 +260,8 @@ def main():
                     "imp_df": [],
                     "error": str(e),
                     "timestamp": datetime.now().isoformat(),
-                    "success": False
+                    "success": False,
+                    "model_type": locals().get('model_type', 'unknown')
                 }
                 with result_json_path.open("w", encoding="utf-8") as f:
                     json.dump(error_result, f, indent=2)
