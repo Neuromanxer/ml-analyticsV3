@@ -5,12 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import shap
 import time
-import signal
 import traceback
 import gc
 import os
 from threading import Thread
-from queue import Queue
+from queue import Queue, Empty
+import concurrent.futures
 
 def flush_print(*args, **kwargs):
     """Print with immediate flush to ensure output appears in logs"""
@@ -19,13 +19,79 @@ def flush_print(*args, **kwargs):
     sys.stdout.flush()
     sys.stderr.flush()
 
-def timeout_handler(signum, frame):
-    """Handle timeout signal"""
-    flush_print("⏰ TIMEOUT: Process timed out")
-    raise TimeoutError("Process timed out")
+def _compute_shap_values_with_timeout(explainer, shap_sample, is_catboost, timeout=60):
+    """Compute SHAP values with timeout using threading"""
+    result_queue = Queue()
+    error_queue = Queue()
+    
+    def compute_shap():
+        try:
+            if is_catboost:
+                flush_print("[SHAP PROCESS] Computing CatBoost SHAP values (check_additivity=False)...")
+                shap_values = explainer.shap_values(shap_sample, check_additivity=False)
+            else:
+                shap_values = explainer.shap_values(shap_sample)
+            result_queue.put(shap_values)
+        except Exception as e:
+            error_queue.put(e)
+    
+    thread = Thread(target=compute_shap, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    
+    if thread.is_alive():
+        flush_print(f"[SHAP ERROR] SHAP computation timed out after {timeout} seconds")
+        raise TimeoutError("SHAP computation timed out")
+    
+    # Check for errors
+    try:
+        error = error_queue.get_nowait()
+        raise error
+    except Empty:
+        pass
+    
+    # Get result
+    try:
+        return result_queue.get_nowait()
+    except Empty:
+        raise RuntimeError("SHAP computation failed - no result returned")
+
+def _create_plot_with_timeout(plot_func, timeout=30):
+    """Create plot with timeout using threading"""
+    result_queue = Queue()
+    error_queue = Queue()
+    
+    def create_plot():
+        try:
+            result = plot_func()
+            result_queue.put(result)
+        except Exception as e:
+            error_queue.put(e)
+    
+    thread = Thread(target=create_plot, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    
+    if thread.is_alive():
+        flush_print(f"[SHAP ERROR] Plot creation timed out after {timeout} seconds")
+        plt.close('all')
+        raise TimeoutError("Plot creation timed out")
+    
+    # Check for errors
+    try:
+        error = error_queue.get_nowait()
+        raise error
+    except Empty:
+        pass
+    
+    # Get result
+    try:
+        return result_queue.get_nowait()
+    except Empty:
+        raise RuntimeError("Plot creation failed - no result returned")
 
 def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filename, return_base64, queue):
-    """Main plotting function with enhanced error handling and CatBoost-specific fixes"""
+    """Main plotting function with enhanced error handling and no signal usage"""
     
     def plot_to_base64(fig):
         try:
@@ -129,34 +195,20 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         shap_sample.columns = [str(c) for c in shap_sample.columns]
         flush_print(f"[SHAP PROCESS] Final sample prepared, shape: {shap_sample.shape}")
 
-        # Generate SHAP values with timeout and progress tracking
+        # Generate SHAP values with timeout using threading
         flush_print("[SHAP PROCESS] Computing SHAP values...")
         shap_start = time.time()
         
         try:
-            # Set a signal alarm for SHAP computation timeout
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(60)  # 1 minute timeout for SHAP computation
-            
-            # Try to compute SHAP values
-            if is_catboost:
-                # For CatBoost, try with check_additivity=False
-                flush_print("[SHAP PROCESS] Computing CatBoost SHAP values (check_additivity=False)...")
-                shap_values = explainer.shap_values(shap_sample, check_additivity=False)
-            else:
-                shap_values = explainer.shap_values(shap_sample)
-                
-            signal.alarm(0)  # Cancel timeout
+            shap_values = _compute_shap_values_with_timeout(explainer, shap_sample, is_catboost, timeout=60)
             shap_time = time.time() - shap_start
             flush_print(f"[SHAP PROCESS] SHAP values computed in {shap_time:.2f} seconds")
             
         except TimeoutError:
             flush_print("[SHAP ERROR] SHAP computation timed out")
-            signal.alarm(0)
             raise
         except Exception as e:
             flush_print(f"[SHAP ERROR] SHAP values computation failed: {e}")
-            signal.alarm(0)
             raise
 
         # Handle different SHAP value formats
@@ -224,90 +276,80 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
         # Generate standard bar plot with timeout protection
         flush_print("[SHAP PROCESS] Creating bar plot...")
         try:
-            # Set up timeout for plotting
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)  # 30 second timeout for plotting
-            
-            # Clear any existing plots
-            plt.clf()
-            plt.cla()
-            plt.close('all')
-            
-            # Create figure with explicit settings
-            fig_standard = plt.figure(figsize=(10, 6), facecolor='white')
-            plt.rcParams.update({'font.size': 10})
-            
-            # Try the new SHAP API first
-            try:
-                shap.plots.bar(shap_values_plot, max_display=min(top_n, 15), show=False)
-            except:
-                # Fallback to old API
-                shap.summary_plot(shap_values_plot, shap_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
-            
-            plt.tight_layout()
-            signal.alarm(0)  # Cancel timeout
-            
-            if return_base64:
-                standard_result = plot_to_base64(fig_standard)
-            else:
-                fig_standard.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
-                standard_result = save_path
-                plt.close(fig_standard)
+            def create_bar_plot():
+                # Clear any existing plots
+                plt.clf()
+                plt.cla()
+                plt.close('all')
                 
+                # Create figure with explicit settings
+                fig_standard = plt.figure(figsize=(10, 6), facecolor='white')
+                plt.rcParams.update({'font.size': 10})
+                
+                # Try the new SHAP API first
+                try:
+                    shap.plots.bar(shap_values_plot, max_display=min(top_n, 15), show=False)
+                except:
+                    # Fallback to old API
+                    shap.summary_plot(shap_values_plot, shap_sample, plot_type="bar", max_display=min(top_n, 15), show=False)
+                
+                plt.tight_layout()
+                
+                if return_base64:
+                    return plot_to_base64(fig_standard)
+                else:
+                    fig_standard.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
+                    plt.close(fig_standard)
+                    return save_path
+            
+            standard_result = _create_plot_with_timeout(create_bar_plot, timeout=30)
             flush_print("[SHAP PROCESS] Bar plot created successfully")
             
         except TimeoutError:
             flush_print("[SHAP ERROR] Bar plot timed out")
-            signal.alarm(0)
             plt.close('all')
         except Exception as e:
             flush_print(f"[SHAP ERROR] Bar plot failed: {e}")
-            signal.alarm(0)
             plt.close('all')
 
         # Generate detailed dot plot with timeout protection
         flush_print("[SHAP PROCESS] Creating dot plot...")
         try:
-            # Set up timeout for plotting
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)  # 30 second timeout for plotting
-            
-            # Clear any existing plots
-            plt.clf()
-            plt.cla()
-            plt.close('all')
-            
-            # Create figure with explicit settings
-            fig_detailed = plt.figure(figsize=(10, 8), facecolor='white')
-            plt.rcParams.update({'font.size': 10})
-            
-            # Try the new SHAP API first
-            try:
-                shap.plots.beeswarm(shap_values_plot, max_display=min(top_n, 10), show=False)
-            except:
-                # Fallback to old API
-                shap.summary_plot(shap_values_plot, shap_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
-            
-            plt.tight_layout()
-            signal.alarm(0)  # Cancel timeout
-            
-            if return_base64:
-                detailed_result = plot_to_base64(fig_detailed)
-            else:
-                detailed_path = save_path.replace('.png', '_detailed.png')
-                fig_detailed.savefig(detailed_path, dpi=100, bbox_inches='tight', facecolor='white')
-                detailed_result = detailed_path
-                plt.close(fig_detailed)
+            def create_dot_plot():
+                # Clear any existing plots
+                plt.clf()
+                plt.cla()
+                plt.close('all')
                 
+                # Create figure with explicit settings
+                fig_detailed = plt.figure(figsize=(10, 8), facecolor='white')
+                plt.rcParams.update({'font.size': 10})
+                
+                # Try the new SHAP API first
+                try:
+                    shap.plots.beeswarm(shap_values_plot, max_display=min(top_n, 10), show=False)
+                except:
+                    # Fallback to old API
+                    shap.summary_plot(shap_values_plot, shap_sample, plot_type="dot", max_display=min(top_n, 10), show=False)
+                
+                plt.tight_layout()
+                
+                if return_base64:
+                    return plot_to_base64(fig_detailed)
+                else:
+                    detailed_path = save_path.replace('.png', '_detailed.png')
+                    fig_detailed.savefig(detailed_path, dpi=100, bbox_inches='tight', facecolor='white')
+                    plt.close(fig_detailed)
+                    return detailed_path
+            
+            detailed_result = _create_plot_with_timeout(create_dot_plot, timeout=30)
             flush_print("[SHAP PROCESS] Dot plot created successfully")
             
         except TimeoutError:
             flush_print("[SHAP ERROR] Dot plot timed out")
-            signal.alarm(0)
             plt.close('all')
         except Exception as e:
             flush_print(f"[SHAP ERROR] Dot plot failed: {e}")
-            signal.alarm(0)
             plt.close('all')
 
         total_time = time.time() - start_time
@@ -341,51 +383,45 @@ def _plot_feature_importance(model, X, model_type, output_dir, top_n, save_filen
             # Create fallback plot with timeout protection
             flush_print("[SHAP PROCESS] Creating fallback plot...")
             try:
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(30)  # 30 second timeout
-                
-                plt.clf()
-                plt.cla()
-                plt.close('all')
-                
-                fig_fallback = plt.figure(figsize=(10, 6), facecolor='white')
-                top_features = feature_importance.head(min(top_n, len(feature_importance)))
-                
-                plt.barh(range(len(top_features)), top_features['Importance'].values, color="skyblue")
-                plt.yticks(range(len(top_features)), top_features['Feature'].values)
-                plt.xlabel("Feature Importance")
-                plt.ylabel("Feature")
-                plt.title("Feature Importance (Fallback Method)")
-                plt.gca().invert_yaxis()
-                plt.tight_layout()
-                
-                signal.alarm(0)  # Cancel timeout
-                
-                if return_base64:
-                    standard_result = plot_to_base64(fig_fallback)
-                else:
-                    fig_fallback.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
-                    standard_result = save_path
-                    plt.close(fig_fallback)
+                def create_fallback_plot():
+                    plt.clf()
+                    plt.cla()
+                    plt.close('all')
                     
+                    fig_fallback = plt.figure(figsize=(10, 6), facecolor='white')
+                    top_features = feature_importance.head(min(top_n, len(feature_importance)))
+                    
+                    plt.barh(range(len(top_features)), top_features['Importance'].values, color="skyblue")
+                    plt.yticks(range(len(top_features)), top_features['Feature'].values)
+                    plt.xlabel("Feature Importance")
+                    plt.ylabel("Feature")
+                    plt.title("Feature Importance (Fallback Method)")
+                    plt.gca().invert_yaxis()
+                    plt.tight_layout()
+                    
+                    if return_base64:
+                        return plot_to_base64(fig_fallback)
+                    else:
+                        fig_fallback.savefig(save_path, dpi=100, bbox_inches='tight', facecolor='white')
+                        plt.close(fig_fallback)
+                        return save_path
+                
+                standard_result = _create_plot_with_timeout(create_fallback_plot, timeout=30)
                 flush_print("[SHAP PROCESS] Fallback plot created successfully")
                 
             except TimeoutError:
                 flush_print("[SHAP ERROR] Fallback plot timed out")
-                signal.alarm(0)
                 plt.close('all')
 
         except Exception as fallback_error:
             flush_print(f"[SHAP ERROR] Fallback feature importance failed: {fallback_error}")
             traceback.print_exc()
-            signal.alarm(0)
             queue.put({"error": str(fallback_error)})
             return
 
     finally:
         # Comprehensive cleanup
         try:
-            signal.alarm(0)  # Cancel any remaining alarms
             plt.close('all')
             gc.collect()
         except:

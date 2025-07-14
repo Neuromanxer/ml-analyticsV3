@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from datetime import datetime
 import traceback
-import signal
 import time
 
 # Force immediate output flushing
@@ -21,7 +20,6 @@ def flush_print(*args, **kwargs):
     sys.stderr.flush()
 
 def timeout_handler(signum, frame):
-    """Handle timeout signal"""
     flush_print("⏰ SHAP RUNNER: Timeout reached, terminating process")
     raise TimeoutError("SHAP generation timed out")
 
@@ -30,10 +28,7 @@ def main():
     flush_print(f"🔥 SHAP RUNNER: Python version: {sys.version}")
     flush_print(f"🔥 SHAP RUNNER: Current working directory: {os.getcwd()}")
     flush_print(f"🔥 SHAP RUNNER: Script arguments: {sys.argv}")
-    
-    # Set up timeout handler (5 minutes)
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(300)  # 5 minutes timeout
+
     
     try:
         # Basic argument validation
@@ -220,8 +215,6 @@ def main():
             flush_print(f"[SHAP ERROR] Failed to save results: {e}")
             raise
 
-        # Cancel the timeout alarm
-        signal.alarm(0)
         flush_print("🎉 SHAP RUNNER: Completed successfully!")
         
     except TimeoutError as e:
