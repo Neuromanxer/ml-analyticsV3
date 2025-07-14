@@ -947,6 +947,9 @@ async def classification(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing classification: {str(e)}")
+from supabase import SupabaseStorageException  
+
+
 @app.post("/classification/predict/")
 async def classification_predict(
     file: UploadFile = File(...),
@@ -964,14 +967,17 @@ async def classification_predict(
 
     user_id = current_user.id
 
-    # ───────── Validate trained model exists ───────────
-    model_path = PathL("models") / f"{user_id}_best_classifier.pkl"
-    if not model_path.exists():
-        raise HTTPException(404, "No trained classification model found. Please train a model first.")
+    # ───────── Validate trained model exists on Supabase ───────────
+    model_supabase_path = f"{user_id}/{user_id}_best_classifier.pkl"
+    try:
+        _ = download_file_from_supabase(model_supabase_path)
+    except Exception as e:
+        raise HTTPException(404, f"No trained classification model found on Supabase. Please train a model first. Details: {str(e)}")
 
     # ───────── Validate and save uploaded file ───────────
     if not file.filename.endswith(".csv"):
         raise HTTPException(400, "Prediction file must be a CSV.")
+
 
     try:
         # Save file temporarily
@@ -1301,46 +1307,60 @@ async def regression(
 
         response_data = await run_in_threadpool(task.get)
         return response_data
-
 @app.post("/regression/predict/")
 async def regression_predict(
     file: UploadFile = File(None),
     train_file: UploadFile = File(None),
-    test_file: UploadFile  = File(None),
-    drop_columns: str      = Form(""),
-    current_user: User     = Depends(get_current_active_user),
+    test_file: UploadFile = File(None),
+    drop_columns: str = Form(""),
+    current_user: User = Depends(get_current_active_user),
 ):
+    """
+    Predict using previously trained regression model (stored in Supabase).
+    """
     # ───────── Token check ───────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
         raise HTTPException(403, "Insufficient token balance to begin processing.")
 
     user_id = current_user.id
-    user_dir = PathL("user_uploads") / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    PathL("models").mkdir(exist_ok=True)
 
+    # ───────── Validate model exists on Supabase ───────────
+    model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
+    try:
+        _ = download_file_from_supabase(model_supabase_path)
+    except Exception as e:
+        raise HTTPException(404, f"No trained regression model found on Supabase. Please train a model first. Details: {str(e)}")
+
+    # ───────── Validate at least one file is uploaded ───────────
+    if not file and not (train_file and test_file):
+        raise HTTPException(400, "Please upload a single prediction CSV or both train/test files.")
+
+    # ───────── Save uploaded files to temp paths ───────────
     file_path = None
     train_path = None
     test_path = None
 
-    # ───────── Handle file uploads ───────────
     if file:
-        file_path = os.path.join(user_dir, file.filename)
-        async with aiofiles.open(file_path, "wb") as out:
-            await out.write(await file.read())
+        contents = await file.read()
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+        temp_file.write(contents)
+        temp_file.close()
+        file_path = temp_file.name
 
-    elif train_file and test_file:
-        train_path = os.path.join(user_dir, train_file.filename)
-        async with aiofiles.open(train_path, "wb") as out:
-            await out.write(await train_file.read())
+    if train_file and test_file:
+        train_contents = await train_file.read()
+        test_contents = await test_file.read()
 
-        test_path = os.path.join(user_dir, test_file.filename)
-        async with aiofiles.open(test_path, "wb") as out:
-            await out.write(await test_file.read())
-    else:
-        raise HTTPException(400, "Upload either `file` or both `train_file` + `test_file`.")
+        temp_train = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+        temp_train.write(train_contents)
+        temp_train.close()
+        train_path = temp_train.name
 
+        temp_test = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+        temp_test.write(test_contents)
+        temp_test.close()
+        test_path = temp_test.name
     # ───────── Choose execution mode ───────────
     if current_user.subscription in ["Pro", "Enterprise"]:
         # Premium = fully isolated ECS job (optional cloud deployment)
