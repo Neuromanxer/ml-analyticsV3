@@ -1150,7 +1150,7 @@ def do_clustering(
                     
             # Add visualizations if they exist
             if cluster_viz_base64:
-                response_data["visualizations"]["cluster_visualization"] = f"data:image/png;base64,{cluster_viz_base64}"
+                response_data["visualizations"]["cluster_viz"] = f"data:image/png;base64,{cluster_viz_base64}"
             if elbow_base64:
                 response_data["visualizations"]["elbow_method"] = f"data:image/png;base64,{elbow_base64}"
             try:
@@ -1168,7 +1168,7 @@ def do_clustering(
                     "thumbnailData": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
                     "imageData": f"data:image/png;base64,{cluster_viz_base64 or elbow_base64}",
                     "visualizations": {
-                        "cluster_visualization": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
+                        "cluster_viz": f"data:image/png;base64,{cluster_viz_base64}" if cluster_viz_base64 else "",
                         "elbow_method": f"data:image/png;base64,{elbow_base64}" if elbow_base64 else ""
                     },
                     "segments_summary": [{"cluster": int(i), "count": int(count)} for i, count in cluster_counts.items()],
@@ -3055,26 +3055,29 @@ def do_counterfactual(
             regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
             
             # Try to download model from Supabase if it exists
+            classifier_path_on_supabase = f"user-uploads/{user_id}/{user_id}_best_classifier.pkl"
+            regressor_path_on_supabase = f"user-uploads/{user_id}/{user_id}_best_regressor.pkl"
+
             try:
                 if not classifier_path.exists():
                     # Try to download classifier model from Supabase
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
+                    model_bytes = download_file_from_supabase(classifier_path_on_supabase)
                     with open(classifier_path, 'wb') as f:
                         f.write(model_bytes)
                     model_path = classifier_path
-            except:
-                pass
-            
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to download classifier model from {classifier_path_on_supabase}: {e}")
+
             try:
                 if not model_path and not regressor_path.exists():
                     # Try to download regressor model from Supabase
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
+                    model_bytes = download_file_from_supabase(regressor_path_on_supabase)
                     with open(regressor_path, 'wb') as f:
                         f.write(model_bytes)
                     model_path = regressor_path
-            except:
-                pass
-            
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to download regressor model from {regressor_path_on_supabase}: {e}")
+
             # Use whichever model exists
             if not model_path:
                 if classifier_path.exists():
@@ -3086,7 +3089,7 @@ def do_counterfactual(
 
             model = joblib.load(model_path)
             estimator = model
-            
+
             # Store expected training feature names
             if hasattr(estimator, "feature_names_in_"):
                 expected_features = list(estimator.feature_names_in_)
