@@ -1474,7 +1474,7 @@ def do_segment_analysis(
             response_data = {
                 "status": "success",
                 "user_id": user_id,
-                "id": entry["id"],  # Use the same one
+                "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
                 "type": "segmentation",
                 "dataset": dataset_name,
