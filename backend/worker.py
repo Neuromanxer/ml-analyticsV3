@@ -2473,13 +2473,23 @@ def do_regression_predict(
         except Exception as e:
             raise FileNotFoundError(f"Failed to download/load model: {e}")
 
-        # ───── Download preprocessor ─────
         try:
             print(f"[📦] Downloading preprocessor from Supabase: {preprocessor_supabase_path}")
             preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
-            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
+
+            print(f"[DEBUG] Preprocessor data type: {type(preprocessor_data)}")
+            print(f"[DEBUG] Preprocessor data length: {len(preprocessor_data)} bytes")
+
+            if not preprocessor_data:
+                raise ValueError("Downloaded preprocessor file is empty")
+
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, mode="wb") as tmp:
                 tmp.write(preprocessor_data)
+                tmp.flush()
+                print(f"[DEBUG] Written preprocessor to temp file: {tmp.name}")
                 preprocessor = joblib.load(tmp.name)
+                print(f"[✅] Preprocessor loaded successfully")
+
         except Exception as e:
             raise FileNotFoundError(f"Failed to download/load preprocessor: {e}")
 
