@@ -524,6 +524,233 @@
             padding-top: 20px;
             border-top: 1px solid #e9ecef;
         }
+        /* Download Button Styles */
+.btn-success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border: none;
+    color: white;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+}
+
+.btn-success:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.btn-success:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-success i {
+    font-size: 14px;
+}
+
+/* Download Status Styles */
+#downloadStatus {
+    margin-top: 1rem;
+    animation: fadeIn 0.3s ease-in;
+}
+
+#downloadStatus.show {
+    display: block !important;
+}
+
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    margin-bottom: 1rem;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+/* Spinner Animation */
+.fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Download Progress Indicator */
+.download-progress {
+    width: 100%;
+    height: 4px;
+    background-color: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.download-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Step 5 Specific Styles */
+#step5 {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 2rem;
+    border: 1px solid #dee2e6;
+}
+
+#step5 h3 {
+    color: #495057;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#step5 h3 i {
+    color: #28a745;
+    font-size: 24px;
+}
+
+#step5 p {
+    color: #6c757d;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+/* Column Input Form Styles */
+#columnInputForm {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#columnInputForm .form-group {
+    margin-bottom: 16px;
+}
+
+#columnInputForm label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 6px;
+    display: block;
+}
+
+#columnInputForm input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+#columnInputForm input:focus {
+    outline: none;
+    border-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+}
+
+/* Success Message for Download */
+.download-success {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.5s ease-out;
+}
+
+.download-success i {
+    color: #28a745;
+    font-size: 18px;
+}
+
+@keyframes slideIn {
+    from { 
+        opacity: 0; 
+        transform: translateX(-20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateX(0); 
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .btn-success {
+        width: 100%;
+        justify-content: center;
+        padding: 14px 20px;
+    }
+    
+    #step5 {
+        padding: 16px;
+    }
+    
+    #columnInputForm {
+        padding: 16px;
+    }
+}
         
 /* File input styling */
 #csvUploadInput {
@@ -854,21 +1081,23 @@
                     </div>
                 </div>
 
-
-                <!-- Step 5: Generate & Preview -->
+            <!-- Step 5: Generate & Download -->
             <div class="step" id="step5">
                 <div class="question">
-                    <h3><i class="fas fa-database"></i> Step 5: Generate Target & Preview Data</h3>
-                    <p>We’ll calculate the selected target variable based on your uploaded file and selected columns.</p>
+                    <h3><i class="fas fa-database"></i> Step 5: Generate Target & Download Data</h3>
+                    <p>We'll calculate the selected target variable based on your uploaded file and selected columns, then download the results.</p>
                     <button class="btn btn-success" onclick="generateTargetFromCSV()">
-                        <i class="fas fa-magic"></i> Generate Target
+                        <i class="fas fa-download"></i> Generate & Download Target Data
                     </button>
 
-                    <div id="generatedPreview" style="margin-top: 1rem;">
-                        <!-- Populated dynamically -->
-                    </div>
                     <div id="columnInputForm" style="margin-top: 1rem;">
                         <!-- Populated by JS based on selectedTargetVariable -->
+                    </div>
+                    
+                    <div id="downloadStatus" style="margin-top: 1rem; display: none;">
+                        <div class="alert alert-info">
+                            <i class="fas fa-spinner fa-spin"></i> Processing your data and preparing download...
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1354,7 +1583,7 @@ function applyConfiguration() {
     updateProgress();
 }
 
-        async function generateTargetFromCSV() {
+async function generateTargetFromCSV() {
     const fileInput = document.getElementById("csvUploadInput");
     const file = fileInput?.files[0];
 
@@ -1394,91 +1623,73 @@ function applyConfiguration() {
 
         const data = await response.json();
 
-        const previewContainer = document.getElementById("generatedPreview");
-        if (!previewContainer) return;
-
         if (data.error) {
-            previewContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            alert(`Error: ${data.error}`);
         } else if (Array.isArray(data) && data.length > 0) {
-            let table = `
-                <h4>Generated Target Variable Preview</h4>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-sm">
-                        <thead><tr>
-            `;
-            
-            Object.keys(data[0]).forEach(col => {
-                table += `<th>${col}</th>`;
-            });
-            
-            table += `</tr></thead><tbody>`;
-            
-            // Show only first 10 rows for preview
-            data.slice(0, 10).forEach(row => {
-                table += `<tr>`;
-                Object.values(row).forEach(val => {
-                    table += `<td>${val}</td>`;
-                });
-                table += `</tr>`;
-            });
-            
-            table += `</tbody></table></div>`;
-            
-            if (data.length > 10) {
-                table += `<p><em>Showing first 10 rows of ${data.length} total rows</em></p>`;
-            }
-            
-            previewContainer.innerHTML = table;
+            // Convert data to CSV and download
+            downloadCSV(data, `target_variable_${selectedTargetVariable}.csv`);
         } else {
-            previewContainer.innerHTML = `<div class="alert alert-warning">No data returned from the API.</div>`;
+            alert("No data returned from the API.");
         }
     } catch (error) {
         console.error('Error generating target variable:', error);
-        const previewContainer = document.getElementById("generatedPreview");
-        if (previewContainer) {
-            previewContainer.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-        }
+        alert(`Error: ${error.message}`);
     }
 }
 
-async function downloadDataset(datasetId, datasetName) {
-  const token = localStorage.getItem('access_token');
-  if (!token) {
-    return alert('Please log in first');
-  }
-
-  try {
-    // Use fetchWithTokenRefresh instead of direct fetch
-    const resp = await fetchWithTokenRefresh(
-      `${API_BASE_URL}/api/auth/${datasetId}/download`,
-      {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }
-    );
-    
-    if (!resp.ok) {
-      throw new Error(`Download failed: ${resp.status}`);
+// Helper function to convert JSON data to CSV and trigger download
+function downloadCSV(data, filename) {
+    if (!data || data.length === 0) {
+        alert("No data to download");
+        return;
     }
 
-    // Grab it as a Blob
-    const blob = await resp.blob();
+    // Get column headers from the first row
+    const headers = Object.keys(data[0]);
+    
+    // Create CSV content
+    let csvContent = headers.join(',') + '\n';
+    
+    // Add data rows
+    data.forEach(row => {
+        const values = headers.map(header => {
+            let value = row[header];
+            
+            // Handle null/undefined values
+            if (value === null || value === undefined) {
+                value = '';
+            }
+            
+            // Convert to string and escape if necessary
+            value = String(value);
+            
+            // Escape quotes and wrap in quotes if contains comma, quote, or newline
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                value = '"' + value.replace(/"/g, '""') + '"';
+            }
+            
+            return value;
+        });
+        
+        csvContent += values.join(',') + '\n';
+    });
 
-    // Create a temporary link to trigger the download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // use the datasetName (sanitized) for the filename
-    const filename = `${datasetName.replace(/\s+/g,'_') || 'dataset'}_${datasetId}.csv`;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-  } catch (err) {
-    console.error(err);
-    alert('Error downloading dataset: ' + err.message);
-  }
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } else {
+        alert('Download not supported in this browser');
+    }
 }
 function safeStorageGet(key) {
     try {
