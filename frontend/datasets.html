@@ -178,7 +178,20 @@
             margin-bottom: 20px;
         }
         
+        .csvUploadInput {
+            margin-bottom: 20px;
+        }
+        
         .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            font-size: 0.95rem;
+        }
+        
+        
+        .csvUploadInput label {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
@@ -799,14 +812,14 @@
                         </div>
                     </div>
                 </div>
-            <input type="file" id="csvUploadInput" accept=".csv" />
+
 
                 <!-- Step 5: Generate & Preview -->
             <div class="step" id="step5">
                 <div class="question">
                     <h3><i class="fas fa-database"></i> Step 5: Generate Target & Preview Data</h3>
                     <p>We’ll calculate the selected target variable based on your uploaded file and selected columns.</p>
-
+                    <input type="file" id="csvUploadInput" accept=".csv" />
                     <button class="btn btn-success" onclick="generateTargetFromCSV()">
                         <i class="fas fa-magic"></i> Generate Target
                     </button>
@@ -1042,6 +1055,21 @@ function selectTargetVariable(targetType) {
     });
     
     const selectedRadio = document.querySelector(`input[value="${targetType}"]`);
+    if (selectedRadio) {
+        selectedRadio.checked = true;
+        selectedRadio.closest('.target-option').classList.add('selected');
+    }
+    
+    updateNextButton();
+}
+function selectBusinessGoal(goal) {
+    selectedBusinessGoal = goal;
+    document.querySelectorAll('.target-option input[name="business_goal"]').forEach(radio => {
+        radio.checked = false;
+        radio.closest('.target-option').classList.remove('selected');
+    });
+    
+    const selectedRadio = document.querySelector(`input[value="${goal}"]`);
     if (selectedRadio) {
         selectedRadio.checked = true;
         selectedRadio.closest('.target-option').classList.add('selected');
