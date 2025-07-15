@@ -1594,7 +1594,7 @@ async function generateTargetFromCSV() {
 
     const requirements = targetVariableMap[selectedTargetVariable]?.requirements || [];
     const columnMap = {};
-    
+
     for (const req of requirements) {
         const inputElement = document.getElementById(`input-${req}`);
         const val = inputElement?.value?.trim();
@@ -1626,6 +1626,10 @@ async function generateTargetFromCSV() {
         if (data.error) {
             alert(`Error: ${data.error}`);
         } else if (Array.isArray(data) && data.length > 0) {
+            // Log dataset info for verification
+            console.log(`Dataset contains ${data.length} rows`);
+            console.log(`Columns: ${Object.keys(data[0]).join(', ')}`);
+            
             // Convert data to CSV and download
             downloadCSV(data, `target_variable_${selectedTargetVariable}.csv`);
         } else {
@@ -1637,59 +1641,110 @@ async function generateTargetFromCSV() {
     }
 }
 
-// Helper function to convert JSON data to CSV and trigger download
+// Enhanced helper function to convert JSON data to CSV and trigger download
 function downloadCSV(data, filename) {
     if (!data || data.length === 0) {
         alert("No data to download");
         return;
     }
 
-    // Get column headers from the first row
-    const headers = Object.keys(data[0]);
-    
-    // Create CSV content
-    let csvContent = headers.join(',') + '\n';
-    
-    // Add data rows
+    console.log(`Preparing to download ${data.length} rows`);
+
+    // Get all unique column headers from all rows (in case some rows have different keys)
+    const allHeaders = new Set();
     data.forEach(row => {
-        const values = headers.map(header => {
-            let value = row[header];
-            
-            // Handle null/undefined values
-            if (value === null || value === undefined) {
-                value = '';
-            }
-            
-            // Convert to string and escape if necessary
-            value = String(value);
-            
-            // Escape quotes and wrap in quotes if contains comma, quote, or newline
-            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                value = '"' + value.replace(/"/g, '""') + '"';
-            }
-            
-            return value;
-        });
-        
-        csvContent += values.join(',') + '\n';
+        Object.keys(row).forEach(key => allHeaders.add(key));
     });
+    const headers = Array.from(allHeaders);
+
+    // Create CSV content with proper escaping
+    let csvContent = '';
+    
+    // Add header row
+    csvContent += headers.map(header => escapeCSVValue(header)).join(',') + '\n';
+
+    // Add data rows
+    data.forEach((row, index) => {
+        const values = headers.map(header => {
+            const value = row[header];
+            return escapeCSVValue(value);
+        });
+        csvContent += values.join(',') + '\n';
+        
+        // Log progress for large datasets
+        if (index > 0 && index % 1000 === 0) {
+            console.log(`Processed ${index} rows...`);
+        }
+    });
+
+    console.log(`CSV content generated: ${csvContent.split('\n').length - 1} total lines (including header)`);
 
     // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
     
+    // Verify blob size
+    console.log(`Blob size: ${blob.size} bytes`);
+    
+    const link = document.createElement('a');
+
     if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
         link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
+        
+        // Add event listener to confirm download started
+        link.addEventListener('click', () => {
+            console.log(`Download initiated for ${filename}`);
+        });
+        
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        
+        // Clean up URL after a delay to ensure download starts
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 1000);
+        
+        console.log(`Download completed for ${data.length} rows`);
     } else {
         alert('Download not supported in this browser');
     }
+}
+
+// Helper function for proper CSV value escaping
+function escapeCSVValue(value) {
+    // Handle null/undefined values
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    // Convert to string
+    let stringValue = String(value);
+
+    // Always wrap in quotes if contains comma, quote, newline, or starts/ends with whitespace
+    if (stringValue.includes(',') || 
+        stringValue.includes('"') || 
+        stringValue.includes('\n') || 
+        stringValue.includes('\r') ||
+        stringValue.startsWith(' ') || 
+        stringValue.endsWith(' ')) {
+        
+        // Escape existing quotes by doubling them
+        stringValue = stringValue.replace(/"/g, '""');
+        return `"${stringValue}"`;
+    }
+
+    return stringValue;
+}
+
+// Optional: Add a function to verify the download
+function verifyDownload(originalData, filename) {
+    // This would need to be called after the user confirms the file was downloaded
+    console.log(`Original dataset: ${originalData.length} rows`);
+    console.log(`Expected filename: ${filename}`);
+    console.log('Please verify the downloaded file contains the expected number of rows.');
 }
 function safeStorageGet(key) {
     try {

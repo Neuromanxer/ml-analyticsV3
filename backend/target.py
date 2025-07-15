@@ -14,29 +14,30 @@ async def define_target_variable(
     column_map: str = Form(...)
 ):
     try:
-        # Load CSV
+        # Load CSV and normalize column names
         df = pd.read_csv(file.file)
         df.columns = df.columns.str.lower().str.strip()
 
-        # Parse user-provided mapping
+        # Parse user-provided column mapping
         column_mapping = json.loads(column_map)
 
-        # Rename user columns to internal names
+        # Rename user columns to expected internal names
         for internal_name, user_column in column_mapping.items():
-            if user_column.lower() not in df.columns:
+            user_column_lower = user_column.lower()
+            if user_column_lower not in df.columns:
                 return JSONResponse(
                     status_code=400,
                     content={"error": f"Column '{user_column}' not found in uploaded file."}
                 )
-            df.rename(columns={user_column.lower(): internal_name}, inplace=True)
+            df.rename(columns={user_column_lower: internal_name}, inplace=True)
 
-        # Convert date columns if needed
+        # Parse dates if present
         if "last_activity" in df.columns:
             df["last_activity"] = pd.to_datetime(df["last_activity"], errors="coerce")
         if "first_activity" in df.columns:
             df["first_activity"] = pd.to_datetime(df["first_activity"], errors="coerce")
 
-        # ───────────────────────── Target Calculation ───────────────────────── #
+        # ──────────────── Generate Target Variable ──────────────── #
         if target_type == "clv":
             df["aov"] = df["total_spent"] / df["total_visits"]
             df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
@@ -100,10 +101,9 @@ async def define_target_variable(
                 content={"error": f"Target type '{target_type}' is not supported."}
             )
 
-        # Clean & preview output
-        preview = df.head(10).copy()
-        preview = preview[["target"] + [col for col in preview.columns if col != "target"]]
-        return preview.to_dict(orient="records")
+        # Return full dataset with 'target' column first
+        columns_ordered = ["target"] + [col for col in df.columns if col != "target"]
+        return df[columns_ordered].to_dict(orient="records")
 
     except Exception as e:
         return JSONResponse(
