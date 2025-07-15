@@ -381,7 +381,272 @@
   color: #888;
   cursor: pointer;
 }
+.wizard-container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
 
+        .wizard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .wizard-header h2 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .wizard-header p {
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+        }
+
+        .wizard-content {
+            padding: 30px;
+        }
+
+        .step {
+            display: none;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .question {
+            margin-bottom: 25px;
+        }
+
+        .question h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .question p {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .column-checklist {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .column-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .column-item:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .column-item.selected {
+            border-color: #667eea;
+            background: #e8ebff;
+        }
+
+        .column-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+
+        .column-item label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .column-description {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            margin-left: 25px;
+        }
+
+        .target-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .target-option {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .target-option:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .target-option.selected {
+            border-color: #667eea;
+            background: #e8ebff;
+        }
+
+        .target-option input[type="radio"] {
+            margin-right: 10px;
+        }
+
+        .target-option label {
+            cursor: pointer;
+            display: block;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .target-description {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .wizard-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+
+        .btn-secondary {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .btn-secondary:hover {
+            background: #dee2e6;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: white;
+            transition: width 0.3s ease;
+        }
+
+        .result-card {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .result-card h4 {
+            color: #2e7d32;
+            margin: 0 0 15px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .result-details {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .result-details h5 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .result-details p {
+            margin: 5px 0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
 </style>
 </head>
 <body>
@@ -523,11 +788,159 @@
       <div class="mt-3" id="queryResults"></div>
     </div>
   </div>
+  <div class="wizard-container">
+    <div class="wizard-header">
+        <h2><i class="fas fa-magic"></i> Target Variable Selection Wizard</h2>
+        <p>Let's help you choose the right target variable for your machine learning model</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 25%"></div>
+        </div>
+    </div>
+
+    <div class="wizard-content">
+        <!-- Step 1: Column Availability -->
+        <div class="step active" id="step1">
+            <div class="question">
+                <h3><i class="fas fa-columns"></i> Step 1: Available Data Columns</h3>
+                <p>Please select which types of columns you have in your dataset. This will help us determine what target variables are possible to create.</p>
+                
+                <div class="column-checklist">
+                    <div class="column-item" onclick="toggleColumn('total_spent')">
+                        <label>
+                            <input type="checkbox" id="total_spent" name="columns" value="total_spent">
+                            Total Spent / Revenue
+                        </label>
+                        <div class="column-description">Total amount spent by customer</div>
+                    </div>
+                    
+                    <div class="column-item" onclick="toggleColumn('total_visits')">
+                        <label>
+                            <input type="checkbox" id="total_visits" name="columns" value="total_visits">
+                            Total Visits / Orders
+                        </label>
+                        <div class="column-description">Number of visits/orders by customer</div>
+                    </div>
+                    
+                    <div class="column-item" onclick="toggleColumn('last_activity')">
+                        <label>
+                            <input type="checkbox" id="last_activity" name="columns" value="last_activity">
+                            Last Activity Date
+                        </label>
+                        <div class="column-description">When customer was last active</div>
+                    </div>
+                    
+                    <div class="column-item" onclick="toggleColumn('first_activity')">
+                        <label>
+                            <input type="checkbox" id="first_activity" name="columns" value="first_activity">
+                            First Activity Date
+                        </label>
+                        <div class="column-description">When customer first became active</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Business Goal -->
+        <div class="step" id="step2">
+            <div class="question">
+                <h3><i class="fas fa-bullseye"></i> Step 2: Business Objective</h3>
+                <p>What is your primary business goal? This will help us recommend the most relevant target variable.</p>
+                
+                <div class="target-options">
+                    <div class="target-option" onclick="selectBusinessGoal('customer_value')">
+                        <label>
+                            <input type="radio" name="business_goal" value="customer_value">
+                            Customer Value Optimization
+                        </label>
+                        <div class="target-description">
+                            Focus on understanding and maximizing customer lifetime value and spending patterns
+                        </div>
+                    </div>
+                    
+                    <div class="target-option" onclick="selectBusinessGoal('retention')">
+                        <label>
+                            <input type="radio" name="business_goal" value="retention">
+                            Customer Retention
+                        </label>
+                        <div class="target-description">
+                            Prevent churn and increase customer loyalty and repeat purchases
+                        </div>
+                    </div>
+                    
+                    <div class="target-option" onclick="selectBusinessGoal('behavior')">
+                        <label>
+                            <input type="radio" name="business_goal" value="behavior">
+                            Behavioral Analysis
+                        </label>
+                        <div class="target-description">
+                            Understand customer behavior patterns and engagement frequency
+                        </div>
+                    </div>
+                    
+                    <div class="target-option" onclick="selectBusinessGoal('revenue')">
+                        <label>
+                            <input type="radio" name="business_goal" value="revenue">
+                            Revenue Optimization
+                        </label>
+                        <div class="target-description">
+                            Maximize revenue per customer or per transaction
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Target Variable Selection -->
+        <div class="step" id="step3">
+            <div class="question">
+                <h3><i class="fas fa-crosshairs"></i> Step 3: Choose Target Variable</h3>
+                <p>Based on your available data and business goal, here are the recommended target variables:</p>
+                
+                <div class="target-options" id="targetVariableOptions">
+                    <!-- Options will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Results -->
+        <div class="step" id="step4">
+            <div class="question">
+                <h3><i class="fas fa-check-circle"></i> Step 4: Configuration Complete</h3>
+                
+                <div class="result-card">
+                    <h4>
+                        <i class="fas fa-star"></i>
+                        Recommended Target Variable
+                    </h4>
+                    <div class="result-details" id="resultDetails">
+                        <!-- Results will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="wizard-buttons">
+            <button class="btn btn-secondary" id="prevBtn" onclick="previousStep()" style="display: none;">
+                <i class="fas fa-arrow-left"></i> Previous
+            </button>
+            
+            <div style="flex: 1;"></div>
+            
+            <button class="btn btn-primary" id="nextBtn" onclick="nextStep()">
+                Next <i class="fas fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+</div>
 
   
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        
+        let currentStep = 1;
+        let selectedColumns = [];
+        let selectedBusinessGoal = '';
+        let selectedTargetVariable = '';
+
         // Add this code to the beginning of your datasets.html JavaScript
     function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
@@ -574,6 +987,275 @@
  /**
  * Download dataset with automatic token refresh support
  */
+ const targetVariableMap = {
+            clv: {
+                name: "Customer Lifetime Value (CLV)",
+                description: "Predicts the total value a customer will bring over their entire relationship",
+                formula: "AOV × Frequency × (Days Active / 30)",
+                requirements: ["total_spent", "total_visits", "last_activity", "first_activity"],
+                businessGoals: ["customer_value"]
+            },
+            revenue_per_customer: {
+                name: "Revenue per Customer",
+                description: "Average revenue generated per customer",
+                formula: "Total Spent / Total Visits",
+                requirements: ["total_spent", "total_visits"],
+                businessGoals: ["revenue", "customer_value"]
+            },
+            churn: {
+                name: "Customer Churn Prediction",
+                description: "Identifies customers likely to stop engaging (inactive >60 days)",
+                formula: "1 if (Now - Last Activity) > 60 days, else 0",
+                requirements: ["last_activity"],
+                businessGoals: ["retention"]
+            },
+            aov: {
+                name: "Average Order Value (AOV)",
+                description: "Average amount spent per transaction",
+                formula: "Total Spent / Total Visits",
+                requirements: ["total_spent", "total_visits"],
+                businessGoals: ["revenue"]
+            },
+            purchase_frequency: {
+                name: "Purchase Frequency",
+                description: "How often customers make purchases",
+                formula: "Total Visits / Days Active",
+                requirements: ["total_visits", "last_activity", "first_activity"],
+                businessGoals: ["behavior", "retention"]
+            },
+            customer_lifetime: {
+                name: "Customer Lifetime (Days)",
+                description: "How long customers remain active",
+                formula: "Last Activity - First Activity",
+                requirements: ["last_activity", "first_activity"],
+                businessGoals: ["retention", "behavior"]
+            },
+            repeat_purchase_rate: {
+                name: "Repeat Purchase Rate",
+                description: "Whether customers make repeat purchases",
+                formula: "1 if Total Visits > 1, else 0",
+                requirements: ["total_visits"],
+                businessGoals: ["retention", "behavior"]
+            },
+            recency: {
+                name: "Customer Recency",
+                description: "Days since last customer activity",
+                formula: "Now - Last Activity",
+                requirements: ["last_activity"],
+                businessGoals: ["retention", "behavior"]
+            },
+            revenue_per_visit: {
+                name: "Revenue per Visit",
+                description: "Average revenue generated per customer visit",
+                formula: "Total Spent / Total Visits",
+                requirements: ["total_spent", "total_visits"],
+                businessGoals: ["revenue"]
+            }
+        };
+
+        function toggleColumn(columnId) {
+            const checkbox = document.getElementById(columnId);
+            const item = checkbox.closest('.column-item');
+            
+            checkbox.checked = !checkbox.checked;
+            
+            if (checkbox.checked) {
+                item.classList.add('selected');
+                if (!selectedColumns.includes(columnId)) {
+                    selectedColumns.push(columnId);
+                }
+            } else {
+                item.classList.remove('selected');
+                selectedColumns = selectedColumns.filter(col => col !== columnId);
+            }
+            
+            updateNextButton();
+        }
+
+        function selectBusinessGoal(goal) {
+            selectedBusinessGoal = goal;
+            document.querySelectorAll('.target-option input[name="business_goal"]').forEach(radio => {
+                radio.checked = false;
+                radio.closest('.target-option').classList.remove('selected');
+            });
+            
+            const selectedRadio = document.querySelector(`input[value="${goal}"]`);
+            selectedRadio.checked = true;
+            selectedRadio.closest('.target-option').classList.add('selected');
+            
+            updateNextButton();
+        }
+
+        function selectTargetVariable(targetType) {
+            selectedTargetVariable = targetType;
+            document.querySelectorAll('.target-options input[name="target_variable"]').forEach(radio => {
+                radio.checked = false;
+                radio.closest('.target-option').classList.remove('selected');
+            });
+            
+            const selectedRadio = document.querySelector(`input[value="${targetType}"]`);
+            selectedRadio.checked = true;
+            selectedRadio.closest('.target-option').classList.add('selected');
+            
+            updateNextButton();
+        }
+
+        function updateNextButton() {
+            const nextBtn = document.getElementById('nextBtn');
+            
+            if (currentStep === 1) {
+                nextBtn.disabled = selectedColumns.length === 0;
+            } else if (currentStep === 2) {
+                nextBtn.disabled = selectedBusinessGoal === '';
+            } else if (currentStep === 3) {
+                nextBtn.disabled = selectedTargetVariable === '';
+            }
+        }
+
+        function nextStep() {
+            if (currentStep < 4) {
+                if (currentStep === 2) {
+                    populateTargetVariables();
+                } else if (currentStep === 3) {
+                    showResults();
+                }
+                
+                currentStep++;
+                showStep(currentStep);
+                updateButtons();
+                updateProgress();
+            }
+        }
+
+        function previousStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+                updateButtons();
+                updateProgress();
+            }
+        }
+
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step${step}`).classList.add('active');
+        }
+
+        function updateButtons() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            
+            prevBtn.style.display = currentStep > 1 ? 'inline-flex' : 'none';
+            
+            if (currentStep === 4) {
+                nextBtn.innerHTML = '<i class="fas fa-check"></i> Apply Configuration';
+                nextBtn.onclick = applyConfiguration;
+            } else {
+                nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
+                nextBtn.onclick = nextStep;
+            }
+            
+            updateNextButton();
+        }
+
+        function updateProgress() {
+            const progressFill = document.getElementById('progressFill');
+            const percentage = (currentStep / 4) * 100;
+            progressFill.style.width = percentage + '%';
+        }
+
+        function populateTargetVariables() {
+            const container = document.getElementById('targetVariableOptions');
+            container.innerHTML = '';
+            
+            const availableTargets = Object.entries(targetVariableMap).filter(([key, target]) => {
+                const hasRequiredColumns = target.requirements.every(req => selectedColumns.includes(req));
+                const matchesBusinessGoal = target.businessGoals.includes(selectedBusinessGoal);
+                return hasRequiredColumns && matchesBusinessGoal;
+            });
+            
+            if (availableTargets.length === 0) {
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        No target variables are available with your current data columns and business goal. 
+                        Please go back and select different options.
+                    </div>
+                `;
+                return;
+            }
+            
+            availableTargets.forEach(([key, target]) => {
+                const option = document.createElement('div');
+                option.className = 'target-option';
+                option.onclick = () => selectTargetVariable(key);
+                option.innerHTML = `
+                    <label>
+                        <input type="radio" name="target_variable" value="${key}">
+                        ${target.name}
+                    </label>
+                    <div class="target-description">
+                        ${target.description}
+                        <br><strong>Formula:</strong> ${target.formula}
+                    </div>
+                `;
+                container.appendChild(option);
+            });
+        }
+
+        function showResults() {
+            const resultDetails = document.getElementById('resultDetails');
+            const target = targetVariableMap[selectedTargetVariable];
+            
+            resultDetails.innerHTML = `
+                <h5>${target.name}</h5>
+                <p><strong>Description:</strong> ${target.description}</p>
+                <p><strong>Formula:</strong> ${target.formula}</p>
+                <p><strong>Required Columns:</strong> ${target.requirements.join(', ')}</p>
+                
+                <h5 style="margin-top: 20px;">Python Implementation:</h5>
+                <div class="code-block">
+target_type = "${selectedTargetVariable}"
+${generatePythonCode(selectedTargetVariable)}
+                </div>
+            `;
+        }
+
+        function generatePythonCode(targetType) {
+            const codeMap = {
+                clv: `df["aov"] = df["total_spent"] / df["total_visits"]
+df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["frequency"] = df["total_visits"] / df["days_active"]
+df["target"] = df["aov"] * df["frequency"] * (df["days_active"] / 30)  # Approx. lifetime in months`,
+                revenue_per_customer: `df["target"] = df["total_spent"] / df["total_visits"]`,
+                churn: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days > 60
+df["target"] = df["target"].astype(int)`,
+                aov: `df["target"] = df["total_spent"] / df["total_visits"]`,
+                purchase_frequency: `df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["target"] = df["total_visits"] / df["days_active"]`,
+                customer_lifetime: `df["target"] = (df["last_activity"] - df["first_activity"]).dt.days`,
+                repeat_purchase_rate: `df["target"] = df["total_visits"] > 1
+df["target"] = df["target"].astype(int)`,
+                recency: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days`,
+                revenue_per_visit: `df["target"] = df["total_spent"] / df["total_visits"]`
+            };
+            
+            return codeMap[targetType] || '';
+        }
+
+        function applyConfiguration() {
+            // This would integrate with your existing form
+            alert(`Configuration applied!\n\nTarget Variable: ${selectedTargetVariable}\nBusiness Goal: ${selectedBusinessGoal}\nColumns Used: ${selectedColumns.join(', ')}`);
+            
+            // You can add code here to:
+            // 1. Close the wizard
+            // 2. Update the main form with the selected configuration
+            // 3. Store the configuration for later use
+        }
+
+        // Initialize
+        updateButtons();
+        updateProgress();
 async function downloadDataset(datasetId, datasetName) {
   const token = localStorage.getItem('access_token');
   if (!token) {
