@@ -57,6 +57,7 @@ from .datasets import init_db as init_dataset_master_db
 from starlette.concurrency import run_in_threadpool
 from .activity import router as activity_router
 from .account import router as a_router
+from .target import router as t_router
 from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
 # These names should match exactly what you export from auth.py
 from .auth import (
@@ -440,6 +441,7 @@ app.include_router(auth_router)
 app.include_router(activity_router)
 app.include_router(a_router)
 app.include_router(token_router)
+app.include_router(t_router)
 # Dataset models
 # Serve the frontend folder as static files
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -505,6 +507,7 @@ def infer_sqlalchemy_column(name, dtype):
         return Column(name, Float)
     else:
         return Column(name, String)
+
 from sqlalchemy import MetaData, Table, text
 from backend.storage import upload_file_to_supabase  # assumes your upload function is here
 import tempfile
