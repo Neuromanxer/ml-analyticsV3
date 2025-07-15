@@ -103,7 +103,9 @@ async def define_target_variable(
 
         # Return full dataset with 'target' column first
         columns_ordered = ["target"] + [col for col in df.columns if col != "target"]
+        df = df.replace([float('inf'), float('-inf')], pd.NA).fillna("")
         return df[columns_ordered].to_dict(orient="records")
+
 
     except Exception as e:
         return JSONResponse(
