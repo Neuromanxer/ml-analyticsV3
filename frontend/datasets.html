@@ -701,6 +701,22 @@
                                 </label>
                                 <div class="column-description">When customer first became active</div>
                             </div>
+                            <div class="column-item" onclick="toggleColumn('margin')">
+                                <label>
+                                    <input type="checkbox" id="margin" name="columns" value="margin">
+                                    Profit Margin
+                                </label>
+                                <div class="column-description">Margin associated with each customer or order</div>
+                            </div>
+                            
+                            <div class="column-item" onclick="toggleColumn('referrals')">
+                                <label>
+                                    <input type="checkbox" id="referrals" name="columns" value="referrals">
+                                    Referrals
+                                </label>
+                                <div class="column-description">Number of customers referred by this user</div>
+                            </div>
+                            
                         </div>
                     </div>
                 </div>
@@ -783,6 +799,27 @@
                         </div>
                     </div>
                 </div>
+            <input type="file" id="csvUploadInput" accept=".csv" />
+
+                <!-- Step 5: Generate & Preview -->
+            <div class="step" id="step5">
+                <div class="question">
+                    <h3><i class="fas fa-database"></i> Step 5: Generate Target & Preview Data</h3>
+                    <p>We’ll calculate the selected target variable based on your uploaded file and selected columns.</p>
+
+                    <button class="btn btn-success" onclick="generateTargetFromCSV()">
+                        <i class="fas fa-magic"></i> Generate Target
+                    </button>
+
+                    <div id="generatedPreview" style="margin-top: 1rem;">
+                        <!-- Populated dynamically -->
+                    </div>
+                    <div id="columnInputForm" style="margin-top: 1rem;">
+                        <!-- Populated by JS based on selectedTargetVariable -->
+                    </div>
+                </div>
+            </div>
+
 
                 <div class="wizard-buttons">
                     <button class="btn btn-secondary" id="prevBtn" onclick="previousStep()" style="display: none;">
@@ -819,7 +856,7 @@
         let selectedColumns = [];
         let selectedBusinessGoal = '';
         let selectedTargetVariable = '';
-
+        const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
         // Add this code to the beginning of your datasets.html JavaScript
     function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
@@ -857,6 +894,10 @@
     uploadForm.addEventListener('submit', function(e) {
         uploadDataset(e);
     });
+       // Initialize wizard
+    updateButtons();
+    updateProgress();
+    updateNextButton();
     });
 
 /**
@@ -866,275 +907,472 @@
  /**
  * Download dataset with automatic token refresh support
  */
- const targetVariableMap = {
-            clv: {
-                name: "Customer Lifetime Value (CLV)",
-                description: "Predicts the total value a customer will bring over their entire relationship",
-                formula: "AOV × Frequency × (Days Active / 30)",
-                requirements: ["total_spent", "total_visits", "last_activity", "first_activity"],
-                businessGoals: ["customer_value"]
-            },
-            revenue_per_customer: {
-                name: "Revenue per Customer",
-                description: "Average revenue generated per customer",
-                formula: "Total Spent / Total Visits",
-                requirements: ["total_spent", "total_visits"],
-                businessGoals: ["revenue", "customer_value"]
-            },
-            churn: {
-                name: "Customer Churn Prediction",
-                description: "Identifies customers likely to stop engaging (inactive >60 days)",
-                formula: "1 if (Now - Last Activity) > 60 days, else 0",
-                requirements: ["last_activity"],
-                businessGoals: ["retention"]
-            },
-            aov: {
-                name: "Average Order Value (AOV)",
-                description: "Average amount spent per transaction",
-                formula: "Total Spent / Total Visits",
-                requirements: ["total_spent", "total_visits"],
-                businessGoals: ["revenue"]
-            },
-            purchase_frequency: {
-                name: "Purchase Frequency",
-                description: "How often customers make purchases",
-                formula: "Total Visits / Days Active",
-                requirements: ["total_visits", "last_activity", "first_activity"],
-                businessGoals: ["behavior", "retention"]
-            },
-            customer_lifetime: {
-                name: "Customer Lifetime (Days)",
-                description: "How long customers remain active",
-                formula: "Last Activity - First Activity",
-                requirements: ["last_activity", "first_activity"],
-                businessGoals: ["retention", "behavior"]
-            },
-            repeat_purchase_rate: {
-                name: "Repeat Purchase Rate",
-                description: "Whether customers make repeat purchases",
-                formula: "1 if Total Visits > 1, else 0",
-                requirements: ["total_visits"],
-                businessGoals: ["retention", "behavior"]
-            },
-            recency: {
-                name: "Customer Recency",
-                description: "Days since last customer activity",
-                formula: "Now - Last Activity",
-                requirements: ["last_activity"],
-                businessGoals: ["retention", "behavior"]
-            },
-            revenue_per_visit: {
-                name: "Revenue per Visit",
-                description: "Average revenue generated per customer visit",
-                formula: "Total Spent / Total Visits",
-                requirements: ["total_spent", "total_visits"],
-                businessGoals: ["revenue"]
-            }
-        };
+// Target variable map
+const targetVariableMap = {
+    clv: {
+        name: "Customer Lifetime Value (CLV)",
+        description: "Predicts the total value a customer will bring over their entire relationship",
+        formula: "AOV × Frequency × (Days Active / 30)",
+        requirements: ["total_spent", "total_visits", "last_activity", "first_activity"],
+        businessGoals: ["customer_value"]
+    },
+    revenue_per_customer: {
+        name: "Revenue per Customer",
+        description: "Average revenue generated per customer",
+        formula: "Total Spent / Total Visits",
+        requirements: ["total_spent", "total_visits"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    churn: {
+        name: "Customer Churn Prediction",
+        description: "Identifies customers likely to stop engaging (inactive >60 days)",
+        formula: "1 if (Now - Last Activity) > 60 days, else 0",
+        requirements: ["last_activity"],
+        businessGoals: ["retention"]
+    },
+    aov: {
+        name: "Average Order Value (AOV)",
+        description: "Average amount spent per transaction",
+        formula: "Total Spent / Total Visits",
+        requirements: ["total_spent", "total_visits"],
+        businessGoals: ["revenue"]
+    },
+    purchase_frequency: {
+        name: "Purchase Frequency",
+        description: "How often customers make purchases",
+        formula: "Total Visits / Days Active",
+        requirements: ["total_visits", "last_activity", "first_activity"],
+        businessGoals: ["behavior", "retention"]
+    },
+    customer_lifetime: {
+        name: "Customer Lifetime (Days)",
+        description: "How long customers remain active",
+        formula: "Last Activity - First Activity",
+        requirements: ["last_activity", "first_activity"],
+        businessGoals: ["retention", "behavior"]
+    },
+    repeat_purchase_rate: {
+        name: "Repeat Purchase Rate",
+        description: "Whether customers make repeat purchases",
+        formula: "1 if Total Visits > 1, else 0",
+        requirements: ["total_visits"],
+        businessGoals: ["retention", "behavior"]
+    },
+    recency: {
+        name: "Customer Recency",
+        description: "Days since last customer activity",
+        formula: "Now - Last Activity",
+        requirements: ["last_activity"],
+        businessGoals: ["retention", "behavior"]
+    },
+    revenue_per_visit: {
+        name: "Revenue per Visit",
+        description: "Average revenue generated per customer visit",
+        formula: "Total Spent / Total Visits",
+        requirements: ["total_spent", "total_visits"],
+        businessGoals: ["revenue"]
+    },
+    loyalty_score: {
+        name: "Loyalty Score",
+        description: "Quantifies customer loyalty based on visit frequency and recency",
+        formula: "(Frequency Score × 0.6) + (Recency Score × 0.4)",
+        requirements: ["total_visits", "last_activity", "first_activity"],
+        businessGoals: ["retention", "customer_value"]
+    },
+    engagement_score: {
+        name: "Engagement Score",
+        description: "Measures how engaged a customer is over time",
+        formula: "Visits / Days Active",
+        requirements: ["total_visits", "first_activity", "last_activity"],
+        businessGoals: ["behavior", "retention"]
+    },
+    profit_per_customer: {
+        name: "Profit per Customer",
+        description: "Revenue multiplied by per-customer margin",
+        formula: "Total Spent × Margin",
+        requirements: ["total_spent", "margin"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    inactivity_risk_score: {
+        name: "Inactivity Risk Score",
+        description: "Flags customers inactive for more than 90 days",
+        formula: "1 if (Now - Last Activity) > 90 days, else 0",
+        requirements: ["last_activity"],
+        businessGoals: ["retention"]
+    },
+    vip_flag: {
+        name: "VIP Flag",
+        description: "Binary flag for high-spending customers (e.g. > $500)",
+        formula: "1 if Total Spent > 500, else 0",
+        requirements: ["total_spent"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    referral_score: {
+        name: "Referral Score",
+        description: "Ratio of referrals to total visits (proxy for influence)",
+        formula: "Referrals / (Total Visits + 1)",
+        requirements: ["referrals", "total_visits"],
+        businessGoals: ["customer_value", "behavior"]
+    }
+};
+function toggleColumn(columnId) {
+    const checkbox = document.getElementById(columnId);
+    const item = checkbox.closest('.column-item');
+    
+    checkbox.checked = !checkbox.checked;
+    
+    if (checkbox.checked) {
+        item.classList.add('selected');
+        if (!selectedColumns.includes(columnId)) {
+            selectedColumns.push(columnId);
+        }
+    } else {
+        item.classList.remove('selected');
+        selectedColumns = selectedColumns.filter(col => col !== columnId);
+    }
+    
+    updateNextButton();
+}
+  
+function selectTargetVariable(targetType) {
+    selectedTargetVariable = targetType;
+    document.querySelectorAll('.target-options input[name="target_variable"]').forEach(radio => {
+        radio.checked = false;
+        radio.closest('.target-option').classList.remove('selected');
+    });
+    
+    const selectedRadio = document.querySelector(`input[value="${targetType}"]`);
+    if (selectedRadio) {
+        selectedRadio.checked = true;
+        selectedRadio.closest('.target-option').classList.add('selected');
+    }
+    
+    updateNextButton();
+}
+function updateNextButton() {
+    const nextBtn = document.getElementById('nextBtn');
+    if (!nextBtn) return;
 
-        function toggleColumn(columnId) {
-            const checkbox = document.getElementById(columnId);
-            const item = checkbox.closest('.column-item');
-            
-            checkbox.checked = !checkbox.checked;
-            
-            if (checkbox.checked) {
-                item.classList.add('selected');
-                if (!selectedColumns.includes(columnId)) {
-                    selectedColumns.push(columnId);
-                }
-            } else {
-                item.classList.remove('selected');
-                selectedColumns = selectedColumns.filter(col => col !== columnId);
-            }
-            
-            updateNextButton();
+    if (currentStep === 1) {
+        nextBtn.disabled = selectedColumns.length === 0;
+    } else if (currentStep === 2) {
+        nextBtn.disabled = selectedBusinessGoal === '';
+    } else if (currentStep === 3) {
+        nextBtn.disabled = selectedTargetVariable === '';
+    } else if (currentStep === 4) {
+        const fileInput = document.getElementById("csvUploadInput");
+        nextBtn.disabled = !fileInput || fileInput.files.length === 0;
+    } else {
+        nextBtn.disabled = false;
+    }
+}
+function nextStep() {
+    if (currentStep < 5) {
+        if (currentStep === 2) {
+            populateTargetVariables();
+        } else if (currentStep === 3) {
+            showResults();
+        } else if (currentStep === 4) {
+            showColumnInputForm();
         }
 
-        function selectBusinessGoal(goal) {
-            selectedBusinessGoal = goal;
-            document.querySelectorAll('.target-option input[name="business_goal"]').forEach(radio => {
-                radio.checked = false;
-                radio.closest('.target-option').classList.remove('selected');
-            });
-            
-            const selectedRadio = document.querySelector(`input[value="${goal}"]`);
-            selectedRadio.checked = true;
-            selectedRadio.closest('.target-option').classList.add('selected');
-            
-            updateNextButton();
-        }
-
-        function selectTargetVariable(targetType) {
-            selectedTargetVariable = targetType;
-            document.querySelectorAll('.target-options input[name="target_variable"]').forEach(radio => {
-                radio.checked = false;
-                radio.closest('.target-option').classList.remove('selected');
-            });
-            
-            const selectedRadio = document.querySelector(`input[value="${targetType}"]`);
-            selectedRadio.checked = true;
-            selectedRadio.closest('.target-option').classList.add('selected');
-            
-            updateNextButton();
-        }
-
-        function updateNextButton() {
-            const nextBtn = document.getElementById('nextBtn');
-            
-            if (currentStep === 1) {
-                nextBtn.disabled = selectedColumns.length === 0;
-            } else if (currentStep === 2) {
-                nextBtn.disabled = selectedBusinessGoal === '';
-            } else if (currentStep === 3) {
-                nextBtn.disabled = selectedTargetVariable === '';
-            }
-        }
-
-        function nextStep() {
-            if (currentStep < 4) {
-                if (currentStep === 2) {
-                    populateTargetVariables();
-                } else if (currentStep === 3) {
-                    showResults();
-                }
-                
-                currentStep++;
-                showStep(currentStep);
-                updateButtons();
-                updateProgress();
-            }
-        }
-
-        function previousStep() {
-            if (currentStep > 1) {
-                currentStep--;
-                showStep(currentStep);
-                updateButtons();
-                updateProgress();
-            }
-        }
-
-        function showStep(step) {
-            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-            document.getElementById(`step${step}`).classList.add('active');
-        }
-
-        function updateButtons() {
-            const prevBtn = document.getElementById('prevBtn');
-            const nextBtn = document.getElementById('nextBtn');
-            
-            prevBtn.style.display = currentStep > 1 ? 'inline-flex' : 'none';
-            
-            if (currentStep === 4) {
-                nextBtn.innerHTML = '<i class="fas fa-check"></i> Apply Configuration';
-                nextBtn.onclick = applyConfiguration;
-            } else {
-                nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
-                nextBtn.onclick = nextStep;
-            }
-            
-            updateNextButton();
-        }
-
-        function updateProgress() {
-            const progressFill = document.getElementById('progressFill');
-            const percentage = (currentStep / 4) * 100;
-            progressFill.style.width = percentage + '%';
-        }
-
-        function populateTargetVariables() {
-            const container = document.getElementById('targetVariableOptions');
-            container.innerHTML = '';
-            
-            const availableTargets = Object.entries(targetVariableMap).filter(([key, target]) => {
-                const hasRequiredColumns = target.requirements.every(req => selectedColumns.includes(req));
-                const matchesBusinessGoal = target.businessGoals.includes(selectedBusinessGoal);
-                return hasRequiredColumns && matchesBusinessGoal;
-            });
-            
-            if (availableTargets.length === 0) {
-                container.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        No target variables are available with your current data columns and business goal. 
-                        Please go back and select different options.
-                    </div>
-                `;
-                return;
-            }
-            
-            availableTargets.forEach(([key, target]) => {
-                const option = document.createElement('div');
-                option.className = 'target-option';
-                option.onclick = () => selectTargetVariable(key);
-                option.innerHTML = `
-                    <label>
-                        <input type="radio" name="target_variable" value="${key}">
-                        ${target.name}
-                    </label>
-                    <div class="target-description">
-                        ${target.description}
-                        <br><strong>Formula:</strong> ${target.formula}
-                    </div>
-                `;
-                container.appendChild(option);
-            });
-        }
-
-        function showResults() {
-            const resultDetails = document.getElementById('resultDetails');
-            const target = targetVariableMap[selectedTargetVariable];
-            
-            resultDetails.innerHTML = `
-                <h5>${target.name}</h5>
-                <p><strong>Description:</strong> ${target.description}</p>
-                <p><strong>Formula:</strong> ${target.formula}</p>
-                <p><strong>Required Columns:</strong> ${target.requirements.join(', ')}</p>
-                
-                <h5 style="margin-top: 20px;">Python Implementation:</h5>
-                <div class="code-block">
-target_type = "${selectedTargetVariable}"
-${generatePythonCode(selectedTargetVariable)}
-                </div>
-            `;
-        }
-
-        function generatePythonCode(targetType) {
-            const codeMap = {
-                clv: `df["aov"] = df["total_spent"] / df["total_visits"]
-df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
-df["frequency"] = df["total_visits"] / df["days_active"]
-df["target"] = df["aov"] * df["frequency"] * (df["days_active"] / 30)  # Approx. lifetime in months`,
-                revenue_per_customer: `df["target"] = df["total_spent"] / df["total_visits"]`,
-                churn: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days > 60
-df["target"] = df["target"].astype(int)`,
-                aov: `df["target"] = df["total_spent"] / df["total_visits"]`,
-                purchase_frequency: `df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
-df["target"] = df["total_visits"] / df["days_active"]`,
-                customer_lifetime: `df["target"] = (df["last_activity"] - df["first_activity"]).dt.days`,
-                repeat_purchase_rate: `df["target"] = df["total_visits"] > 1
-df["target"] = df["target"].astype(int)`,
-                recency: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days`,
-                revenue_per_visit: `df["target"] = df["total_spent"] / df["total_visits"]`
-            };
-            
-            return codeMap[targetType] || '';
-        }
-
-        function applyConfiguration() {
-            // This would integrate with your existing form
-            alert(`Configuration applied!\n\nTarget Variable: ${selectedTargetVariable}\nBusiness Goal: ${selectedBusinessGoal}\nColumns Used: ${selectedColumns.join(', ')}`);
-            
-            // You can add code here to:
-            // 1. Close the wizard
-            // 2. Update the main form with the selected configuration
-            // 3. Store the configuration for later use
-        }
-
-        // Initialize
+        currentStep++;
+        showStep(currentStep);
         updateButtons();
         updateProgress();
+        updateNextButton();
+    }
+}
+function previousStep() {
+    if (currentStep > 1) {
+        currentStep--;
+        showStep(currentStep);
+        updateButtons();
+        updateProgress();
+        updateNextButton();
+    }
+}
+
+function showStep(step) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    const stepElement = document.getElementById(`step${step}`);
+    if (stepElement) {
+        stepElement.classList.add('active');
+    }
+}
+
+function updateButtons() {
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    
+    if (prevBtn) {
+        prevBtn.style.display = currentStep > 1 ? 'inline-flex' : 'none';
+    }
+    
+    if (nextBtn) {
+        if (currentStep === 5) {
+            nextBtn.innerHTML = '<i class="fas fa-check"></i> Complete';
+            nextBtn.onclick = applyConfiguration;
+        } else {
+            nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
+            nextBtn.onclick = nextStep;
+        }
+    }
+    
+    updateNextButton();
+}
+function updateProgress() {
+    const progressFill = document.getElementById('progressFill');
+    if (progressFill) {
+        const percentage = (currentStep / 5) * 100;
+        progressFill.style.width = percentage + '%';
+    }
+}
+
+function populateTargetVariables() {
+    const container = document.getElementById('targetVariableOptions');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const availableTargets = Object.entries(targetVariableMap).filter(([key, target]) => {
+        const hasRequiredColumns = target.requirements.every(req => selectedColumns.includes(req));
+        const matchesBusinessGoal = target.businessGoals.includes(selectedBusinessGoal);
+        return hasRequiredColumns && matchesBusinessGoal;
+    });
+    
+    if (availableTargets.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                No target variables are available with your current data columns and business goal. 
+                Please go back and select different options.
+            </div>
+        `;
+        return;
+    }
+    
+    availableTargets.forEach(([key, target]) => {
+        const option = document.createElement('div');
+        option.className = 'target-option';
+        option.onclick = () => selectTargetVariable(key);
+        option.innerHTML = `
+            <label>
+                <input type="radio" name="target_variable" value="${key}">
+                ${target.name}
+            </label>
+            <div class="target-description">
+                ${target.description}
+                <br><strong>Formula:</strong> ${target.formula}
+            </div>
+        `;
+        container.appendChild(option);
+    });
+}
+function showResults() {
+    const resultDetails = document.getElementById('resultDetails');
+    if (!resultDetails) return;
+    
+    const target = targetVariableMap[selectedTargetVariable];
+    if (!target) return;
+    
+    resultDetails.innerHTML = `
+        <h5>${target.name}</h5>
+        <p><strong>Description:</strong> ${target.description}</p>
+        <p><strong>Formula:</strong> ${target.formula}</p>
+        <p><strong>Required Columns:</strong> ${target.requirements.join(', ')}</p>
+        
+        <h5 style="margin-top: 20px;">Python Implementation:</h5>
+        <div class="code-block">
+            <pre><code>target_type = "${selectedTargetVariable}"
+${generatePythonCode(selectedTargetVariable)}</code></pre>
+        </div>
+        
+        <h5 style="margin-top: 20px;">Next Step:</h5>
+        <p>Upload your CSV file to generate the target variable and preview the results.</p>
+        <input type="file" id="csvUploadInput" accept=".csv" onchange="updateNextButton()" />
+    `;
+}
+
+function showColumnInputForm() {
+    const container = document.getElementById("columnInputForm");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    
+    const target = targetVariableMap[selectedTargetVariable];
+    if (!target) return;
+    
+    const requirements = target.requirements;
+    
+    container.innerHTML = `
+        <h4>Map Your CSV Columns</h4>
+        <p>Please specify which columns in your CSV correspond to each required field:</p>
+    `;
+
+    requirements.forEach(req => {
+        const div = document.createElement("div");
+        div.className = "input-group";
+        div.innerHTML = `
+            <label for="input-${req}">Column for <strong>${req}</strong>:</label>
+            <input type="text" 
+                   id="input-${req}" 
+                   name="${req}" 
+                   placeholder="Enter column name for ${req}" 
+                   class="form-control" 
+                   required>
+        `;
+        container.appendChild(div);
+    });
+}
+function generatePythonCode(targetType) {
+    const codeMap = {
+        clv: `df["aov"] = df["total_spent"] / df["total_visits"]
+df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["frequency"] = df["total_visits"] / df["days_active"]
+df["target"] = df["aov"] * df["frequency"] * (df["days_active"] / 30)`,
+
+        revenue_per_customer: `df["target"] = df["total_spent"] / df["total_visits"]`,
+
+        churn: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days > 60
+df["target"] = df["target"].astype(int)`,
+
+        aov: `df["target"] = df["total_spent"] / df["total_visits"]`,
+
+        purchase_frequency: `df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["target"] = df["total_visits"] / df["days_active"]`,
+
+        customer_lifetime: `df["target"] = (df["last_activity"] - df["first_activity"]).dt.days`,
+
+        repeat_purchase_rate: `df["target"] = df["total_visits"] > 1
+df["target"] = df["target"].astype(int)`,
+
+        recency: `df["target"] = (pd.Timestamp.now() - df["last_activity"]).dt.days`,
+
+        revenue_per_visit: `df["target"] = df["total_spent"] / df["total_visits"]`,
+
+        loyalty_score: `df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["frequency_score"] = df["total_visits"] / df["days_active"]
+df["recency_score"] = 1 / (pd.Timestamp.now() - df["last_activity"]).dt.days.clip(lower=1)
+df["target"] = (df["frequency_score"] * 0.6) + (df["recency_score"] * 0.4)`,
+
+        engagement_score: `df["days_active"] = (df["last_activity"] - df["first_activity"]).dt.days.clip(lower=1)
+df["target"] = df["total_visits"] / df["days_active"]`,
+
+        profit_per_customer: `df["target"] = df["total_spent"] * df["margin"]`,
+
+        inactivity_risk_score: `df["days_since_last"] = (pd.Timestamp.now() - df["last_activity"]).dt.days
+df["target"] = (df["days_since_last"] > 90).astype(int)`,
+
+        vip_flag: `df["target"] = (df["total_spent"] > 500).astype(int)`,
+
+        referral_score: `df["target"] = df["referrals"] / (df["total_visits"] + 1)`
+    };
+
+    return codeMap[targetType] || "# No formula available for this target type";
+}
+
+
+function applyConfiguration() {
+    alert(`Configuration completed!\n\nTarget Variable: ${selectedTargetVariable}\nBusiness Goal: ${selectedBusinessGoal}\nColumns Used: ${selectedColumns.join(', ')}`);
+    
+    // Reset wizard or close it
+    currentStep = 1;
+    selectedColumns = [];
+    selectedBusinessGoal = '';
+    selectedTargetVariable = '';
+    showStep(1);
+    updateButtons();
+    updateProgress();
+}
+
+        async function generateTargetFromCSV() {
+    const fileInput = document.getElementById("csvUploadInput");
+    const file = fileInput?.files[0];
+
+    if (!file || !selectedTargetVariable) {
+        alert("Please upload a CSV file and complete the previous steps.");
+        return;
+    }
+
+    const requirements = targetVariableMap[selectedTargetVariable]?.requirements || [];
+    const columnMap = {};
+    
+    for (const req of requirements) {
+        const inputElement = document.getElementById(`input-${req}`);
+        const val = inputElement?.value?.trim();
+        if (!val) {
+            alert(`Please provide a column name for ${req}`);
+            return;
+        }
+        columnMap[req] = val;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("target_type", selectedTargetVariable);
+    formData.append("custom_formula", "");
+    formData.append("column_map", JSON.stringify(columnMap));
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/analyze/define-target`, {
+            method: "POST",
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const previewContainer = document.getElementById("generatedPreview");
+        if (!previewContainer) return;
+
+        if (data.error) {
+            previewContainer.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else if (Array.isArray(data) && data.length > 0) {
+            let table = `
+                <h4>Generated Target Variable Preview</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm">
+                        <thead><tr>
+            `;
+            
+            Object.keys(data[0]).forEach(col => {
+                table += `<th>${col}</th>`;
+            });
+            
+            table += `</tr></thead><tbody>`;
+            
+            // Show only first 10 rows for preview
+            data.slice(0, 10).forEach(row => {
+                table += `<tr>`;
+                Object.values(row).forEach(val => {
+                    table += `<td>${val}</td>`;
+                });
+                table += `</tr>`;
+            });
+            
+            table += `</tbody></table></div>`;
+            
+            if (data.length > 10) {
+                table += `<p><em>Showing first 10 rows of ${data.length} total rows</em></p>`;
+            }
+            
+            previewContainer.innerHTML = table;
+        } else {
+            previewContainer.innerHTML = `<div class="alert alert-warning">No data returned from the API.</div>`;
+        }
+    } catch (error) {
+        console.error('Error generating target variable:', error);
+        const previewContainer = document.getElementById("generatedPreview");
+        if (previewContainer) {
+            previewContainer.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        }
+    }
+}
+
 async function downloadDataset(datasetId, datasetName) {
   const token = localStorage.getItem('access_token');
   if (!token) {
@@ -1547,7 +1785,6 @@ function uploadDataset(event) {
     });
 }
 
-const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
 function closePreviewModal() {
   document.getElementById('datasetPreviewModal').style.display = 'none';
 }
