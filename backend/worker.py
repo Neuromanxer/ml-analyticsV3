@@ -47,6 +47,7 @@ import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
 from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from .target import generate_customer_summary
 # OAuth2 scheme
 # Configure logging
 logging.basicConfig(
@@ -362,6 +363,21 @@ def do_classification(
             data_path = user_dir / "data.csv"
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
+            # Attempt to generate customer-level summary stats
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(full_df_model_data.columns):
+                    summary = generate_customer_summary(full_df_model_data)
+                else:
+                    summary = {
+                        "note": "Detailed summary statistics require 'clv', 'recency', 'total_spent', and 'upsell_score'.",
+                        "tip": "Visit datasets.html to define or create these columns for deeper customer insights."
+                    }
+            except Exception as e:
+                summary = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "If you're looking for customer insights, visit datasets.html to compute columns like CLV, recency, etc."
+                }
 
             # Create request JSON for SHAP runner
             request_json = user_dir / "request.json"
@@ -575,7 +591,8 @@ def do_classification(
                     "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                     "conversion_rate": conversion_rate,
                     "impact_metrics": impact_metrics,
-                    "training_columns": training_columns
+                    "training_columns": training_columns,
+                    "summary_stats": summary
                 }
                 
                 # Add additional visualizations
@@ -609,6 +626,7 @@ def do_classification(
                 "target_column": target_column,
                 "dataset": dataset_name,
                 "parameters": {"drop_columns": drop_columns},
+                 "summary_stats": summary
             }
 
 
@@ -779,7 +797,22 @@ def do_classification_predict(
             
             if max_probs is not None:
                 output_df['confidence'] = max_probs
-                
+            # ───── Customer Summary Stats (Optional) ───── #
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(output_df.columns):
+                    summary_stats = generate_customer_summary(output_df)
+                else:
+                    summary_stats = {
+                        "note": "Customer-level summary statistics were not calculated.",
+                        "tip": "Visit datasets.html to define 'clv', 'recency', 'upsell_score', and other fields for deeper insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "To view detailed customer insights, compute missing columns from the dataset section."
+                }
+
             # Add probability columns for each class if available
             if prediction_probs is not None:
                 classes = model.classes_ if hasattr(model, 'classes_') else np.unique(predictions)
@@ -883,7 +916,8 @@ def do_classification_predict(
                         "prediction_features": int(len(X_pred.columns)),
                         "missing_features_added": list(missing_cols),
                         "extra_features_removed": list(extra_cols)
-                    }
+                    },
+                    "summary_stats": summary_stats
                 }
 
 
@@ -917,7 +951,8 @@ def do_classification_predict(
                     "missing_features_added": list(missing_cols),
                     "extra_features_removed": list(extra_cols)
                 },
-                "conversion_rate": conversion_rate if true_labels is not None else None
+                "conversion_rate": conversion_rate if true_labels is not None else None,
+                 "summary_stats": summary_stats
             }
             
             # Convert all numpy types in the response
@@ -1116,7 +1151,22 @@ def do_clustering(
                     f"{feat} is {round(df[df['cluster'] == cluster_id][feat].mean() - global_means[feat], 2)} higher than average"
                     for feat in top_feats.index
                 ]
-            
+            # ───── Optional: Generate Customer-Level Summary Stats ───── #
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer-level summary stats not computed.",
+                        "tip": "Visit datasets.html to define columns like 'clv', 'recency', and 'upsell_score'."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "To view detailed customer insights, define missing columns in the dataset step."
+                }
+
             # Visualization
             cluster_viz_base64 = ""
             if numeric_df.shape[1] > 1:
@@ -1236,7 +1286,8 @@ def do_clustering(
                 "model_url": model_url,
                 "data_url": data_url,
                 "model_path": model_upload_path,
-                "data_path": data_upload_path
+                "data_path": data_upload_path,
+                "summary_stats": summary_stats
             }
 
                     
@@ -1271,7 +1322,8 @@ def do_clustering(
                     "model_url": model_url,
                     "data_url": data_url,
                     "model_path": model_upload_path,
-                    "data_path": data_upload_path
+                    "data_path": data_upload_path,
+                    "summary_stats": summary_stats
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -1407,6 +1459,21 @@ def do_segment_analysis(
             # ───────────── Run KMeans ─────────────
             clusters, kmeans = run_kmeans(scaled_data, best_k)
             df["cluster"] = clusters
+            # ───────────── Optional: Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats were not computed.",
+                        "tip": "Go to datasets.html to define 'clv', 'recency', 'upsell_score', and other metrics for deeper insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Customer summary generation failed: {str(e)}",
+                    "tip": "Visit datasets.html to create missing features for customer analysis."
+                }
 
             # ───────────── Calculate metrics (same as clustering) ─────────────
             clustering_metrics = {
@@ -1592,7 +1659,8 @@ def do_segment_analysis(
                 "data_url": data_url,
                 "model_path": model_upload_path,
                 "scaler_path": scaler_upload_path,
-                "data_path": data_upload_path
+                "data_path": data_upload_path,
+                "summary_stats": summary_stats
             }
 
             # Add visualizations if they exist
@@ -1629,7 +1697,8 @@ def do_segment_analysis(
                     "data_url": data_url,
                     "model_path": model_upload_path,
                     "scaler_path": scaler_upload_path,
-                    "data_path": data_upload_path
+                    "data_path": data_upload_path,
+                    "summary_stats": summary_stats
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -1768,6 +1837,21 @@ def do_label_clusters(
 
             # ───────────── Apply cluster labeling logic ─────────────
             df = label_clusters_general(df, cluster_col="cluster", feature_columns=available_features)
+            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer-level summary stats not generated.",
+                        "tip": "Visit datasets.html to define columns like 'clv', 'recency', and 'upsell_score' for richer insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Customer summary generation failed: {str(e)}",
+                    "tip": "Define missing customer features from datasets.html to enable summary stats."
+                }
 
             # ───────────── Save labeled data to temp directory ─────────────
             labeled_data_path = PathL(temp_dir) / f"{user_id}_labeled_data.csv"
@@ -1865,7 +1949,8 @@ def do_label_clusters(
                 "features_used": available_features,
                 # ✅ Add uploaded file references
                 "labeled_data_url": labeled_data_url,
-                "labeled_data_path": labeled_data_upload_path
+                "labeled_data_path": labeled_data_upload_path,
+                "summary_stats": summary_stats
             }
 
             # Add visualizations if they exist
@@ -1894,7 +1979,8 @@ def do_label_clusters(
                     "segment_insights": segment_insights,
                     # ✅ Add uploaded file references to metadata
                     "labeled_data_url": labeled_data_url,
-                    "labeled_data_path": labeled_data_upload_path
+                    "labeled_data_path": labeled_data_upload_path,
+                    "summary_stats": summary_stats
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -2088,6 +2174,22 @@ def do_regression(
                     full_df, _, _ = preprocess_data(full_df)
                 else:
                     full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+                try:
+                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                    if required_cols.issubset(full_df.columns):
+                        summary_stats = generate_customer_summary(full_df)
+                    else:
+                        summary_stats = {
+                            "note": "Customer-level summary stats not generated.",
+                            "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for deeper business insights."
+                        }
+                except Exception as e:
+                    summary_stats = {
+                        "error": f"Failed to generate summary stats: {str(e)}",
+                        "tip": "Add customer features like CLV and recency to enable automatic summaries."
+                    }
+
 
                 X_full_raw = full_df.drop(columns=["ID", target_column], errors="ignore")
                 X_full_processed = results["preprocessor"].transform(X_full_raw)
@@ -2381,6 +2483,7 @@ def do_regression(
                         "model_url": model_url,
                         "preprocessor_url": preprocessor_url,
                         "data_url": data_url,
+                        "summary_stats": summary_stats
                     }
                     entry = ensure_json_serializable(entry)
                     with master_db_cm() as db:
@@ -2411,7 +2514,8 @@ def do_regression(
                     },
                     "model_url": model_url,
                     "preprocessor_url": preprocessor_url,
-                    "data_url": data_url
+                    "data_url": data_url,
+                    "summary_stats": summary_stats
                 }
 
                 return response_data
@@ -2566,7 +2670,22 @@ def do_regression_predict(
         # Create output dataframe by adding predictions to original data
         output_df = original_df.copy()
         output_df['prediction'] = predictions
-        
+        # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+        try:
+            required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+            if required_cols.issubset(output_df.columns):
+                summary_stats = generate_customer_summary(output_df)
+            else:
+                summary_stats = {
+                    "note": "Customer-level summary stats not generated.",
+                    "tip": "Go to datasets.html to define columns like 'clv', 'recency', 'total_spent', and 'upsell_score' for richer insights."
+                }
+        except Exception as e:
+            summary_stats = {
+                "error": f"Failed to generate summary stats: {str(e)}",
+                "tip": "Add customer features to your dataset to enable summary reporting."
+            }
+
         # Calculate evaluation metrics if true labels are available
         evaluation_metrics = None
         if true_labels is not None:
@@ -2703,7 +2822,8 @@ def do_regression_predict(
                     "extra_features_removed": list(extra_cols)
                 },
                 "evaluation_metrics": evaluation_metrics,
-                "insights": insights
+                "insights": insights,
+                "summary_stats": summary_stats
             }
 
             entry = ensure_json_serializable(entry)
@@ -2742,7 +2862,8 @@ def do_regression_predict(
                 "missing_features_added": list(missing_cols),
                 "extra_features_removed": list(extra_cols)
             },
-            "evaluation_metrics": evaluation_metrics
+            "evaluation_metrics": evaluation_metrics,
+            "summary_stats": summary_stats
         }
         
         # Convert all numpy types in the response
@@ -2857,6 +2978,21 @@ def do_visualization(
             # ───────────── Preprocess data ─────────────
             remove_cols = ["ID", target_column] if "ID" in df.columns else [target_column]
             df, CATS, NUMS = preprocess_data(df, RMV=remove_cols)
+            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats not generated.",
+                        "tip": "Go to datasets.html to define 'clv', 'recency', 'total_spent', or 'upsell_score' for detailed insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "Add missing customer-level features to enable summary reporting."
+                }
 
             if target_column not in df.columns or feature_column not in df.columns:
                 raise ValueError("Specified target or feature column not found in dataset.")
@@ -2946,7 +3082,8 @@ def do_visualization(
                     },
                     "thumbnailData": f"data:image/png;base64,{scatter_b64}" if scatter_b64 else "",
                     "imageData": f"data:image/png;base64,{scatter_b64}" if scatter_b64 else "",
-                    "visualizations": {}
+                    "visualizations": {},
+                    "summary_stats": summary_stats
                 }
 
                 if scatter_b64:
@@ -2975,7 +3112,8 @@ def do_visualization(
                     "feature_column": feature_column
                 },
                 "visualizations": {},
-                "insights": {}
+                "insights": {},
+                "summary_stats": summary_stats
             }
 
             if scatter_b64:
@@ -3158,6 +3296,21 @@ def do_counterfactual(
             train_df = train_df.replace([np.inf, -np.inf], np.nan).fillna(0)
             test_df = test_df.replace([np.inf, -np.inf], np.nan).fillna(0)
             full_df = full_df.replace([np.inf, -np.inf], np.nan).fillna(0)
+            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(full_df.columns):
+                    summary_stats = generate_customer_summary(full_df)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats were not generated.",
+                        "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', or 'upsell_score' for richer insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "Add customer-level features to your dataset to enable summary insights."
+                }
 
                     # Determine target type
             target_is_continuous = False
@@ -3626,7 +3779,8 @@ def do_counterfactual(
                     "imageData": f"data:image/png;base64,{visualizations[0]}" if visualizations else "",
                     "visualizations": {},
                     "counterfactuals": counterfactuals_data,
-                    "metrics": sample_metrics
+                    "metrics": sample_metrics,
+                    "summary_stats": summary_stats
                 }
 
                 # Add visualizations to entry
@@ -3664,7 +3818,8 @@ def do_counterfactual(
                     "max_changes": max_changes,
                     "proximity_metric": proximity_metric
                 },
-                "metrics": sample_metrics
+                "metrics": sample_metrics,
+                "summary_stats": summary_stats
             }
 
             # Add visualizations to response
@@ -4045,9 +4200,40 @@ def do_survival(
                     if full_df.isna().sum().sum() > 0:
                         print("Warning: NaNs detected after concatenation. Cleaning...")
                         full_df = clean_dataframe_for_cox(full_df, time_col, event_col)
+                    # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+                    try:
+                        required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                        if required_cols.issubset(full_df.columns):
+                            summary_stats = generate_customer_summary(full_df)
+                        else:
+                            summary_stats = {
+                                "note": "Customer summary stats not generated.",
+                                "tip": "Visit datasets.html to define features like 'clv', 'recency', 'total_spent', and 'upsell_score' for enhanced insights."
+                            }
+                    except Exception as e:
+                        summary_stats = {
+                            "error": f"Summary generation failed: {str(e)}",
+                            "tip": "Add customer-level metrics to your dataset to enable summary statistics."
+                        }
+
             else:
                 print("Test set has no target columns. Using training data only for full model.")
                 full_df = train_df.copy()
+                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+                try:
+                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                    if required_cols.issubset(full_df.columns):
+                        summary_stats = generate_customer_summary(full_df)
+                    else:
+                        summary_stats = {
+                            "note": "Customer summary stats not generated.",
+                            "tip": "Visit datasets.html to define features like 'clv', 'recency', 'total_spent', and 'upsell_score' for enhanced insights."
+                        }
+                except Exception as e:
+                    summary_stats = {
+                        "error": f"Summary generation failed: {str(e)}",
+                        "tip": "Add customer-level metrics to your dataset to enable summary statistics."
+                    }
 
             # Fit the full model
             cph_full = CoxPHFitter()
@@ -4179,7 +4365,8 @@ def do_survival(
                         "cox_coefficients": f"data:image/png;base64,{hazard_b64}"
                     },
                     "metrics": survival_metrics,
-                    "retention_rates": retention_rates
+                    "retention_rates": retention_rates,
+                    "summary_stats": summary_stats
                 }
 
                 if risk_fig_base64:
@@ -4208,7 +4395,8 @@ def do_survival(
                     "cox_coefficients": f"data:image/png;base64,{hazard_b64}"
                 },
                 "metrics": survival_metrics,
-                "retention_rates": retention_rates
+                "retention_rates": retention_rates,
+                "summary_stats": summary_stats
             }
 
             if risk_fig_base64:
@@ -4361,6 +4549,21 @@ def do_what_if(
             for feature, new_value in changes.items():
                 if feature in modified_sample.columns:
                     modified_sample[feature] = new_value
+            # ───────────── Optional: Generate Summary Stats for Modified Sample ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(modified_sample.columns):
+                    summary_stats = generate_customer_summary(modified_sample)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats not generated for modified sample.",
+                        "tip": "Ensure 'clv', 'recency', 'total_spent', and 'upsell_score' are part of the dataset."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Summary generation failed: {str(e)}",
+                    "tip": "Try creating these business-level features on datasets.html before running explanations."
+                }
 
             # Get predictions for both original and modified
             features_cols = [col for col in df.columns if col != target_column and col != 'ID']
@@ -4436,7 +4639,8 @@ def do_what_if(
                     "visualizations": {
                         "comparison_plot": f"data:image/png;base64,{comparison_base64}"
                     },
-                    "metrics": impact_metrics
+                    "metrics": impact_metrics,
+                    "summary_stats": summary_stats
                 }
 
                 try:
@@ -4570,6 +4774,21 @@ def do_risk_analysis(
                 drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
                 if drops:
                     df.drop(columns=drops, inplace=True)
+            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats not generated.",
+                        "tip": "Go to datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for business insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "Ensure your dataset has customer-level metrics before this step."
+                }
 
             # ───────────── Load user model from Supabase ─────────────
             model_path = None
@@ -4667,7 +4886,8 @@ def do_risk_analysis(
                     "imageData": f"data:image/png;base64,{risk_fig_base64}" if risk_fig_base64 else "",
                     "visualizations": {
                         "risk_plot": f"data:image/png;base64,{risk_fig_base64}" if risk_fig_base64 else ""
-                    }
+                    },
+                    "summary_stats": summary_stats
                 }
 
                 try:
@@ -4830,6 +5050,22 @@ def do_decision_paths(
                 X_test = X_test[common_columns]
 
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
+                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+                try:
+                    full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                    if required_cols.issubset(full_df.columns):
+                        summary_stats = generate_customer_summary(full_df)
+                    else:
+                        summary_stats = {
+                            "note": "Customer summary stats not generated.",
+                            "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for business insights."
+                        }
+                except Exception as e:
+                    summary_stats = {
+                        "error": f"Failed to generate summary stats: {str(e)}",
+                        "tip": "Ensure your dataset has customer-level metrics before training."
+                    }
 
             # ───────────── Train decision tree ─────────────
             clf = DecisionTreeClassifier(max_depth=4, random_state=42)
@@ -4905,7 +5141,8 @@ def do_decision_paths(
                     "imageData": f"data:image/png;base64,{decision_fig_base64}",
                     "visualizations": {
                         "decision_paths": f"data:image/png;base64,{decision_fig_base64}"
-                    }
+                    },
+                    "summary_stats": summary_stats
                 }
 
                 try:
@@ -5000,7 +5237,22 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
             # Check if target column exists
             if target_column not in df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
-           
+           # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            try:
+                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
+                if required_cols.issubset(df.columns):
+                    summary_stats = generate_customer_summary(df)
+                else:
+                    summary_stats = {
+                        "note": "Customer summary stats not generated.",
+                        "tip": "Add 'clv', 'recency', 'total_spent', and 'upsell_score' to your dataset via datasets.html for richer insights."
+                    }
+            except Exception as e:
+                summary_stats = {
+                    "error": f"Failed to generate summary stats: {str(e)}",
+                    "tip": "Ensure customer-level metrics are available before forecasting."
+                }
+
             # Extract the time series
             series = df[target_column].dropna()
             
@@ -5204,7 +5456,8 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
                         "model_aic": response_data["model_aic"],
                         "forecast_periods": response_data["forecast_periods"],
                         "adf_test": response_data["adf_test"]
-                    }
+                    },
+                    "summary_stats": summary_stats
                 }
                 entry = ensure_json_serializable(entry)
                 with master_db_cm() as db:

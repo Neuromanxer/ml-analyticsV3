@@ -383,14 +383,14 @@ class AITokenBillingMiddleware(BaseHTTPMiddleware):
 
             # OpenAI Pricing (e.g., GPT-4 Vision or GPT-4o)
             OPENAI_COST_PER_1K = 0.04  # your actual OpenAI rate
-            MARKUP = 2.0               # 4x markup for profit
+            MARKUP = 3.0               # 4x markup for profit
 
             ai_cost_usd = (openai_tokens_used / 1000) * OPENAI_COST_PER_1K
             ai_charge = round(ai_cost_usd * MARKUP, 3)
 
             # ─── Add time-based and size-based charges ─────────
-            PRICE_PER_MB =  0.125
-            PRICE_PER_SECOND = 0.25
+            PRICE_PER_MB =  0.1875
+            PRICE_PER_SECOND =  0.375
 
             content_length = request.headers.get("content-length")
             bytes_processed = int(content_length) if content_length and content_length.isdigit() else 0
