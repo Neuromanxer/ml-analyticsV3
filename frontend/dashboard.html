@@ -1404,35 +1404,51 @@ function signOutUser() {
           runButton.dataset.analysisType = this.id;
         });
       });
-
-    // New function to prepare and run analysis (replaces direct runAnalysis call)
-    function prepareAndRunAnalysis() {
-      const runButton = document.getElementById('run-analysis-btn');
-      const selectedAnalysis = runButton.dataset.analysisType;
-      
-      if (!selectedAnalysis) {
-        showError('Please select an analysis method first');
-        return;
-      }
-      
-      // Show loader
-      document.getElementById('loader').style.display = 'block';
-      
-      // Get the button element to trigger the original click event
-      const selectedButton = document.getElementById(selectedAnalysis);
-      
-      // Here you would call your original analysis function
-      // For now, we'll just simulate the process
-      console.log('Running analysis:', selectedAnalysis);
-      
-      // Hide loader after a delay (replace with actual API call)
-      setTimeout(() => {
-        document.getElementById('loader').style.display = 'none';
-        // Trigger your original button click handler here
-        // selectedButton.click(); // Only if you want to trigger original behavior
-      }, 1000);
+      // Fixed function to prepare and run analysis
+function prepareAndRunAnalysis() {
+  const runButton = document.getElementById('run-analysis-btn');
+  const selectedAnalysis = runButton.dataset.analysisType;
+  
+  if (!selectedAnalysis) {
+    showError('Please select an analysis method first');
+    return;
+  }
+  
+  console.log('Running analysis:', selectedAnalysis);
+  
+  // Map the analysis type to the correct button ID and trigger the click
+  const buttonMappings = {
+    'regression': 'btn-regression',
+    'classification': 'btn-classification', 
+    'clustering': 'btn-clustering',
+    'visualize': 'btn-visualize',
+    'feature-impact': 'btn-feature-impact',
+    'counterfactual': 'btn-counterfactual',
+    'segments': 'btn-segments',
+    'risk': 'btn-risk',
+    'decision-paths': 'btn-decision-paths',
+    'time-series-analysis': 'btn-time-series-analysis',
+    'survival': 'btn-survival',
+    'classification-predict': 'btn-classification-predict',
+    'regression-predict': 'btn-regression-predict'
+  };
+  
+  const buttonId = buttonMappings[selectedAnalysis];
+  
+  if (buttonId) {
+    const selectedButton = document.getElementById(buttonId);
+    if (selectedButton) {
+      // Trigger the original button's click event
+      selectedButton.click();
+    } else {
+      showError(`Analysis button not found: ${buttonId}`);
     }
-  // Whenever you pick a full dataset, clear train/test
+  } else {
+    showError(`Unknown analysis type: ${selectedAnalysis}`);
+  }
+}
+
+
   fullInput.addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;
