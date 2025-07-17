@@ -580,8 +580,8 @@
     }
   </style>
 </head>
-
-<body><!-- Mobile Toggle Button -->
+<body>
+  <!-- Mobile Toggle Button -->
   <button class="mobile-toggle" onclick="toggleSidebar()">
       <i class="fas fa-bars"></i>
   </button>
@@ -659,13 +659,12 @@
             Sign out
         </div>
     </div>    
-      
   </div>
 
-  
   <!-- Main Content -->
   <div class="main-content">
     <div class="container">
+      <!-- How to Use Section -->
       <div class="card">
         <h2><i class="fas fa-question-circle"></i> How to Use</h2>
         <div class="how-to-use-container">
@@ -692,6 +691,7 @@
           </div>
         </div>
       </div>
+
       <!-- Navbar -->
       <div class="navbar">
         <div class="navbar-title">
@@ -711,10 +711,12 @@
       
       <div class="dashboard-header">
         <h1>Machine Learning Dashboard</h1>
-        <p>Upload your data and it using various machine learning algorithms</p>
+        <p>Upload your data and analyze it using various machine learning algorithms</p>
       </div>
+
+      <!-- Step 1: Data Upload -->
       <div class="card">
-        <h2><i class="fas fa-upload"></i> Data Input</h2>
+        <h2><i class="fas fa-upload"></i> Step 1: Data Upload</h2>
         
         <div class="file-upload-container">
           <label for="full-input" class="file-upload">
@@ -722,7 +724,7 @@
               <i class="fas fa-cloud-upload-alt"></i>
             </div>
             <div class="upload-text">
-              <p id="full-name" class="primary-text">Upload File</p>
+              <p id="full-name" class="primary-text">Upload Full Dataset</p>
               <p class="secondary-text">
                 Drag and drop or click to browse <strong>(.csv or .txt)</strong>
               </p>
@@ -730,8 +732,9 @@
             <input type="file" id="full-input" accept=".csv, .txt">
           </label>
         </div>
+
         <div class="train-test-upload-section">
-          <h3><i class="fas fa-file-upload"></i>OR Train & Test Dataset Upload</h3>
+          <h3><i class="fas fa-file-upload"></i>OR Upload Separate Train & Test Files</h3>
           <div class="train-test-upload-boxes">
             <!-- Train Upload -->
             <label for="train-input" class="file-upload">
@@ -755,42 +758,8 @@
           </div>
         </div>
       </div>
-      
- 
-        
-        <div class="input-group">
-          <label for="drop-columns">Columns to drop (comma-separated)</label>
-          <input type="text" id="drop-columns" placeholder="e.g., id, timestamp, name">
-        </div>
-        
-        <div class="input-group">
-          <label for="target-column">Target column</label>
-          <input type="text" id="target-column" placeholder="e.g., price, class, outcome">
-        </div>
-        <div class="input-group">
-          <label for="time-column">Time column (req for Time Series & Forecast)</label>
-          <input type="text" id='time-column' placeholder="e.g., event_time, survival(months, years, days, etc)"> 
-        </div>
-        <div class="input-group">
-          <label for="forecast-periods">Forecast Periods (req. for forecast)</label>
-          <input type="number" id="forecast-periods" min="1" value="" placeholder="e.g., 24">
-        </div>        
-        
-        <div class="input-group">
-          <label for="feature-column">Impactful Features (comma-separated for visualize)</label>
-          <input type="text" id="feature-column" placeholder="e.g., age, income, location">
-        </div>
-      </div>
-      <div class="input-group">
-        <label for="desired-outcome">Desired Outcome (for counterfactual)</label>
-        <input type="text" id="desired-outcome" name="desired_outcome" placeholder="e.g., 0 (no churn), 1 (purchase), 250 (revenue target)">
-      </div>
-      <div class="input-group">
-        <label for="editable-features">Editable Features (comma-separated for counterfactual)</label>
-        <input type="text" id="editable-features" name="editable_features" placeholder="Which inputs are you willing to change to influence the outcome?">
-      </div>
-      
-      
+
+      <!-- Data Preview Section -->
       <div id="data-preview" class="card" style="display: none;">
         <h2><i class="fas fa-table"></i> Data Preview</h2>
         <div class="preview-container">
@@ -799,77 +768,218 @@
           </table>
         </div>
       </div>
+
       <!-- Train Data Preview -->
-<div id="train-preview" class="card" style="display: none;">
-  <h2><i class="fas fa-table"></i> Train Data Preview</h2>
-  <div class="preview-container">
-    <table id="train-preview-table" class="preview-table">
-      <!-- Train preview rows go here -->
-    </table>
-  </div>
-</div>
+      <div id="train-preview" class="card" style="display: none;">
+        <h2><i class="fas fa-table"></i> Train Data Preview</h2>
+        <div class="preview-container">
+          <table id="train-preview-table" class="preview-table">
+            <!-- Train preview rows go here -->
+          </table>
+        </div>
+      </div>
 
-<!-- Test Data Preview -->
-<div id="test-preview" class="card" style="display: none;">
-  <h2><i class="fas fa-table"></i> Test Data Preview</h2>
-  <div class="preview-container">
-    <table id="test-preview-table" class="preview-table">
-      <!-- Test preview rows go here -->
-    </table>
-  </div>
-</div>
+      <!-- Test Data Preview -->
+      <div id="test-preview" class="card" style="display: none;">
+        <h2><i class="fas fa-table"></i> Test Data Preview</h2>
+        <div class="preview-container">
+          <table id="test-preview-table" class="preview-table">
+            <!-- Test preview rows go here -->
+          </table>
+        </div>
+      </div>
 
-      <div class="card">
-        <h2><i class="fas fa-chart-line"></i> Analysis Tools</h2>
-        <p>Select an analysis method to apply to your data:</p>
+      <!-- Step 2: Data Configuration -->
+      <div class="card" id="data-config" style="display: none;">
+        <h2><i class="fas fa-cogs"></i> Step 2: Data Configuration</h2>
         
-        <div class="btn-group">
-          <button id="btn-regression" class="btn"><i class="fas fa-chart-line"></i> Regression Model</button>
-          <button id="btn-classification" class="btn"><i class="fas fa-tags"></i> Classification Model</button>
-          <button id="btn-clustering" class="btn"><i class="fas fa-braille"></i> KMeans Clustering</button>
-          <button id="btn-visualize" class="btn"><i class="fas fa-chart-bar"></i> Visualize Relationships</button>
-          <button id="btn-feature-impact" class="btn"><i class="fas fa-chart-pie"></i> Feature Impact Analysis</button>
-          <button id="btn-counterfactual" class="btn"><i class="fas fa-random"></i> Counterfactual Analysis</button>
-          <button id="btn-segments" class="btn"><i class="fas fa-users"></i> Customer Segments</button>
-          <button id="btn-decision-paths" class="btn"><i class="fas fa-project-diagram"></i> Optimal Decision Paths</button>
-          <button id="btn-time-series-analysis" class="btn"><i class="fas fa-chart-line"></i>Time Series Analysis</button>
-          <button id="btn-survival" class="btn">
-            <i class="fas fa-heartbeat"></i> Survival Analysis
-          </button>
-          <button id="btn-classification-predict" class="btn">
-            <i class="fas fa-magic"></i> Predict (Classification)
-          </button>
-          
-          <button id="btn-regression-predict" class="btn">
-            <i class="fas fa-chart-bar"></i> Predict (Regression)
-          </button>
-          
+        <!-- Basic Configuration -->
+        <div class="config-section">
+          <h3>Basic Setup</h3>
+          <div class="input-row">
+            <div class="input-group">
+              <label for="target-column">Target Column <span class="required">*</span></label>
+              <input type="text" id="target-column" placeholder="e.g., price, class, outcome">
+              <small class="help-text">The column you want to predict</small>
+            </div>
+            <div class="input-group">
+              <label for="drop-columns">Columns to Drop</label>
+              <input type="text" id="drop-columns" placeholder="e.g., id, timestamp, name">
+              <small class="help-text">Comma-separated list of columns to exclude</small>
+            </div>
+          </div>
         </div>
 
+        <!-- Advanced Configuration (Initially Hidden) -->
+        <div class="config-section">
+          <div class="section-toggle" onclick="toggleAdvancedConfig()">
+            <h3>Advanced Configuration <i class="fas fa-chevron-down"></i></h3>
+          </div>
+          <div id="advanced-config" style="display: none;">
+            <div class="input-row">
+              <div class="input-group">
+                <label for="feature-column">Important Features</label>
+                <input type="text" id="feature-column" placeholder="e.g., age, income, location">
+                <small class="help-text">For visualization and feature analysis</small>
+              </div>
+              <div class="input-group">
+                <label for="time-column">Time Column</label>
+                <input type="text" id="time-column" placeholder="e.g., event_time, date">
+                <small class="help-text">Required for time series analysis</small>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <!-- wrap all TS-specific controls in a container -->
-<div id="ts-params" style="display: none; margin-top: 1em;">
-  <label for="arima-order">ARIMA Order (p,d,q):</label>
-  <input 
-    type="text" 
-    id="arima-order" 
-    value="1,1,1" 
-    placeholder="e.g. 1,1,1"
-    style="width: 6em; margin-right: 1em;"
-  />
+        <!-- Analysis-Specific Configuration (Show based on selected analysis) -->
+        <div id="analysis-specific-config" style="display: none;">
+          <!-- Time Series Specific -->
+          <div id="time-series-config" class="config-section" style="display: none;">
+            <h3>Time Series Settings</h3>
+            <div class="input-row">
+              <div class="input-group">
+                <label for="arima-order">ARIMA Order (p,d,q)</label>
+                <input type="text" id="arima-order" value="1,1,1" placeholder="e.g. 1,1,1">
+                <small class="help-text">Parameters for ARIMA model</small>
+              </div>
+              <div class="input-group">
+                <label for="forecast-periods">Forecast Periods</label>
+                <input type="number" id="forecast-periods" value="24" min="1">
+                <small class="help-text">Number of periods to forecast</small>
+              </div>
+            </div>
+          </div>
 
-  <label for="forecast-periods">Forecast Periods:</label>
-  <input 
-    type="number" 
-    id="forecast-periods" 
-    value="24" 
-    min="1" 
-    style="width: 4em;"
-  />
-</div>
+          <!-- Counterfactual Specific -->
+          <div id="counterfactual-config" class="config-section" style="display: none;">
+            <h3>Counterfactual Settings</h3>
+            <div class="input-row">
+              <div class="input-group">
+                <label for="desired-outcome">Desired Outcome</label>
+                <input type="text" id="desired-outcome" placeholder="e.g., 0 (no churn), 1 (purchase)">
+                <small class="help-text">The target outcome you want to achieve</small>
+              </div>
+              <div class="input-group">
+                <label for="editable-features">Editable Features</label>
+                <input type="text" id="editable-features" placeholder="Features you can modify">
+                <small class="help-text">Which inputs can be changed to influence outcome</small>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <div class="config-actions">
+          <button class="btn secondary" onclick="resetConfiguration()">Reset</button>
+          <button class="btn primary" onclick="validateConfiguration()">Validate Configuration</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Analysis Selection -->
+      <div class="card" id="analysis-selection" style="display: none;">
+        <h2><i class="fas fa-chart-line"></i> Step 3: Select Analysis Method</h2>
+        <p>Choose the type of analysis you want to perform on your data:</p>
         
-        <div id="loader" class="loader">
+        <!-- Analysis Categories -->
+        <div class="analysis-categories">
+          <div class="analysis-category">
+            <h3>Predictive Models</h3>
+            <div class="btn-group">
+              <button id="btn-regression" class="btn analysis-btn" data-category="predictive">
+                <i class="fas fa-chart-line"></i>
+                <span>Regression</span>
+                <small>Predict continuous values</small>
+              </button>
+              <button id="btn-classification" class="btn analysis-btn" data-category="predictive">
+                <i class="fas fa-tags"></i>
+                <span>Classification</span>
+                <small>Predict categories</small>
+              </button>
+              <button id="btn-survival" class="btn analysis-btn" data-category="predictive">
+                <i class="fas fa-heartbeat"></i>
+                <span>Survival Analysis</span>
+                <small>Time-to-event modeling</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="analysis-category">
+            <h3>Time Series</h3>
+            <div class="btn-group">
+              <button id="btn-time-series-analysis" class="btn analysis-btn" data-category="time-series">
+                <i class="fas fa-chart-line"></i>
+                <span>Time Series Analysis</span>
+                <small>Analyze temporal patterns</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="analysis-category">
+            <h3>Exploratory Analysis</h3>
+            <div class="btn-group">
+              <button id="btn-clustering" class="btn analysis-btn" data-category="exploratory">
+                <i class="fas fa-braille"></i>
+                <span>Clustering</span>
+                <small>Find hidden patterns</small>
+              </button>
+              <button id="btn-visualize" class="btn analysis-btn" data-category="exploratory">
+                <i class="fas fa-chart-bar"></i>
+                <span>Visualize</span>
+                <small>Explore relationships</small>
+              </button>
+              <button id="btn-feature-impact" class="btn analysis-btn" data-category="exploratory">
+                <i class="fas fa-chart-pie"></i>
+                <span>Feature Impact</span>
+                <small>Understand importance</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="analysis-category">
+            <h3>Advanced Analysis</h3>
+            <div class="btn-group">
+              <button id="btn-counterfactual" class="btn analysis-btn" data-category="advanced">
+                <i class="fas fa-random"></i>
+                <span>Counterfactual</span>
+                <small>What-if scenarios</small>
+              </button>
+              <button id="btn-segments" class="btn analysis-btn" data-category="advanced">
+                <i class="fas fa-users"></i>
+                <span>Customer Segments</span>
+                <small>Identify user groups</small>
+              </button>
+              <button id="btn-decision-paths" class="btn analysis-btn" data-category="advanced">
+                <i class="fas fa-project-diagram"></i>
+                <span>Decision Paths</span>
+                <small>Optimal strategies</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="analysis-category">
+            <h3>Predictions</h3>
+            <div class="btn-group">
+              <button id="btn-classification-predict" class="btn analysis-btn" data-category="prediction">
+                <i class="fas fa-magic"></i>
+                <span>Predict (Classification)</span>
+                <small>Make categorical predictions</small>
+              </button>
+              <button id="btn-regression-predict" class="btn analysis-btn" data-category="prediction">
+                <i class="fas fa-chart-bar"></i>
+                <span>Predict (Regression)</span>
+                <small>Make numerical predictions</small>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="analysis-actions">
+          <button class="btn primary large" onclick="runAnalysis()" id="run-analysis-btn" disabled>
+            <i class="fas fa-play"></i>
+            Run Analysis
+          </button>
+        </div>
+        
+        <div id="loader" class="loader" style="display: none;">
           <i class="fas fa-spinner"></i>
           <p>Processing your data...</p>
         </div>
@@ -878,23 +988,22 @@
         <div id="success-message" class="success-message"></div>
       </div>
       
-      <div id="results-container" style="display: none;">
-        <div class="card">
-          <h2><i class="fas fa-poll"></i> Analysis Results</h2>
-          
-          <div id="model-info" class="result-card">
-            <h3>Model Information</h3>
-            <div id="model-details"></div>
-          </div>
-          
-          <div id="metrics" class="result-card">
-            <h3>Performance Metrics</h3>
-            <div id="metrics-details"></div>
-          </div>
-          
-          <div class="visualization-container" id="visualization-container">
-            <!-- Visualizations will be inserted here -->
-          </div>
+      <!-- Results Section -->
+      <div id="results-container" class="card" style="display: none;">
+        <h2><i class="fas fa-poll"></i> Analysis Results</h2>
+        
+        <div id="model-info" class="result-card">
+          <h3>Model Information</h3>
+          <div id="model-details"></div>
+        </div>
+        
+        <div id="metrics" class="result-card">
+          <h3>Performance Metrics</h3>
+          <div id="metrics-details"></div>
+        </div>
+        
+        <div class="visualization-container" id="visualization-container">
+          <!-- Visualizations will be inserted here -->
         </div>
       </div>
     </div>
@@ -902,8 +1011,55 @@
 
   <script>
 
-
   const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+
+   function toggleAdvancedConfig() {
+      const advancedConfig = document.getElementById('advanced-config');
+      const icon = document.querySelector('.section-toggle i');
+      
+      if (advancedConfig.style.display === 'none') {
+        advancedConfig.style.display = 'block';
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+      } else {
+        advancedConfig.style.display = 'none';
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+      }
+    }
+  function showAnalysisSpecificConfig(analysisType) {
+      // Hide all analysis-specific configs
+      const configs = document.querySelectorAll('#analysis-specific-config > div');
+      configs.forEach(config => config.style.display = 'none');
+      
+      // Show specific config based on analysis type
+      const specificConfig = document.getElementById(`${analysisType}-config`);
+      if (specificConfig) {
+        document.getElementById('analysis-specific-config').style.display = 'block';
+        specificConfig.style.display = 'block';
+      } else {
+        document.getElementById('analysis-specific-config').style.display = 'none';
+      }
+    }
+    
+    function validateConfiguration() {
+      const targetColumn = document.getElementById('target-column').value;
+      if (!targetColumn) {
+        showError('Please specify a target column');
+        return false;
+      }
+      
+      document.getElementById('analysis-selection').style.display = 'block';
+      showSuccess('Configuration validated successfully!');
+      return true;
+    }
+
+    function resetConfiguration() {
+      document.querySelectorAll('#data-config input').forEach(input => {
+        input.value = '';
+      });
+    }
+
   // Helper: safely read from localStorage
   function safeStorageGet(key) {
     try {
@@ -1021,6 +1177,10 @@ function signOutUser() {
     const metricsDetails         = document.getElementById('metrics-details');
     const visualizationContainer = document.getElementById('visualization-container');
     const token  = safeStorageGet('access_token');
+     const analysisButtons = document.querySelectorAll('.analysis-btn');
+      const runButton = document.getElementById('run-analysis-btn');
+      
+
     if (!token || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
       const next = encodeURIComponent(window.location.pathname);
@@ -1094,6 +1254,22 @@ function signOutUser() {
 
       reader.readAsText(file);
     }
+          analysisButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          // Remove active class from all buttons
+          analysisButtons.forEach(btn => btn.classList.remove('active'));
+          
+          // Add active class to clicked button
+          this.classList.add('active');
+          
+          // Show analysis-specific configuration if needed
+          const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
+          showAnalysisSpecificConfig(analysisType);
+          
+          // Enable run button
+          runButton.disabled = false;
+        });
+      });
 
   // Whenever you pick a full dataset, clear train/test
   fullInput.addEventListener('change', function() {
