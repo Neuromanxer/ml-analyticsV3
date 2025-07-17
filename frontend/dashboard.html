@@ -941,7 +941,7 @@
           <div class="section-toggle" onclick="toggleAdvancedConfig()">
             <h3>Advanced Configuration <i class="fas fa-chevron-down"></i></h3>
           </div>
-          <div id="advanced-config" style="display: none;">
+         <div id="advanced-config" style="display: block;">
             <div class="input-row">
               <div class="input-group">
                 <label for="feature-column">Important Features</label>
@@ -951,7 +951,7 @@
               <div class="input-group">
                 <label for="time-column">Time Column</label>
                 <input type="text" id="time-column" placeholder="e.g., event_time, date">
-                <small class="help-text">Required for time series analysis</small>
+                <small class="help-text">Required for Survival Analysis</small>
               </div>
             </div>
           </div>
@@ -1477,6 +1477,7 @@ function prepareAndRunAnalysis() {
       
     case 'visualize':
       if (!targetCol) return showError('Please specify a target column.');
+      if (!featureCol) return showError('Please specify Important Features in Advanced Config')
       callRealAPI('visualize', {
         target_column: targetCol,
         feature_column: featureCol,
@@ -1486,6 +1487,7 @@ function prepareAndRunAnalysis() {
       
     case 'feature-impact':
       if (!targetCol) return showError('Please specify a target column.');
+
       callRealAPI('feature-impact', {
         target_column: targetCol,
         drop_columns: dropCols
@@ -1526,7 +1528,7 @@ function prepareAndRunAnalysis() {
       
     case 'survival':
       if (!targetCol || !timeCol) {
-        showError('Please specify both the event (target) and time columns.');
+        showError('Please specify both the event (target) and time columns (in Advanced Configuration).');
         return;
       }
       if (targetCol === timeCol) {
