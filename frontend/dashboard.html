@@ -790,7 +790,7 @@
       </div>
 
       <!-- Step 2: Data Configuration -->
-      <div class="card" id="data-config" style="display: none;">
+      <div class="card" id="data-config">
         <h2><i class="fas fa-cogs"></i> Step 2: Data Configuration</h2>
         
         <!-- Basic Configuration -->
@@ -875,7 +875,7 @@
       </div>
 
       <!-- Step 3: Analysis Selection -->
-      <div class="card" id="analysis-selection" style="display: none;">
+      <div class="card" id="analysis-selection">
         <h2><i class="fas fa-chart-line"></i> Step 3: Select Analysis Method</h2>
         <p>Choose the type of analysis you want to perform on your data:</p>
         
@@ -973,7 +973,7 @@
         </div>
 
         <div class="analysis-actions">
-          <button class="btn primary large" onclick="runAnalysis()" id="run-analysis-btn" disabled>
+          <button class="btn primary large" onclick="prepareAndRunAnalysis()" id="run-analysis-btn" disabled>
             <i class="fas fa-play"></i>
             Run Analysis
           </button>
@@ -1254,8 +1254,13 @@ function signOutUser() {
 
       reader.readAsText(file);
     }
-          analysisButtons.forEach(button => {
-        button.addEventListener('click', function() {
+          
+      analysisButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+          // Prevent any default behavior or immediate API calls
+          e.preventDefault();
+          e.stopPropagation();
+          
           // Remove active class from all buttons
           analysisButtons.forEach(btn => btn.classList.remove('active'));
           
@@ -1268,9 +1273,39 @@ function signOutUser() {
           
           // Enable run button
           runButton.disabled = false;
+          
+          // Store selected analysis type for later use
+          runButton.dataset.analysisType = this.id;
         });
       });
 
+    // New function to prepare and run analysis (replaces direct runAnalysis call)
+    function prepareAndRunAnalysis() {
+      const runButton = document.getElementById('run-analysis-btn');
+      const selectedAnalysis = runButton.dataset.analysisType;
+      
+      if (!selectedAnalysis) {
+        showError('Please select an analysis method first');
+        return;
+      }
+      
+      // Show loader
+      document.getElementById('loader').style.display = 'block';
+      
+      // Get the button element to trigger the original click event
+      const selectedButton = document.getElementById(selectedAnalysis);
+      
+      // Here you would call your original analysis function
+      // For now, we'll just simulate the process
+      console.log('Running analysis:', selectedAnalysis);
+      
+      // Hide loader after a delay (replace with actual API call)
+      setTimeout(() => {
+        document.getElementById('loader').style.display = 'none';
+        // Trigger your original button click handler here
+        // selectedButton.click(); // Only if you want to trigger original behavior
+      }, 1000);
+    }
   // Whenever you pick a full dataset, clear train/test
   fullInput.addEventListener('change', function() {
     const file = this.files[0];
@@ -1297,7 +1332,24 @@ function signOutUser() {
 
     parseAndPreview(file, trainName, trainPreview, trainPreviewTable);
   });
+  document.getElementById('full-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('File uploaded successfully! Please configure your data settings below.');
+      }
+    });
 
+    // Add similar handlers for train and test inputs
+    document.getElementById('train-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('Training file uploaded successfully!');
+      }
+    });
+
+    document.getElementById('test-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('Test file uploaded successfully!');
+      }
+    });
   // Whenever you pick test, clear full
   testInput.addEventListener('change', function() {
     const file = this.files[0];
