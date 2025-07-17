@@ -964,7 +964,6 @@
             <h3>Time Series Settings</h3>
             <div class="input-row">
               <div class="input-group">
-                <label for="arima-order">ARIMA Order (p,d,q)</label>
                 <input type="text" id="arima-order" value="1,1,1" placeholder="e.g. 1,1,1">
                 <small class="help-text">Parameters for ARIMA model</small>
               </div>
@@ -1404,7 +1403,25 @@ function signOutUser() {
           runButton.dataset.analysisType = this.id;
         });
       });
-      // Fixed function to prepare and run analysis
+// Remove or comment out all the individual button event listeners
+// Comment out or delete these sections:
+/*
+document.getElementById('btn-regression').addEventListener('click', () => {
+  // ... regression code
+});
+
+document.getElementById('btn-classification').addEventListener('click', () => {
+  // ... classification code  
+});
+
+document.getElementById('btn-clustering').addEventListener('click', () => {
+  // ... clustering code
+});
+
+// ... and all other individual button listeners
+*/
+
+// Replace with a centralized approach - only the Run Analysis button works
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
   const selectedAnalysis = runButton.dataset.analysisType;
@@ -1416,39 +1433,166 @@ function prepareAndRunAnalysis() {
   
   console.log('Running analysis:', selectedAnalysis);
   
-  // Map the analysis type to the correct button ID and trigger the click
-  const buttonMappings = {
-    'regression': 'btn-regression',
-    'classification': 'btn-classification', 
-    'clustering': 'btn-clustering',
-    'visualize': 'btn-visualize',
-    'feature-impact': 'btn-feature-impact',
-    'counterfactual': 'btn-counterfactual',
-    'segments': 'btn-segments',
-    'risk': 'btn-risk',
-    'decision-paths': 'btn-decision-paths',
-    'time-series-analysis': 'btn-time-series-analysis',
-    'survival': 'btn-survival',
-    'classification-predict': 'btn-classification-predict',
-    'regression-predict': 'btn-regression-predict'
-  };
+  // Get common form values
+  const targetCol = document.getElementById('target-column').value;
+  const dropCols = document.getElementById('drop-columns').value;
+  const featureCol = document.getElementById('feature-column').value;
+  const timeCol = document.getElementById('time-column').value;
+  const desiredOutcome = document.getElementById('desired-outcome').value;
+  const editableFeatures = document.getElementById('editable-features').value;
+  const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
   
-  const buttonId = buttonMappings[selectedAnalysis];
+  // Check file upload for all analyses
+  const hasFullFile = fullInput.files.length === 1;
+  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
   
-  if (buttonId) {
-    const selectedButton = document.getElementById(buttonId);
-    if (selectedButton) {
-      // Trigger the original button's click event
-      selectedButton.click();
-    } else {
-      showError(`Analysis button not found: ${buttonId}`);
-    }
-  } else {
-    showError(`Unknown analysis type: ${selectedAnalysis}`);
+  if (!hasFullFile && !hasTrainTest) {
+    showError('Please upload either a full dataset or both train and test files.');
+    return;
+  }
+  
+  // Run the selected analysis
+  switch (selectedAnalysis) {
+    case 'regression':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('regression', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'classification':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('classification', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'clustering':
+      callRealAPI('clustering', {
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'visualize':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('visualize', {
+        target_column: targetCol,
+        feature_column: featureCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'feature-impact':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('feature-impact', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'counterfactual':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('counterfactual', {
+        target_column: targetCol,
+        drop_columns: dropCols,
+        desired_outcome: desiredOutcome,
+        editable_features: editableFeatures
+      });
+      break;
+      
+    case 'segments':
+      callRealAPI('segments', {
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'decision-paths':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('decision-paths', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'time-series-analysis':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('time-series-analysis', {
+        target_column: targetCol,
+        periods: forecastPeriods
+      });
+      break;
+      
+    case 'survival':
+      if (!targetCol || !timeCol) {
+        showError('Please specify both the event (target) and time columns.');
+        return;
+      }
+      if (targetCol === timeCol) {
+        showError('Event column and time column cannot be the same.');
+        return;
+      }
+      callRealAPI('survival', {
+        event_col: targetCol,
+        time_col: timeCol,
+        drop_cols: dropCols
+      });
+      break;
+      
+    case 'classification-predict':
+      if (!targetCol) return showError('Please specify the target column for classification prediction.');
+      callRealAPI('classification_predict', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'regression-predict':
+      if (!targetCol) return showError('Please specify the target column for regression prediction.');
+      callRealAPI('regression_predict', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    default:
+      showError(`Unknown analysis type: ${selectedAnalysis}`);
   }
 }
 
+// Optional: Add click handlers to analysis method buttons that just select them (don't run analysis)
+// These would update the UI to show which analysis is selected and enable the Run Analysis button
+function selectAnalysisMethod(analysisType) {
+  const runButton = document.getElementById('run-analysis-btn');
+  runButton.dataset.analysisType = analysisType;
+  runButton.disabled = false;
+  
+  // Optional: Update UI to show which analysis is selected
+  // Remove 'selected' class from all analysis buttons
+  document.querySelectorAll('.analysis-method-btn').forEach(btn => {
+    btn.classList.remove('selected');
+  });
+  
+  // Add 'selected' class to the clicked button
+  document.getElementById(`btn-${analysisType}`).classList.add('selected');
+  
+  console.log('Selected analysis method:', analysisType);
+}
 
+// Add event listeners for analysis method selection (not execution)
+document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
+document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
+document.getElementById('btn-clustering').addEventListener('click', () => selectAnalysisMethod('clustering'));
+document.getElementById('btn-visualize').addEventListener('click', () => selectAnalysisMethod('visualize'));
+document.getElementById('btn-feature-impact').addEventListener('click', () => selectAnalysisMethod('feature-impact'));
+document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
+document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
+document.getElementById('btn-decision-paths').addEventListener('click', () => selectAnalysisMethod('decision-paths'));
+document.getElementById('btn-time-series-analysis').addEventListener('click', () => selectAnalysisMethod('time-series-analysis'));
+document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
+document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
+document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
   fullInput.addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;
@@ -2347,197 +2491,7 @@ function callRealAPI(endpoint, params) {
 
 }
 
-document.getElementById('btn-survival').addEventListener('click', () => {
-  const eventCol = document.getElementById('target-column').value;
-  const timeCol  = document.getElementById('time-column').value;
-  const drop     = document.getElementById('drop-columns').value;
 
-  // Enhanced validation
-  if (!eventCol || !timeCol) {
-    showError('Please specify both the event (target) and time columns.');
-    return;
-  }
-
-  if (eventCol === timeCol) {
-    showError('Event column and time column cannot be the same.');
-    return;
-  }
-
-  // Check file upload
-  const hasFullFile = fullInput.files.length === 1;
-  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
-  
-  if (!hasFullFile && !hasTrainTest) {
-    showError('Please upload either a full dataset or both train and test files.');
-    return;
-  }
-
-  console.log('Survival analysis parameters:');
-  console.log('Event column:', eventCol);
-  console.log('Time column:', timeCol);
-  console.log('Drop columns:', drop);
-
-  callRealAPI('survival', {
-    event_col: eventCol,
-    time_col: timeCol,
-    drop_cols: drop
-  });
-});
-document.getElementById('btn-classification-predict').addEventListener('click', () => {
-  const targetCol = document.getElementById('target-column').value;
-  const drop      = document.getElementById('drop-columns').value;
-
-  if (!targetCol) {
-    showError('Please specify the target column for classification prediction.');
-    return;
-  }
-
-  const hasFullFile = fullInput.files.length === 1;
-  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
-
-  if (!hasFullFile && !hasTrainTest) {
-    showError('Please upload either a full dataset or both train and test files.');
-    return;
-  }
-
-  console.log('Classification prediction parameters:');
-  console.log('Target column:', targetCol);
-  console.log('Drop columns:', drop);
-
-  callRealAPI('classification_predict', {
-    target_column: targetCol,
-    drop_columns: drop
-  });
-});
-
-document.getElementById('btn-regression-predict').addEventListener('click', () => {
-  const targetCol = document.getElementById('target-column').value;
-  const drop      = document.getElementById('drop-columns').value;
-
-  if (!targetCol) {
-    showError('Please specify the target column for regression prediction.');
-    return;
-  }
-
-  const hasFullFile = fullInput.files.length === 1;
-  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
-
-  if (!hasFullFile && !hasTrainTest) {
-    showError('Please upload either a full dataset or both train and test files.');
-    return;
-  }
-
-  console.log('Regression prediction parameters:');
-  console.log('Target column:', targetCol);
-  console.log('Drop columns:', drop);
-
-  callRealAPI('regression_predict', {
-    target_column: targetCol,
-    drop_columns: drop
-  });
-});
-
-// Feature impact
-document.getElementById('btn-feature-impact').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('feature-impact', {
-    target_column: target,
-    drop_columns:  drop
-  });
-});
-
-// Counterfactual
-document.getElementById('btn-counterfactual').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop = document.getElementById('drop-columns').value;
-  const desiredOutcome = document.getElementById('desired-outcome').value;
-  const editableFeatures = document.getElementById('editable-features').value;
-
-  if (!target) return showError('Please specify a target column.');
-
-  callRealAPI('counterfactual', {
-    target_column: target,
-    drop_columns: drop,
-    desired_outcome: desiredOutcome,
-    editable_features: editableFeatures
-  });
-});
-
-
-// Customer segments
-document.getElementById('btn-segments').addEventListener('click', () => {
-  const drop = document.getElementById('drop-columns').value;
-  callRealAPI('segments', {
-    drop_columns: drop
-  });
-});
-
-// Decision paths
-document.getElementById('btn-decision-paths').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('decision-paths', {
-    target_column: target,
-    drop_columns:  drop
-  });
-});
-
-// Time-series analysis
-document.getElementById('btn-time-series-analysis').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const order  = document.getElementById('arima-order').value;
-  const periods = parseInt(document.getElementById("forecast-periods").value, 10);
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('time-series-analysis', {
-    target_column: target,
-    order:         order,
-    periods:       periods
-  });
-});
-document.getElementById('btn-regression').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('regression', {
-    target_column: target,
-    drop_columns:  drop
-  });
-});
-
-// Classification
-document.getElementById('btn-classification').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('classification', {
-    target_column: target,
-    drop_columns:  drop
-  });
-});
-
-// Clustering
-document.getElementById('btn-clustering').addEventListener('click', () => {
-  const drop = document.getElementById('drop-columns').value;
-  callRealAPI('clustering', {
-    drop_columns: drop
-  });
-});
-
-// Visualize
-document.getElementById('btn-visualize').addEventListener('click', () => {
-  const target = document.getElementById('target-column').value;
-  const feature = document.getElementById('feature-column').value
-  const drop   = document.getElementById('drop-columns').value;
-  if (!target) return showError('Please specify a target column.');
-  callRealAPI('visualize', {
-    target_column: target,
-    feature_column: feature,  // Changed from feature_columns to feature_column
-    drop_columns: drop
-  });
-});
   function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         sidebar.classList.toggle('open');
