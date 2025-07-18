@@ -1318,7 +1318,7 @@ function signOutUser() {
       window.location.href = `login.html?next=${next}&reason=Please log in`;
       return;
     }
-
+});
     // Helpers to show/hide previews
     function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
     function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
@@ -2527,8 +2527,6 @@ function callRealAPI(endpoint, params) {
             sidebar.classList.remove('open');
         }
     });
-  });
-
   </script>
 </body>
 </html>
