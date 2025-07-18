@@ -1379,60 +1379,7 @@ document.getElementById('btn-regression-predict').addEventListener('click', () =
     clearTable(fullPreviewTable);
 
     parseAndPreview(file, testName, testPreview, testPreviewTable);
-  });
-
-  // Make file upload area draggable (drops as full dataset)
-  const fileUpload = document.querySelector('.file-upload');
-  fileUpload.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    this.classList.add('drag-active');
-  });
-  fileUpload.addEventListener('dragleave', function(e) {
-    e.preventDefault();
-    this.classList.remove('drag-active');
-  });
-  fileUpload.addEventListener('drop', function(e) {
-    e.preventDefault();
-    this.classList.remove('drag-active');
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length !== 1) return;
-
-    const file = files[0];
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      fullName.textContent = 'Please upload a CSV or TXT file';
-      fullName.style.color = '#e74c3c';
-      return;
-    }
     
-    // Treat drop as full-dataset upload
-    fullInput.files = e.dataTransfer.files;
-    trainInput.value = '';
-    testInput.value  = '';
-    hideTrain(); hideTest();
-    clearTable(trainPreviewTable);
-    clearTable(testPreviewTable);
-
-    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
-  });
-    });
-    // Helpers to show/hide previews
-    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
-    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
-    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
-    function clearTable(tbl){ tbl.innerHTML = ''; }
-function signOutUser() {
-    // Clear tokens from localStorage or wherever you saved them
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("current_user");
-
-    // Optional: Clear session storage if used
-    sessionStorage.clear();
-
-    // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
-}
-
     // Core parser + previewer
     function parseAndPreview(file, nameEl, previewEl, tableEl) {
       nameEl.textContent = file.name;
@@ -1505,6 +1452,60 @@ function signOutUser() {
           runButton.dataset.analysisType = this.id;
         });
       });
+
+  });
+
+  // Make file upload area draggable (drops as full dataset)
+  const fileUpload = document.querySelector('.file-upload');
+  fileUpload.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('drag-active');
+  });
+  fileUpload.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+  });
+  fileUpload.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length !== 1) return;
+
+    const file = files[0];
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      fullName.textContent = 'Please upload a CSV or TXT file';
+      fullName.style.color = '#e74c3c';
+      return;
+    }
+    
+    // Treat drop as full-dataset upload
+    fullInput.files = e.dataTransfer.files;
+    trainInput.value = '';
+    testInput.value  = '';
+    hideTrain(); hideTest();
+    clearTable(trainPreviewTable);
+    clearTable(testPreviewTable);
+
+    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
+  });
+    });
+    // Helpers to show/hide previews
+    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
+    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
+    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
+    function clearTable(tbl){ tbl.innerHTML = ''; }
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/login.html"; // Adjust the path if needed
+}
 
 
 function prepareAndRunAnalysis() {
