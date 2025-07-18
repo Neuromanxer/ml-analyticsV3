@@ -1328,6 +1328,11 @@ function signOutUser() {
       runButton.dataset.analysisType = this.id;
     });
   });
+   // Helpers to show/hide previews
+    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
+    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
+    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
+    function clearTable(tbl){ tbl.innerHTML = ''; }
 // Add event listeners for analysis method selection (not execution)
 document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
 document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
@@ -1429,12 +1434,39 @@ document.getElementById('btn-regression-predict').addEventListener('click', () =
 
     parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
   });
+  
+  // Show error message
+  function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+    successMessage.style.display = 'none';
+  }
+
+  // Show success message
+  function showSuccess(message) {
+    successMessage.textContent = message;
+    successMessage.style.display = 'block';
+    errorMessage.style.display = 'none';
+  }
+  // 1) Map your friendly endpoint names to their paths
+  const endpointMap = {
+  regression:             '/regression/',
+  classification:         '/classification/',
+  clustering:             '/cluster/',
+  visualize:              '/visualize/',
+  'feature-impact':       '/feature_impact/',
+  counterfactual:         '/counterfactual/',
+  segments:               '/segment_analysis/',
+  risk:                   '/risk_analysis/',
+  'decision-paths':       '/decision_paths/',
+  'time-series-analysis': '/forecast/',
+  survival:               '/survival/',
+  classification_predict: '/classification/predict/',
+  regression_predict: '/regression/predict/',
+};
+
     });
-    // Helpers to show/hide previews
-    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
-    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
-    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
-    function clearTable(tbl){ tbl.innerHTML = ''; }
+   
 function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
     localStorage.removeItem("access_token");
@@ -2351,36 +2383,6 @@ function createDataPreviewTable(data) {
         console.log(`No default visualizations for endpoint: ${endpoint}`);
     }
   }
-
-  // Show error message
-  function showError(message) {
-    errorMessage.textContent = message;
-    errorMessage.style.display = 'block';
-    successMessage.style.display = 'none';
-  }
-
-  // Show success message
-  function showSuccess(message) {
-    successMessage.textContent = message;
-    successMessage.style.display = 'block';
-    errorMessage.style.display = 'none';
-  }
-  // 1) Map your friendly endpoint names to their paths
-  const endpointMap = {
-  regression:             '/regression/',
-  classification:         '/classification/',
-  clustering:             '/cluster/',
-  visualize:              '/visualize/',
-  'feature-impact':       '/feature_impact/',
-  counterfactual:         '/counterfactual/',
-  segments:               '/segment_analysis/',
-  risk:                   '/risk_analysis/',
-  'decision-paths':       '/decision_paths/',
-  'time-series-analysis': '/forecast/',
-  survival:               '/survival/',
-  classification_predict: '/classification/predict/',
-  regression_predict: '/regression/predict/',
-};
 
 function callRealAPI(endpoint, params) {
   // Show the spinner & clear any messages
