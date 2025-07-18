@@ -1551,7 +1551,10 @@ function prepareAndRunAnalysis() {
   const desiredOutcome = document.getElementById('desired-outcome').value;
   const editableFeatures = document.getElementById('editable-features').value;
   const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
-  
+    // Inputs & preview elements
+  const fullInput  = document.getElementById('full-input');
+  const trainInput = document.getElementById('train-input');
+  const testInput  = document.getElementById('test-input');
   // Check file upload for all analyses
   const hasFullFile = fullInput.files.length === 1;
   const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
