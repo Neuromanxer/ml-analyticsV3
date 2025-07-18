@@ -1535,6 +1535,7 @@ function signOutUser() {
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
   const selectedAnalysis = runButton.dataset.analysisType;
+  const errorMessage           = document.getElementById('error-message');
   
   if (!selectedAnalysis) {
     showError('Please select an analysis method first');
@@ -2388,6 +2389,7 @@ function createDataPreviewTable(data) {
   }
 
 function callRealAPI(endpoint, params) {
+  const errorMessage           = document.getElementById('error-message');
   // Show the spinner & clear any messages
   loader.style.display        = 'block';
   errorMessage.style.display  = 'none';
