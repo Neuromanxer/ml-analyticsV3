@@ -1312,7 +1312,22 @@ function signOutUser() {
       window.location.href = `login.html?next=${next}&reason=Please log in`;
       return;
     }
-    
+    // Analysis method selection buttons
+  analysisButtons.forEach(button => {
+    button.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      analysisButtons.forEach(btn => btn.classList.remove('active'));
+      this.classList.add('active');
+
+      const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
+      showAnalysisSpecificConfig(analysisType);
+
+      runButton.disabled = false;
+      runButton.dataset.analysisType = this.id;
+    });
+  });
 // Add event listeners for analysis method selection (not execution)
 document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
 document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
@@ -1482,30 +1497,7 @@ function signOutUser() {
 
       reader.readAsText(file);
     }
-          
-      analysisButtons.forEach(button => {
-        button.addEventListener('click', function(e) {
-          // Prevent any default behavior or immediate API calls
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Remove active class from all buttons
-          analysisButtons.forEach(btn => btn.classList.remove('active'));
-          
-          // Add active class to clicked button
-          this.classList.add('active');
-          
-          // Show analysis-specific configuration if needed
-          const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
-          showAnalysisSpecificConfig(analysisType);
-          
-          // Enable run button
-          runButton.disabled = false;
-          
-          // Store selected analysis type for later use
-          runButton.dataset.analysisType = this.id;
-        });
-      });
+
 
 
 function prepareAndRunAnalysis() {
