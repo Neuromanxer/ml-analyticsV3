@@ -592,7 +592,7 @@ def do_classification(
                     "conversion_rate": conversion_rate,
                     "impact_metrics": impact_metrics,
                     "training_columns": training_columns,
-                    "summary_stats": summary
+                    "summary_stats": summary,
                 }
                 
                 # Add additional visualizations
@@ -2294,11 +2294,7 @@ def do_regression(
                     # Get the current script directory (where do_regression is located)
                     current_dir = PathL(__file__).parent
                     shap_runner_path = current_dir / "shap_runner.py"
-                    
-                    print(f"[SHAP DEBUG] Current directory: {current_dir}")
-                    print(f"[SHAP DEBUG] SHAP runner path: {shap_runner_path}")
-                    print(f"[SHAP DEBUG] SHAP runner exists: {shap_runner_path.exists()}")
-                    
+
                     if not shap_runner_path.exists():
                         raise FileNotFoundError(f"shap_runner.py not found at {shap_runner_path}")
                     
@@ -2314,10 +2310,7 @@ def do_regression(
                             "target_column": target_column,
                             "save_filename": f"{user_id}_feature_importance.png"
                         }, f, indent=2)
-                    
-                    print(f"[SHAP DEBUG] Request JSON created: {request_json}")
-                    print(f"[SHAP DEBUG] Request JSON exists: {request_json.exists()}")
-                    
+
                     # Verify request JSON content
                     with open(request_json, "r") as f:
                         request_content = json.load(f)
@@ -2325,16 +2318,12 @@ def do_regression(
 
                     # Set up the subprocess command
                     cmd = [sys.executable, str(shap_runner_path.resolve()), str(request_json.resolve())]
-                    print(f"[SHAP DEBUG] Command: {' '.join(cmd)}")
-                    print(f"[SHAP DEBUG] Working directory: {current_dir}")
-                    
+
                     # Add environment variables for better error reporting
                     env = os.environ.copy()
                     env['PYTHONUNBUFFERED'] = '1'  # Force unbuffered output
                     env['PYTHONIOENCODING'] = 'utf-8'  # Ensure proper encoding
-                    
-                    print(f"[SHAP DEBUG] Starting subprocess at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
+
                     # Run SHAP subprocess with real-time output
                     process = subprocess.Popen(
                         cmd,
@@ -2364,7 +2353,6 @@ def do_regression(
                         
                         # Check for timeout
                         if time.time() - start_time > timeout_seconds:
-                            print(f"[SHAP ERROR] Subprocess timed out after {timeout_seconds} seconds")
                             process.terminate()
                             try:
                                 process.wait(timeout=5)
@@ -2377,25 +2365,19 @@ def do_regression(
                         line = process.stdout.readline()
                         if line:
                             output_lines.append(line)
-                            print(f"[SHAP SUBPROCESS] {line.strip()}")
                         else:
                             time.sleep(0.1)  # Small delay to prevent busy waiting
                     
                     # Get the return code
                     return_code = process.returncode
                     full_output = ''.join(output_lines)
-                    
-                    print(f"[SHAP DEBUG] Process completed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    print(f"[SHAP DEBUG] Return code: {return_code}")
-                    print(f"[SHAP DEBUG] Full output length: {len(full_output)} characters")
-                    
+
                     if return_code != 0:
                         raise subprocess.CalledProcessError(return_code, cmd, output=full_output)
 
                     # Load results
                     result_json_path = user_dir / "result.json"
-                    print(f"[SHAP DEBUG] Looking for result file: {result_json_path}")
-                    print(f"[SHAP DEBUG] Result file exists: {result_json_path.exists()}")
+
                     
                     if result_json_path.exists():
                         try:
