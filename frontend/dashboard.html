@@ -1509,12 +1509,31 @@ function prepareAndRunAnalysis() {
       
     case 'time-series-analysis':
       if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('time-series-analysis', {
+
+      const arimaOrderInput = document.getElementById('arima-order').value.trim();
+
+      const requestPayload = {
         target_column: targetCol,
-        periods: forecastPeriods
-      });
+        periods: forecastPeriods,
+      };
+
+      if (arimaOrderInput) {
+        try {
+          const orderArray = arimaOrderInput.split(',').map(num => parseInt(num.trim(), 10));
+          if (orderArray.length === 3 && orderArray.every(num => !isNaN(num))) {
+            requestPayload.arima_order = orderArray;
+          } else {
+            return showError('ARIMA order must be three comma-separated numbers (e.g., 1,1,1).');
+          }
+        } catch (e) {
+          return showError('Invalid ARIMA order input.');
+        }
+      }
+
+      callRealAPI('time-series-analysis', requestPayload);
       break;
-      
+
+          
     case 'survival':
       if (!targetCol || !timeCol) {
         showError('Please specify both the event (target) and time columns (in Advanced Configuration).');
