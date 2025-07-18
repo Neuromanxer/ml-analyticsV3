@@ -1188,13 +1188,6 @@ const targetVariableMap = {
         requirements: ["amount_paid", "customer_id"],
         businessGoals: ["revenue", "customer_value"]
     },
-    churn: {
-        name: "Customer Churn Prediction",
-        description: "Identifies customers likely to stop engaging (inactive >60 days)",
-        formula: "1 if (Now - Last Activity) > 60 days, else 0",
-        requirements: ["visit_date", "customer_id"],
-        businessGoals: ["retention"]
-    },
     aov: {
         name: "Average Order Value (AOV)",
         description: "Average amount spent per transaction",
