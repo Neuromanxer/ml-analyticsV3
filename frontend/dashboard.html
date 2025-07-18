@@ -1318,6 +1318,31 @@ function signOutUser() {
       window.location.href = `login.html?next=${next}&reason=Please log in`;
       return;
     }
+    
+      analysisButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+          // Prevent any default behavior or immediate API calls
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Remove active class from all buttons
+          analysisButtons.forEach(btn => btn.classList.remove('active'));
+          
+          // Add active class to clicked button
+          this.classList.add('active');
+          
+          // Show analysis-specific configuration if needed
+          const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
+          showAnalysisSpecificConfig(analysisType);
+          
+          // Enable run button
+          runButton.disabled = false;
+          
+          // Store selected analysis type for later use
+          runButton.dataset.analysisType = this.id;
+        });
+      });
+
 });
     // Helpers to show/hide previews
     function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
@@ -1386,30 +1411,6 @@ function signOutUser() {
       reader.readAsText(file);
     }
           
-      analysisButtons.forEach(button => {
-        button.addEventListener('click', function(e) {
-          // Prevent any default behavior or immediate API calls
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Remove active class from all buttons
-          analysisButtons.forEach(btn => btn.classList.remove('active'));
-          
-          // Add active class to clicked button
-          this.classList.add('active');
-          
-          // Show analysis-specific configuration if needed
-          const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
-          showAnalysisSpecificConfig(analysisType);
-          
-          // Enable run button
-          runButton.disabled = false;
-          
-          // Store selected analysis type for later use
-          runButton.dataset.analysisType = this.id;
-        });
-      });
-
 // Replace with a centralized approach - only the Run Analysis button works
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
