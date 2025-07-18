@@ -1302,9 +1302,15 @@ function signOutUser() {
     const metricsDetails         = document.getElementById('metrics-details');
     const visualizationContainer = document.getElementById('visualization-container');
     const token  = safeStorageGet('access_token');
-     const analysisButtons = document.querySelectorAll('.analysis-btn');
-      const runButton = document.getElementById('run-analysis-btn');
-      
+    const analysisButtons = document.querySelectorAll('.analysis-btn');
+    const runButton = document.getElementById('run-analysis-btn');
+    document.querySelectorAll('.analysis-button').forEach(button => {
+    button.addEventListener('click', function () {
+      runButton.dataset.analysisType = this.id;
+      runButton.disabled = false;  // ✅ enable button when analysis type is selected
+    });
+  });
+
 
     if (!token || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
