@@ -1465,7 +1465,97 @@ document.getElementById('btn-regression-predict').addEventListener('click', () =
   regression_predict: '/regression/predict/',
 };
 
-    });
+
+
+function callRealAPI(endpoint, params) {
+  const errorMessage           = document.getElementById('error-message');
+  // Show the spinner & clear any messages
+  loader.style.display        = 'block';
+  errorMessage.style.display  = 'none';
+  successMessage.style.display= 'none';
+
+  // Build the URL & form data
+  const url = API_BASE_URL + endpointMap[endpoint];
+  const formData = new FormData();
+
+  // Debug: Log what we're sending
+  console.log('Calling endpoint:', endpoint);
+  console.log('URL:', url);
+  console.log('Params:', params);
+
+  // 1) Append files
+  if (fullInput.files.length === 1) {
+    formData.append('file', fullInput.files[0]);
+    console.log('Uploading full dataset:', fullInput.files[0].name);
+  } else if (trainInput.files.length === 1 && testInput.files.length === 1) {
+    formData.append('train_file', trainInput.files[0]);
+    formData.append('test_file',  testInput.files[0]);
+    console.log('Uploading train/test files:', trainInput.files[0].name, testInput.files[0].name);
+  } else {
+    loader.style.display = 'none';
+    showError('Please upload either a full dataset or both train+test files.');
+    return;
+  }
+
+    // 2) Append any additional form fields
+  for (const [key, value] of Object.entries(params)) {
+  if (value != null && value !== '') {
+    // Convert all values to strings, handling booleans properly
+    const stringValue = typeof value === 'boolean' ? value.toString() : String(value);
+    formData.append(key, stringValue);
+    console.log(`Form field: ${key} = ${stringValue}`);
+  }
+}
+
+  // 3) Pull the stored JWT
+  const token = localStorage.getItem('access_token');
+  if (!token || isTokenExpired(token)) {
+    loader.style.display = 'none';
+    alert('Session expired—please log in again.');
+    window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
+    return;
+  }
+  
+  const headers = new Headers();
+  headers.append('Authorization', `Bearer ${String(token)}`);
+
+  fetch(url, {
+    method: 'POST',
+    headers: headers,
+    body: formData
+  })
+
+  .then(res => {
+    console.log('Response status:', res.status);
+    console.log('Response headers:', res.headers);
+
+    if (!res.ok) {
+      // Read any error text from the server and throw
+      return res.text().then(text => {
+        console.error('Server error response:', text);
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      });
+    }
+    // Always expect JSON (with base64 images)
+    return res.json();
+  })
+  .then(data => {
+    loader.style.display = 'none';
+    showSuccess('Analysis completed successfully.');
+    displayResults(endpoint, data);
+  })
+  
+  .catch(err => {
+    loader.style.display = 'none';
+    showError(`Error: ${err.message}`);
+    console.error('Full API error:', err);
+    console.error('Error stack:', err.stack);
+  });
+
+
+}
+    
+});
    
 function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
@@ -2387,94 +2477,6 @@ function createDataPreviewTable(data) {
         console.log(`No default visualizations for endpoint: ${endpoint}`);
     }
   }
-
-function callRealAPI(endpoint, params) {
-  const errorMessage           = document.getElementById('error-message');
-  // Show the spinner & clear any messages
-  loader.style.display        = 'block';
-  errorMessage.style.display  = 'none';
-  successMessage.style.display= 'none';
-
-  // Build the URL & form data
-  const url = API_BASE_URL + endpointMap[endpoint];
-  const formData = new FormData();
-
-  // Debug: Log what we're sending
-  console.log('Calling endpoint:', endpoint);
-  console.log('URL:', url);
-  console.log('Params:', params);
-
-  // 1) Append files
-  if (fullInput.files.length === 1) {
-    formData.append('file', fullInput.files[0]);
-    console.log('Uploading full dataset:', fullInput.files[0].name);
-  } else if (trainInput.files.length === 1 && testInput.files.length === 1) {
-    formData.append('train_file', trainInput.files[0]);
-    formData.append('test_file',  testInput.files[0]);
-    console.log('Uploading train/test files:', trainInput.files[0].name, testInput.files[0].name);
-  } else {
-    loader.style.display = 'none';
-    showError('Please upload either a full dataset or both train+test files.');
-    return;
-  }
-
-    // 2) Append any additional form fields
-  for (const [key, value] of Object.entries(params)) {
-  if (value != null && value !== '') {
-    // Convert all values to strings, handling booleans properly
-    const stringValue = typeof value === 'boolean' ? value.toString() : String(value);
-    formData.append(key, stringValue);
-    console.log(`Form field: ${key} = ${stringValue}`);
-  }
-}
-
-  // 3) Pull the stored JWT
-  const token = localStorage.getItem('access_token');
-  if (!token || isTokenExpired(token)) {
-    loader.style.display = 'none';
-    alert('Session expired—please log in again.');
-    window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}`;
-    return;
-  }
-  
-  const headers = new Headers();
-  headers.append('Authorization', `Bearer ${String(token)}`);
-
-  fetch(url, {
-    method: 'POST',
-    headers: headers,
-    body: formData
-  })
-
-  .then(res => {
-    console.log('Response status:', res.status);
-    console.log('Response headers:', res.headers);
-
-    if (!res.ok) {
-      // Read any error text from the server and throw
-      return res.text().then(text => {
-        console.error('Server error response:', text);
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      });
-    }
-    // Always expect JSON (with base64 images)
-    return res.json();
-  })
-  .then(data => {
-    loader.style.display = 'none';
-    showSuccess('Analysis completed successfully.');
-    displayResults(endpoint, data);
-  })
-  
-  .catch(err => {
-    loader.style.display = 'none';
-    showError(`Error: ${err.message}`);
-    console.error('Full API error:', err);
-    console.error('Error stack:', err.stack);
-  });
-
-
-}
 
 
   function toggleSidebar() {
