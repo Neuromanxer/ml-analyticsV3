@@ -1179,6 +1179,20 @@
   classification_predict: '/classification/predict/',
   regression_predict: '/regression/predict/',
 };
+  // Show error message
+  function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+    successMessage.style.display = 'none';
+  }
+
+  // Show success message
+  function showSuccess(message) {
+    successMessage.textContent = message;
+    successMessage.style.display = 'block';
+    errorMessage.style.display = 'none';
+  }
+
    function toggleAdvancedConfig() {
       const advancedConfig = document.getElementById('advanced-config');
       const icon = document.querySelector('.section-toggle i');
@@ -1450,19 +1464,6 @@ document.getElementById('btn-regression-predict').addEventListener('click', () =
     parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
   });
   
-  // Show error message
-  function showError(message) {
-    errorMessage.textContent = message;
-    errorMessage.style.display = 'block';
-    successMessage.style.display = 'none';
-  }
-
-  // Show success message
-  function showSuccess(message) {
-    successMessage.textContent = message;
-    successMessage.style.display = 'block';
-    errorMessage.style.display = 'none';
-  }
 
 
     });
