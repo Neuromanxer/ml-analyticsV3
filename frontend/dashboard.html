@@ -1342,7 +1342,109 @@ function signOutUser() {
           runButton.dataset.analysisType = this.id;
         });
       });
+      
+// Add event listeners for analysis method selection (not execution)
+document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
+document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
+document.getElementById('btn-clustering').addEventListener('click', () => selectAnalysisMethod('clustering'));
+document.getElementById('btn-visualize').addEventListener('click', () => selectAnalysisMethod('visualize'));
+document.getElementById('btn-feature-impact').addEventListener('click', () => selectAnalysisMethod('feature-impact'));
+document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
+document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
+document.getElementById('btn-decision-paths').addEventListener('click', () => selectAnalysisMethod('decision-paths'));
+document.getElementById('btn-time-series-analysis').addEventListener('click', () => selectAnalysisMethod('time-series-analysis'));
+document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
+document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
+document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
+  fullInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
 
+    // clear train/test
+    trainInput.value = '';
+    testInput.value  = '';
+    hideTrain(); hideTest();
+    clearTable(trainPreviewTable);
+    clearTable(testPreviewTable);
+
+    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
+  });
+
+  // Whenever you pick train, clear full
+  trainInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    fullInput.value = '';
+    hideFull();
+    clearTable(fullPreviewTable);
+
+    parseAndPreview(file, trainName, trainPreview, trainPreviewTable);
+  });
+  document.getElementById('full-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('File uploaded successfully! Please configure your data settings below.');
+      }
+    });
+
+    // Add similar handlers for train and test inputs
+    document.getElementById('train-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('Training file uploaded successfully!');
+      }
+    });
+
+    document.getElementById('test-input').addEventListener('change', function() {
+      if (this.files.length > 0) {
+        showSuccess('Test file uploaded successfully!');
+      }
+    });
+  // Whenever you pick test, clear full
+  testInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    fullInput.value = '';
+    hideFull();
+    clearTable(fullPreviewTable);
+
+    parseAndPreview(file, testName, testPreview, testPreviewTable);
+  });
+
+  // Make file upload area draggable (drops as full dataset)
+  const fileUpload = document.querySelector('.file-upload');
+  fileUpload.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('drag-active');
+  });
+  fileUpload.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+  });
+  fileUpload.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-active');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length !== 1) return;
+
+    const file = files[0];
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      fullName.textContent = 'Please upload a CSV or TXT file';
+      fullName.style.color = '#e74c3c';
+      return;
+    }
+    
+    // Treat drop as full-dataset upload
+    fullInput.files = e.dataTransfer.files;
+    trainInput.value = '';
+    testInput.value  = '';
+    hideTrain(); hideTest();
+    clearTable(trainPreviewTable);
+    clearTable(testPreviewTable);
+
+    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
+  });
+  
 });
     // Helpers to show/hide previews
     function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
@@ -1591,108 +1693,6 @@ function selectAnalysisMethod(analysisType) {
   console.log('Selected analysis method:', analysisType);
 }
 
-// Add event listeners for analysis method selection (not execution)
-document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
-document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
-document.getElementById('btn-clustering').addEventListener('click', () => selectAnalysisMethod('clustering'));
-document.getElementById('btn-visualize').addEventListener('click', () => selectAnalysisMethod('visualize'));
-document.getElementById('btn-feature-impact').addEventListener('click', () => selectAnalysisMethod('feature-impact'));
-document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
-document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
-document.getElementById('btn-decision-paths').addEventListener('click', () => selectAnalysisMethod('decision-paths'));
-document.getElementById('btn-time-series-analysis').addEventListener('click', () => selectAnalysisMethod('time-series-analysis'));
-document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
-document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
-document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
-  fullInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (!file) return;
-
-    // clear train/test
-    trainInput.value = '';
-    testInput.value  = '';
-    hideTrain(); hideTest();
-    clearTable(trainPreviewTable);
-    clearTable(testPreviewTable);
-
-    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
-  });
-
-  // Whenever you pick train, clear full
-  trainInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (!file) return;
-
-    fullInput.value = '';
-    hideFull();
-    clearTable(fullPreviewTable);
-
-    parseAndPreview(file, trainName, trainPreview, trainPreviewTable);
-  });
-  document.getElementById('full-input').addEventListener('change', function() {
-      if (this.files.length > 0) {
-        showSuccess('File uploaded successfully! Please configure your data settings below.');
-      }
-    });
-
-    // Add similar handlers for train and test inputs
-    document.getElementById('train-input').addEventListener('change', function() {
-      if (this.files.length > 0) {
-        showSuccess('Training file uploaded successfully!');
-      }
-    });
-
-    document.getElementById('test-input').addEventListener('change', function() {
-      if (this.files.length > 0) {
-        showSuccess('Test file uploaded successfully!');
-      }
-    });
-  // Whenever you pick test, clear full
-  testInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (!file) return;
-
-    fullInput.value = '';
-    hideFull();
-    clearTable(fullPreviewTable);
-
-    parseAndPreview(file, testName, testPreview, testPreviewTable);
-  });
-
-  // Make file upload area draggable (drops as full dataset)
-  const fileUpload = document.querySelector('.file-upload');
-  fileUpload.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    this.classList.add('drag-active');
-  });
-  fileUpload.addEventListener('dragleave', function(e) {
-    e.preventDefault();
-    this.classList.remove('drag-active');
-  });
-  fileUpload.addEventListener('drop', function(e) {
-    e.preventDefault();
-    this.classList.remove('drag-active');
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length !== 1) return;
-
-    const file = files[0];
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      fullName.textContent = 'Please upload a CSV or TXT file';
-      fullName.style.color = '#e74c3c';
-      return;
-    }
-    
-    // Treat drop as full-dataset upload
-    fullInput.files = e.dataTransfer.files;
-    trainInput.value = '';
-    testInput.value  = '';
-    hideTrain(); hideTest();
-    clearTable(trainPreviewTable);
-    clearTable(testPreviewTable);
-
-    parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
-  });
-  
  
   function formatKeyValObject(obj, indent = 0) {
   if (!obj || typeof obj !== "object") return "";
