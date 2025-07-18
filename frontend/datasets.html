@@ -1174,143 +1174,112 @@
  */
 // Target variable map
 const targetVariableMap = {
-            clv: {
-                name: "Customer Lifetime Value (CLV)",
-                description: "Predicts the total value a customer will bring over their entire relationship",
-                formula: "AOV × Frequency × (Days Active / Period)",
-                requirements: ["amount_paid", "visit_date", "customer_id"],
-                businessGoals: ["customer_value"],
-                userInputs: [
-                    { name: "period_days", label: "Period (Days)", type: "number", default: 30, description: "Number of days to normalize frequency calculation" }
-                ]
-            },
-            revenue_per_customer: {
-                name: "Revenue per Customer",
-                description: "Average revenue generated per customer",
-                formula: "Total Spent / Total Visits",
-                requirements: ["amount_paid", "customer_id"],
-                businessGoals: ["revenue", "customer_value"],
-                userInputs: []
-            },
-            churn: {
-                name: "Customer Churn Prediction",
-                description: "Identifies customers likely to stop engaging",
-                formula: "1 if (Now - Last Activity) > Threshold, else 0",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention"],
-                userInputs: [
-                    { name: "churn_threshold_days", label: "Churn Threshold (Days)", type: "number", default: 60, description: "Days of inactivity before considering customer churned" }
-                ]
-            },
-            aov: {
-                name: "Average Order Value (AOV)",
-                description: "Average amount spent per transaction",
-                formula: "Total Spent / Total Visits",
-                requirements: ["amount_paid", "customer_id"],
-                businessGoals: ["revenue"],
-                userInputs: []
-            },
-            purchase_frequency: {
-                name: "Purchase Frequency",
-                description: "How often customers make purchases",
-                formula: "Total Visits / Days Active",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["behavior", "retention"],
-                userInputs: []
-            },
-            customer_lifetime: {
-                name: "Customer Lifetime (Days)",
-                description: "How long customers remain active",
-                formula: "Last Activity - First Activity",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention", "behavior"],
-                userInputs: []
-            },
-            repeat_purchase_rate: {
-                name: "Repeat Purchase Rate",
-                description: "Whether customers make repeat purchases",
-                formula: "1 if Total Visits > Threshold, else 0",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention", "behavior"],
-                userInputs: [
-                    { name: "repeat_threshold", label: "Repeat Purchase Threshold", type: "number", default: 1, description: "Minimum visits to consider as repeat customer" }
-                ]
-            },
-            recency: {
-                name: "Customer Recency",
-                description: "Days since last customer activity",
-                formula: "Now - Last Activity",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention", "behavior"],
-                userInputs: []
-            },
-            revenue_per_visit: {
-                name: "Revenue per Visit",
-                description: "Average revenue generated per customer visit",
-                formula: "Total Spent / Total Visits",
-                requirements: ["amount_paid", "customer_id"],
-                businessGoals: ["revenue"],
-                userInputs: []
-            },
-            loyalty_score: {
-                name: "Loyalty Score",
-                description: "Quantifies customer loyalty based on visit frequency and recency",
-                formula: "(Frequency Score × Weight1) + (Recency Score × Weight2)",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention", "customer_value"],
-                userInputs: [
-                    { name: "frequency_weight", label: "Frequency Weight", type: "number", default: 0.6, step: 0.1, description: "Weight for frequency component (0-1)" },
-                    { name: "recency_weight", label: "Recency Weight", type: "number", default: 0.4, step: 0.1, description: "Weight for recency component (0-1)" }
-                ]
-            },
-            engagement_score: {
-                name: "Engagement Score",
-                description: "Measures how engaged a customer is over time",
-                formula: "Visits / Days Active",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["behavior", "retention"],
-                userInputs: []
-            },
-            profit_per_customer: {
-                name: "Profit per Customer",
-                description: "Revenue multiplied by per-customer margin",
-                formula: "Total Spent × Margin",
-                requirements: ["amount_paid", "margin", "customer_id"],
-                businessGoals: ["revenue", "customer_value"],
-                userInputs: [
-                    { name: "default_margin", label: "Default Margin (%)", type: "number", default: 20, description: "Default margin percentage if margin column not available" }
-                ]
-            },
-            inactivity_risk_score: {
-                name: "Inactivity Risk Score",
-                description: "Flags customers inactive for specified period",
-                formula: "1 if (Now - Last Activity) > Threshold, else 0",
-                requirements: ["visit_date", "customer_id"],
-                businessGoals: ["retention"],
-                userInputs: [
-                    { name: "inactivity_threshold_days", label: "Inactivity Threshold (Days)", type: "number", default: 90, description: "Days of inactivity before flagging as at risk" }
-                ]
-            },
-            vip_flag: {
-                name: "VIP Flag",
-                description: "Binary flag for high-spending customers",
-                formula: "1 if Total Spent > Threshold, else 0",
-                requirements: ["amount_paid", "customer_id"],
-                businessGoals: ["revenue", "customer_value"],
-                userInputs: [
-                    { name: "vip_threshold", label: "VIP Spending Threshold", type: "number", default: 500, description: "Minimum spending amount to qualify as VIP" }
-                ]
-            },
-            referral_score: {
-                name: "Referral Score",
-                description: "Ratio of referrals to total visits (proxy for influence)",
-                formula: "Referrals / (Total Visits + 1)",
-                requirements: ["referral_code", "customer_id", "visit_date"],
-                businessGoals: ["customer_value", "behavior"],
-                userInputs: []
-            }
-        };
-
+    clv: {
+        name: "Customer Lifetime Value (CLV)",
+        description: "Predicts the total value a customer will bring over their entire relationship",
+        formula: "AOV × Frequency × (Days Active / 30)",
+        requirements: ["amount_paid", "visit_date", "customer_id"],
+        businessGoals: ["customer_value"]
+    },
+    revenue_per_customer: {
+        name: "Revenue per Customer",
+        description: "Average revenue generated per customer",
+        formula: "Total Spent / Total Visits",
+        requirements: ["amount_paid", "customer_id"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    churn: {
+        name: "Customer Churn Prediction",
+        description: "Identifies customers likely to stop engaging (inactive >60 days)",
+        formula: "1 if (Now - Last Activity) > 60 days, else 0",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention"]
+    },
+    aov: {
+        name: "Average Order Value (AOV)",
+        description: "Average amount spent per transaction",
+        formula: "Total Spent / Total Visits",
+        requirements: ["amount_paid", "customer_id"],
+        businessGoals: ["revenue"]
+    },
+    purchase_frequency: {
+        name: "Purchase Frequency",
+        description: "How often customers make purchases",
+        formula: "Total Visits / Days Active",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["behavior", "retention"]
+    },
+    customer_lifetime: {
+        name: "Customer Lifetime (Days)",
+        description: "How long customers remain active",
+        formula: "Last Activity - First Activity",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention", "behavior"]
+    },
+    repeat_purchase_rate: {
+        name: "Repeat Purchase Rate",
+        description: "Whether customers make repeat purchases",
+        formula: "1 if Total Visits > 1, else 0",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention", "behavior"]
+    },
+    recency: {
+        name: "Customer Recency",
+        description: "Days since last customer activity",
+        formula: "Now - Last Activity",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention", "behavior"]
+    },
+    revenue_per_visit: {
+        name: "Revenue per Visit",
+        description: "Average revenue generated per customer visit",
+        formula: "Total Spent / Total Visits",
+        requirements: ["amount_paid", "customer_id"],
+        businessGoals: ["revenue"]
+    },
+    loyalty_score: {
+        name: "Loyalty Score",
+        description: "Quantifies customer loyalty based on visit frequency and recency",
+        formula: "(Frequency Score × 0.6) + (Recency Score × 0.4)",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention", "customer_value"]
+    },
+    engagement_score: {
+        name: "Engagement Score",
+        description: "Measures how engaged a customer is over time",
+        formula: "Visits / Days Active",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["behavior", "retention"]
+    },
+    profit_per_customer: {
+        name: "Profit per Customer",
+        description: "Revenue multiplied by per-customer margin",
+        formula: "Total Spent × Margin",
+        requirements: ["amount_paid", "margin", "customer_id"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    inactivity_risk_score: {
+        name: "Inactivity Risk Score",
+        description: "Flags customers inactive for more than 90 days",
+        formula: "1 if (Now - Last Activity) > 90 days, else 0",
+        requirements: ["visit_date", "customer_id"],
+        businessGoals: ["retention"]
+    },
+    vip_flag: {
+        name: "VIP Flag",
+        description: "Binary flag for high-spending customers (e.g. > $500)",
+        formula: "1 if Total Spent > 500, else 0",
+        requirements: ["amount_paid", "customer_id"],
+        businessGoals: ["revenue", "customer_value"]
+    },
+    referral_score: {
+        name: "Referral Score",
+        description: "Ratio of referrals to total visits (proxy for influence)",
+        formula: "Referrals / (Total Visits + 1)",
+        requirements: ["referral_code", "customer_id", "visit_date"],
+        businessGoals: ["customer_value", "behavior"]
+    },
+};
 
 function toggleColumn(columnId) {
     const checkbox = document.getElementById(columnId);
@@ -1481,77 +1450,30 @@ function populateTargetVariables() {
         container.appendChild(option);
     });
 }
-        let userInputValues = {};
-
-        function showResults() {
-            const targetSelect = document.getElementById('targetSelect');
-            selectedTargetVariable = targetSelect.value;
-            
-            const resultDetails = document.getElementById('resultDetails');
-            if (!resultDetails) return;
-            
-            const target = targetVariableMap[selectedTargetVariable];
-            if (!target) {
-                resultDetails.innerHTML = '';
-                return;
-            }
-
-            let userInputsHTML = '';
-            if (target.userInputs && target.userInputs.length > 0) {
-                userInputsHTML = `
-                    <div class="user-inputs">
-                        <h5>Configuration Parameters:</h5>
-                        ${target.userInputs.map(input => `
-                            <div class="input-row">
-                                <label for="${input.name}">${input.label}:</label>
-                                <input 
-                                    type="${input.type}" 
-                                    id="${input.name}" 
-                                    value="${input.default}" 
-                                    ${input.step ? `step="${input.step}"` : ''}
-                                    onchange="updateUserInput('${input.name}', this.value)"
-                                />
-                            </div>
-                            <div class="description">${input.description}</div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-
-            resultDetails.innerHTML = `
-                <h5>${target.name}</h5>
-                <p><strong>Description:</strong> ${target.description}</p>
-                <p><strong>Formula:</strong> ${target.formula}</p>
-                <p><strong>Required Columns:</strong> ${target.requirements.join(', ')}</p>
-                
-                ${userInputsHTML}
-                
-                <h5 style="margin-top: 20px;">Python Implementation:</h5>
-                <div class="code-block">
-                    <pre><code>target_type = "${selectedTargetVariable}"
+function showResults() {
+    const resultDetails = document.getElementById('resultDetails');
+    if (!resultDetails) return;
+    
+    const target = targetVariableMap[selectedTargetVariable];
+    if (!target) return;
+    
+    resultDetails.innerHTML = `
+        <h5>${target.name}</h5>
+        <p><strong>Description:</strong> ${target.description}</p>
+        <p><strong>Formula:</strong> ${target.formula}</p>
+        <p><strong>Required Columns:</strong> ${target.requirements.join(', ')}</p>
+        
+        <h5 style="margin-top: 20px;">Python Implementation:</h5>
+        <div class="code-block">
+            <pre><code>target_type = "${selectedTargetVariable}"
 ${generatePythonCode(selectedTargetVariable)}</code></pre>
-                </div>
-                
-                <h5 style="margin-top: 20px;">Next Step:</h5>
-                <p>Upload your CSV file to generate the target variable and preview the results.</p>
-                <input type="file" id="csvUploadInput" accept=".csv" onchange="updateNextButton()" />
-            `;
-
-            // Initialize user input values
-            if (target.userInputs) {
-                target.userInputs.forEach(input => {
-                    userInputValues[input.name] = input.default;
-                });
-            }
-        }
- function updateUserInput(inputName, value) {
-            userInputValues[inputName] = parseFloat(value) || value;
-            // Regenerate the Python code with updated values
-            const codeBlock = document.querySelector('.code-block pre code');
-            if (codeBlock) {
-                codeBlock.textContent = `target_type = "${selectedTargetVariable}"\n${generatePythonCode(selectedTargetVariable)}`;
-            }
-        }
+        </div>
+        
+        <h5 style="margin-top: 20px;">Next Step:</h5>
+        <p>Upload your CSV file to generate the target variable and preview the results.</p>
+        <input type="file" id="csvUploadInput" accept=".csv" onchange="updateNextButton()" />
+    `;
+}
 
 function showColumnInputForm() {
     const container = document.getElementById("columnInputForm");
@@ -1585,13 +1507,8 @@ function showColumnInputForm() {
     });
 }
 function generatePythonCode(targetType) {
-            const getValue = (key, defaultValue) => userInputValues[key] !== undefined ? userInputValues[key] : defaultValue;
-            
-            const codeMap = {
-                clv: `# Configuration
-period_days = ${getValue('period_days', 30)}
-
-df["visit_date"] = pd.to_datetime(df["visit_date"])
+    const codeMap = {
+        clv: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
     "amount_paid": "sum",
     "visit_date": ["min", "max", "count"]
@@ -1600,137 +1517,96 @@ agg.columns = ["total_spent", "first_activity", "last_activity", "total_visits"]
 agg["days_active"] = (agg["last_activity"] - agg["first_activity"]).dt.days.clip(lower=1)
 agg["aov"] = agg["total_spent"] / agg["total_visits"]
 agg["frequency"] = agg["total_visits"] / agg["days_active"]
-agg["target"] = agg["aov"] * agg["frequency"] * (agg["days_active"] / period_days)`,
+agg["target"] = agg["aov"] * agg["frequency"] * (agg["days_active"] / 30)`,
 
-                revenue_per_customer: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+
+        revenue_per_customer: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
     "amount_paid": "sum",
     "visit_date": "count"
 }).rename(columns={"amount_paid": "total_spent", "visit_date": "total_visits"})
 agg["target"] = agg["total_spent"] / agg["total_visits"]`,
 
-                churn: `# Configuration
-churn_threshold_days = ${getValue('churn_threshold_days', 60)}
-
-df["visit_date"] = pd.to_datetime(df["visit_date"])
+        churn: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 last = df.groupby("customer_id")["visit_date"].max()
 agg = pd.DataFrame(last).rename(columns={"visit_date": "last_activity"})
-agg["target"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days > churn_threshold_days
+agg["target"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days > 60
 agg["target"] = agg["target"].astype(int)`,
 
-                aov: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+        aov: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
     "amount_paid": "sum",
     "visit_date": "count"
 }).rename(columns={"amount_paid": "total_spent", "visit_date": "total_visits"})
 agg["target"] = agg["total_spent"] / agg["total_visits"]`,
 
-                purchase_frequency: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": ["min", "max", "count"]
-})
+        purchase_frequency: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].agg(["min", "max", "count"])
 agg.columns = ["first_activity", "last_activity", "total_visits"]
 agg["days_active"] = (agg["last_activity"] - agg["first_activity"]).dt.days.clip(lower=1)
 agg["target"] = agg["total_visits"] / agg["days_active"]`,
 
-                customer_lifetime: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": ["min", "max"]
-})
+        customer_lifetime: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].agg(["min", "max"])
 agg.columns = ["first_activity", "last_activity"]
 agg["target"] = (agg["last_activity"] - agg["first_activity"]).dt.days`,
 
-                repeat_purchase_rate: `# Configuration
-repeat_threshold = ${getValue('repeat_threshold', 1)}
+        repeat_purchase_rate: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].count().to_frame("total_visits")
+agg["target"] = (agg["total_visits"] > 1).astype(int)`,
 
-df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": "count"
-}).rename(columns={"visit_date": "total_visits"})
-agg["target"] = (agg["total_visits"] > repeat_threshold).astype(int)`,
-
-                recency: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-last = df.groupby("customer_id")["visit_date"].max()
-agg = pd.DataFrame(last).rename(columns={"visit_date": "last_activity"})
+        recency: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].max().to_frame("last_activity")
 agg["target"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days`,
 
-                revenue_per_visit: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+        revenue_per_visit: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
     "amount_paid": "sum",
     "visit_date": "count"
 }).rename(columns={"amount_paid": "total_spent", "visit_date": "total_visits"})
 agg["target"] = agg["total_spent"] / agg["total_visits"]`,
 
-                loyalty_score: `# Configuration
-frequency_weight = ${getValue('frequency_weight', 0.6)}
-recency_weight = ${getValue('recency_weight', 0.4)}
-
-df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": ["min", "max", "count"]
-})
+        loyalty_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].agg(["min", "max", "count"])
 agg.columns = ["first_activity", "last_activity", "total_visits"]
 agg["days_active"] = (agg["last_activity"] - agg["first_activity"]).dt.days.clip(lower=1)
-agg["recency"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days
-agg["frequency"] = agg["total_visits"] / agg["days_active"]
+agg["frequency_score"] = agg["total_visits"] / agg["days_active"]
+agg["recency_score"] = 1 / (pd.Timestamp.now() - agg["last_activity"]).dt.days.clip(lower=1)
+agg["target"] = (agg["frequency_score"] * 0.6) + (agg["recency_score"] * 0.4)`,
 
-# Normalize scores (0-1 scale)
-agg["frequency_score"] = (agg["frequency"] - agg["frequency"].min()) / (agg["frequency"].max() - agg["frequency"].min())
-agg["recency_score"] = 1 - (agg["recency"] - agg["recency"].min()) / (agg["recency"].max() - agg["recency"].min())
-
-agg["target"] = (agg["frequency_score"] * frequency_weight) + (agg["recency_score"] * recency_weight)`,
-
-                engagement_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": ["min", "max", "count"]
-})
+        engagement_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].agg(["min", "max", "count"])
 agg.columns = ["first_activity", "last_activity", "total_visits"]
 agg["days_active"] = (agg["last_activity"] - agg["first_activity"]).dt.days.clip(lower=1)
 agg["target"] = agg["total_visits"] / agg["days_active"]`,
 
-                profit_per_customer: `# Configuration
-default_margin = ${getValue('default_margin', 20)} / 100  # Convert percentage to decimal
-
-df["visit_date"] = pd.to_datetime(df["visit_date"])
+        profit_per_customer: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
-    "amount_paid": "sum"
+    "amount_paid": "sum",
+    "margin": "mean"
 }).rename(columns={"amount_paid": "total_spent"})
+agg["target"] = agg["total_spent"] * agg["margin"]`,
 
-# Use margin column if available, otherwise use default
-if "margin" in df.columns:
-    margin_agg = df.groupby("customer_id")["margin"].mean()
-    agg["target"] = agg["total_spent"] * margin_agg
-else:
-    agg["target"] = agg["total_spent"] * default_margin`,
+        inactivity_risk_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["visit_date"].max().to_frame("last_activity")
+agg["days_since_last"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days
+agg["target"] = (agg["days_since_last"] > 90).astype(int)`,
 
-                inactivity_risk_score: `# Configuration
-inactivity_threshold_days = ${getValue('inactivity_threshold_days', 90)}
+        vip_flag: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+agg = df.groupby("customer_id")["amount_paid"].sum().to_frame("total_spent")
+agg["target"] = (agg["total_spent"] > 500).astype(int)`,
 
-df["visit_date"] = pd.to_datetime(df["visit_date"])
-last = df.groupby("customer_id")["visit_date"].max()
-agg = pd.DataFrame(last).rename(columns={"visit_date": "last_activity"})
-agg["target"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days > inactivity_threshold_days
-agg["target"] = agg["target"].astype(int)`,
-
-                vip_flag: `# Configuration
-vip_threshold = ${getValue('vip_threshold', 500)}
-
-df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "amount_paid": "sum"
-}).rename(columns={"amount_paid": "total_spent"})
-agg["target"] = (agg["total_spent"] > vip_threshold).astype(int)`,
-
-                referral_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-agg = df.groupby("customer_id").agg({
-    "visit_date": "count",
-    "referral_code": lambda x: x.notna().sum()
-}).rename(columns={"visit_date": "total_visits", "referral_code": "referrals"})
+        referral_score: `df["visit_date"] = pd.to_datetime(df["visit_date"])
+visit_counts = df.groupby("customer_id")["visit_date"].count().to_frame("total_visits")
+referrals = df.groupby("referral_code")["customer_id"].count().to_frame("referrals")
+agg = visit_counts.merge(referrals, left_index=True, right_index=True, how="left").fillna(0)
 agg["target"] = agg["referrals"] / (agg["total_visits"] + 1)`
-            };
+    };
 
-            return codeMap[targetType] || "# Code not available for this target type";
-        }
+    return codeMap[targetType] || "# No formula available for this target type";
+}
+
+
 
 function applyConfiguration() {
     alert(`Configuration completed!\n\nTarget Variable: ${selectedTargetVariable}\nBusiness Goal: ${selectedBusinessGoal}\nColumns Used: ${selectedColumns.join(', ')}`);
