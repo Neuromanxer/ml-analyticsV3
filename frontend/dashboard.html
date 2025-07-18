@@ -964,7 +964,7 @@
             <h3>Time Series Settings</h3>
             <div class="input-row">
               <div class="input-group">
-                <input type="text" id="arima-order" value="" placeholder="e.g. 1,1,1">
+                <input type="text" id="arima-order" value="1,1,1" placeholder="e.g. 1,1,1">
                 <small class="help-text">Parameters for ARIMA model</small>
               </div>
               <div class="input-group">
@@ -1302,15 +1302,9 @@ function signOutUser() {
     const metricsDetails         = document.getElementById('metrics-details');
     const visualizationContainer = document.getElementById('visualization-container');
     const token  = safeStorageGet('access_token');
-    const analysisButtons = document.querySelectorAll('.analysis-btn');
-    const runButton = document.getElementById('run-analysis-btn');
-    document.querySelectorAll('.analysis-button').forEach(button => {
-    button.addEventListener('click', function () {
-      runButton.dataset.analysisType = this.id;
-      runButton.disabled = false;  // ✅ enable button when analysis type is selected
-    });
-  });
-
+     const analysisButtons = document.querySelectorAll('.analysis-btn');
+      const runButton = document.getElementById('run-analysis-btn');
+      
 
     if (!token || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
@@ -1318,7 +1312,74 @@ function signOutUser() {
       window.location.href = `login.html?next=${next}&reason=Please log in`;
       return;
     }
-    
+
+    // Helpers to show/hide previews
+    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
+    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
+    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
+    function clearTable(tbl){ tbl.innerHTML = ''; }
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/login.html"; // Adjust the path if needed
+}
+
+    // Core parser + previewer
+    function parseAndPreview(file, nameEl, previewEl, tableEl) {
+      nameEl.textContent = file.name;
+      nameEl.style.color = '#0066cc';
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (!lines.length) {
+          nameEl.textContent = 'File is empty';
+          nameEl.style.color = 'red';
+          previewEl.style.display = 'none';
+          return;
+        }
+
+        // choose delimiter
+        let delim = ',';
+        if (file.name.toLowerCase().endsWith('.txt')) {
+          delim = lines[0].includes('\t') ? '\t' : /\s+/;
+        }
+
+        const headers = lines[0].split(delim).map(h => h.trim());
+        const maxRows = Math.min(5, lines.length - 1);
+
+        // build table
+        let html = '<thead><tr>' +
+                  headers.map(h => `<th>${h}</th>`).join('') +
+                  '</tr></thead><tbody>';
+
+        for (let i = 1; i <= maxRows; i++) {
+          const cells = lines[i].split(delim).map(c => c.trim());
+          html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+        }
+        html += '</tbody>';
+
+        tableEl.innerHTML = html;
+        previewEl.style.display = 'block';
+      };
+
+      reader.onerror = function() {
+        nameEl.textContent = 'Error reading file';
+        nameEl.style.color = 'red';
+        previewEl.style.display = 'none';
+      };
+
+      reader.readAsText(file);
+    }
+          
       analysisButtons.forEach(button => {
         button.addEventListener('click', function(e) {
           // Prevent any default behavior or immediate API calls
@@ -1342,7 +1403,185 @@ function signOutUser() {
           runButton.dataset.analysisType = this.id;
         });
       });
+// Remove or comment out all the individual button event listeners
+// Comment out or delete these sections:
+/*
+document.getElementById('btn-regression').addEventListener('click', () => {
+  // ... regression code
+});
+
+document.getElementById('btn-classification').addEventListener('click', () => {
+  // ... classification code  
+});
+
+document.getElementById('btn-clustering').addEventListener('click', () => {
+  // ... clustering code
+});
+
+// ... and all other individual button listeners
+*/
+
+// Replace with a centralized approach - only the Run Analysis button works
+function prepareAndRunAnalysis() {
+  const runButton = document.getElementById('run-analysis-btn');
+  const selectedAnalysis = runButton.dataset.analysisType;
+  
+  if (!selectedAnalysis) {
+    showError('Please select an analysis method first');
+    return;
+  }
+  
+  console.log('Running analysis:', selectedAnalysis);
+  
+  // Get common form values
+  const targetCol = document.getElementById('target-column').value;
+  const dropCols = document.getElementById('drop-columns').value;
+  const featureCol = document.getElementById('feature-column').value;
+  const timeCol = document.getElementById('time-column').value;
+  const desiredOutcome = document.getElementById('desired-outcome').value;
+  const editableFeatures = document.getElementById('editable-features').value;
+  const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
+  
+  // Check file upload for all analyses
+  const hasFullFile = fullInput.files.length === 1;
+  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
+  
+  if (!hasFullFile && !hasTrainTest) {
+    showError('Please upload either a full dataset or both train and test files.');
+    return;
+  }
+  
+  // Run the selected analysis
+  switch (selectedAnalysis) {
+    case 'regression':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('regression', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
       
+    case 'classification':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('classification', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'clustering':
+      callRealAPI('clustering', {
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'visualize':
+      if (!targetCol) return showError('Please specify a target column.');
+      if (!featureCol) return showError('Please specify Important Features in Advanced Config')
+      callRealAPI('visualize', {
+        target_column: targetCol,
+        feature_column: featureCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'feature-impact':
+      if (!targetCol) return showError('Please specify a target column.');
+
+      callRealAPI('feature-impact', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'counterfactual':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('counterfactual', {
+        target_column: targetCol,
+        drop_columns: dropCols,
+        desired_outcome: desiredOutcome,
+        editable_features: editableFeatures
+      });
+      break;
+      
+    case 'segments':
+      callRealAPI('segments', {
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'decision-paths':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('decision-paths', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'time-series-analysis':
+      if (!targetCol) return showError('Please specify a target column.');
+      callRealAPI('time-series-analysis', {
+        target_column: targetCol,
+        periods: forecastPeriods
+      });
+      break;
+      
+    case 'survival':
+      if (!targetCol || !timeCol) {
+        showError('Please specify both the event (target) and time columns (in Advanced Configuration).');
+        return;
+      }
+      if (targetCol === timeCol) {
+        showError('Event column and time column cannot be the same.');
+        return;
+      }
+      callRealAPI('survival', {
+        event_col: targetCol,
+        time_col: timeCol,
+        drop_cols: dropCols
+      });
+      break;
+      
+    case 'classification-predict':
+      if (!targetCol) return showError('Please specify the target column for classification prediction.');
+      callRealAPI('classification_predict', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    case 'regression-predict':
+      if (!targetCol) return showError('Please specify the target column for regression prediction.');
+      callRealAPI('regression_predict', {
+        target_column: targetCol,
+        drop_columns: dropCols
+      });
+      break;
+      
+    default:
+      showError(`Unknown analysis type: ${selectedAnalysis}`);
+  }
+}
+
+// Optional: Add click handlers to analysis method buttons that just select them (don't run analysis)
+// These would update the UI to show which analysis is selected and enable the Run Analysis button
+function selectAnalysisMethod(analysisType) {
+  const runButton = document.getElementById('run-analysis-btn');
+  runButton.dataset.analysisType = analysisType;
+  runButton.disabled = false;
+  
+  // Optional: Update UI to show which analysis is selected
+  // Remove 'selected' class from all analysis buttons
+  document.querySelectorAll('.analysis-method-btn').forEach(btn => {
+    btn.classList.remove('selected');
+  });
+  
+  // Add 'selected' class to the clicked button
+  document.getElementById(`btn-${analysisType}`).classList.add('selected');
+  
+  console.log('Selected analysis method:', analysisType);
+}
+
 // Add event listeners for analysis method selection (not execution)
 document.getElementById('btn-regression').addEventListener('click', () => selectAnalysisMethod('regression'));
 document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
@@ -1445,254 +1684,6 @@ document.getElementById('btn-regression-predict').addEventListener('click', () =
     parseAndPreview(file, fullName, fullPreview, fullPreviewTable);
   });
   
-});
-    // Helpers to show/hide previews
-    function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
-    function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
-    function hideTest()   { testPreview.style.display = 'none'; testName.textContent = ''; }
-    function clearTable(tbl){ tbl.innerHTML = ''; }
-function signOutUser() {
-    // Clear tokens from localStorage or wherever you saved them
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("current_user");
-
-    // Optional: Clear session storage if used
-    sessionStorage.clear();
-
-    // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
-}
-
-    // Core parser + previewer
-    function parseAndPreview(file, nameEl, previewEl, tableEl) {
-      nameEl.textContent = file.name;
-      nameEl.style.color = '#0066cc';
-      const reader = new FileReader();
-
-      reader.onload = function(e) {
-        const text = e.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (!lines.length) {
-          nameEl.textContent = 'File is empty';
-          nameEl.style.color = 'red';
-          previewEl.style.display = 'none';
-          return;
-        }
-
-        // choose delimiter
-        let delim = ',';
-        if (file.name.toLowerCase().endsWith('.txt')) {
-          delim = lines[0].includes('\t') ? '\t' : /\s+/;
-        }
-
-        const headers = lines[0].split(delim).map(h => h.trim());
-        const maxRows = Math.min(5, lines.length - 1);
-
-        // build table
-        let html = '<thead><tr>' +
-                  headers.map(h => `<th>${h}</th>`).join('') +
-                  '</tr></thead><tbody>';
-
-        for (let i = 1; i <= maxRows; i++) {
-          const cells = lines[i].split(delim).map(c => c.trim());
-          html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
-        }
-        html += '</tbody>';
-
-        tableEl.innerHTML = html;
-        previewEl.style.display = 'block';
-      };
-
-      reader.onerror = function() {
-        nameEl.textContent = 'Error reading file';
-        nameEl.style.color = 'red';
-        previewEl.style.display = 'none';
-      };
-
-      reader.readAsText(file);
-    }
-          
-// Replace with a centralized approach - only the Run Analysis button works
-function prepareAndRunAnalysis() {
-  const runButton = document.getElementById('run-analysis-btn');
-  const selectedAnalysis = runButton.dataset.analysisType;
-  
-  if (!selectedAnalysis) {
-    showError('Please select an analysis method first');
-    return;
-  }
-  
-  console.log('Running analysis:', selectedAnalysis);
-  
-  // Get common form values
-  const targetCol = document.getElementById('target-column').value;
-  const dropCols = document.getElementById('drop-columns').value;
-  const featureCol = document.getElementById('feature-column').value;
-  const timeCol = document.getElementById('time-column').value;
-  const desiredOutcome = document.getElementById('desired-outcome').value;
-  const editableFeatures = document.getElementById('editable-features').value;
-  const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
-  
-  // Check file upload for all analyses
-  const hasFullFile = fullInput.files.length === 1;
-  const hasTrainTest = trainInput.files.length === 1 && testInput.files.length === 1;
-  
-  if (!hasFullFile && !hasTrainTest) {
-    showError('Please upload either a full dataset or both train and test files.');
-    return;
-  }
-  
-  // Run the selected analysis
-  switch (selectedAnalysis) {
-    case 'regression':
-      if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('regression', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'classification':
-      if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('classification', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'clustering':
-      callRealAPI('clustering', {
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'visualize':
-      if (!targetCol) return showError('Please specify a target column.');
-      if (!featureCol) return showError('Please specify Important Features in Advanced Config')
-      callRealAPI('visualize', {
-        target_column: targetCol,
-        feature_column: featureCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'feature-impact':
-      if (!targetCol) return showError('Please specify a target column.');
-
-      callRealAPI('feature-impact', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'counterfactual':
-      if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('counterfactual', {
-        target_column: targetCol,
-        drop_columns: dropCols,
-        desired_outcome: desiredOutcome,
-        editable_features: editableFeatures
-      });
-      break;
-      
-    case 'segments':
-      callRealAPI('segments', {
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'decision-paths':
-      if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('decision-paths', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'time-series-analysis':
-      if (!targetCol) return showError('Please specify a target column.');
-
-      const arimaOrderInput = document.getElementById('arima-order').value.trim();
-
-      const requestPayload = {
-        target_column: targetCol,
-        periods: forecastPeriods,
-      };
-
-      if (arimaOrderInput) {
-        try {
-          const orderArray = arimaOrderInput.split(',').map(num => parseInt(num.trim(), 10));
-          if (orderArray.length === 3 && orderArray.every(num => !isNaN(num))) {
-            requestPayload.arima_order = orderArray;
-          } else {
-            return showError('ARIMA order must be three comma-separated numbers (e.g., 1,1,1).');
-          }
-        } catch (e) {
-          return showError('Invalid ARIMA order input.');
-        }
-      }
-
-      callRealAPI('time-series-analysis', requestPayload);
-      break;
-
-          
-    case 'survival':
-      if (!targetCol || !timeCol) {
-        showError('Please specify both the event (target) and time columns (in Advanced Configuration).');
-        return;
-      }
-      if (targetCol === timeCol) {
-        showError('Event column and time column cannot be the same.');
-        return;
-      }
-      callRealAPI('survival', {
-        event_col: targetCol,
-        time_col: timeCol,
-        drop_cols: dropCols
-      });
-      break;
-      
-    case 'classification-predict':
-      if (!targetCol) return showError('Please specify the target column for classification prediction.');
-      callRealAPI('classification_predict', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    case 'regression-predict':
-      if (!targetCol) return showError('Please specify the target column for regression prediction.');
-      callRealAPI('regression_predict', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
-      
-    default:
-      showError(`Unknown analysis type: ${selectedAnalysis}`);
-  }
-}
-
-// Optional: Add click handlers to analysis method buttons that just select them (don't run analysis)
-// These would update the UI to show which analysis is selected and enable the Run Analysis button
-function selectAnalysisMethod(analysisType) {
-  const runButton = document.getElementById('run-analysis-btn');
-  runButton.dataset.analysisType = analysisType;
-  runButton.disabled = false;
-  
-  // Optional: Update UI to show which analysis is selected
-  // Remove 'selected' class from all analysis buttons
-  document.querySelectorAll('.analysis-method-btn').forEach(btn => {
-    btn.classList.remove('selected');
-  });
-  
-  // Add 'selected' class to the clicked button
-  document.getElementById(`btn-${analysisType}`).classList.add('selected');
-  
-  console.log('Selected analysis method:', analysisType);
-}
-
  
   function formatKeyValObject(obj, indent = 0) {
   if (!obj || typeof obj !== "object") return "";
@@ -2528,6 +2519,8 @@ function callRealAPI(endpoint, params) {
             sidebar.classList.remove('open');
         }
     });
+  });
+
   </script>
 </body>
 </html>
