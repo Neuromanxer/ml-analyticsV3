@@ -5171,7 +5171,7 @@ from statsmodels.tsa.stattools import adfuller
 
 # Fix: Use proper Path import
 from pathlib import Path as PathL
-def do_forecast(user_id: str, current_user: dict, file_path: str, target_column: str = "value", drop_columns: str = "", periods: int = 24, compare_models: bool = False):
+def do_forecast(user_id: str, current_user: dict, file_path: str, target_column: str, drop_columns: str = "", periods: int = 24, compare_models: bool = False, time_column: str = None):
     """
     Perform ARIMA forecasting on time series data with Supabase integration
     """
@@ -5219,6 +5219,18 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
             # Check if target column exists
             if target_column not in df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
+               # ───────────── Time Column Handling ─────────────
+            if time_column and time_column in df.columns:
+                try:
+                    df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
+                    df = df.dropna(subset=[time_column])  # Remove rows with invalid/missing dates
+                    df = df.sort_values(by=time_column)
+                    df.set_index(time_column, inplace=True)
+                except Exception as e:
+                    raise ValueError(f"Time column '{time_column}' could not be parsed as datetime: {str(e)}")
+            else:
+                df = df.reset_index(drop=True)  # Use default index if no time column
+
            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
             try:
                 required_cols = {"clv", "recency", "total_spent", "upsell_score"}
@@ -6069,3 +6081,11 @@ def run_forecast(user_id: str, current_user: dict, file_path: str, target_column
             "error": str(e)
         }
 
+# from celery.schedules import crontab
+
+# CELERY_BEAT_SCHEDULE = {
+#     "cleanup-every-180-days": {
+#         "task": "tasks.cleanup.cleanup_old_metadata",
+#         "schedule": crontab(day_of_year="*/180", hour=0, minute=0),  # Every 180th day at midnight
+#     },
+# }

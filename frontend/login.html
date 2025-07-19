@@ -972,53 +972,66 @@ async function refreshUserToken() {
 }
 
 // FIXED: Signup form handler
-signupForm.addEventListener('submit', async function(event) {
+signupForm.addEventListener('submit', async function (event) {
     event.preventDefault();
     clearMessages();
-    
+
     const formData = new FormData(event.target);
     const name = formData.get('name')?.trim();
     const email = formData.get('email')?.trim();
     const password = formData.get('password')?.trim();
-    
-    // Validation
+    const agreedToTerms = document.getElementById('agreeTerms').checked;
+    const policyVersion = 'v1.0'; // Update when policies change
+
+    // Client-side validation
     if (!name) {
         showError('signup-error', 'Please enter your name');
         return;
     }
+
     if (!email) {
         showError('signup-error', 'Please enter your email');
         return;
     }
+
     if (!validateEmail(email)) {
         showError('signup-error', 'Please enter a valid email address');
         return;
     }
+
     if (!password) {
         showError('signup-error', 'Please enter your password');
         return;
     }
+
     if (password.length < 6) {
         showError('signup-error', 'Password must be at least 6 characters long');
         return;
     }
-    
+
+    if (!agreedToTerms) {
+        showError('signup-error', 'You must agree to the Terms of Use and Privacy Policy.');
+        return;
+    }
+
     signupLoading.style.display = 'block';
-    
+
     try {
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
             body: JSON.stringify({
                 name: name,
                 email: email,
-                hashed_password: password
+                hashed_password: password,
+                agreed_to_terms: agreedToTerms,
+                policy_version: policyVersion
             })
         });
-        
+
         const data = await response.json();
 
         if (!response.ok) {
@@ -1031,14 +1044,13 @@ signupForm.addEventListener('submit', async function(event) {
             name: data.user?.name || name,
             email: data.user?.email || email
         });
-        
+
         if (!tokensStored) {
             throw new Error('Failed to store authentication tokens');
         }
 
         showSuccess('signup-success', 'Registration successful! Redirecting...');
-        
-                 // Wait and then redirect with enhanced verification
+
         setTimeout(async () => {
             if (!verifyAuthState()) {
                 showError('signup-error', 'Authentication verification failed. Please try again.');
@@ -1046,7 +1058,6 @@ signupForm.addEventListener('submit', async function(event) {
             }
 
             try {
-                // Check if user has completed wizard
                 const token = safeStorageGet('access_token');
                 const meResp = await fetch(`${API_BASE_URL}/api/me`, {
                     method: 'GET',
@@ -1061,17 +1072,15 @@ signupForm.addEventListener('submit', async function(event) {
                     const targetUrl = meData.hasCompletedWizard ? 'dashboard.html' : 'wizard.html';
                     window.location.href = targetUrl;
                 } else {
-                    // If /api/me fails, just go to default next page
                     window.location.href = nextPage;
                 }
 
             } catch (err) {
                 console.error('Error fetching user profile:', err);
-                // Fallback to default redirect
                 window.location.href = nextPage;
             }
         }, 2000);
-        
+
     } catch (err) {
         console.error('Registration error:', err);
         showError('signup-error', err.message);
@@ -1079,6 +1088,7 @@ signupForm.addEventListener('submit', async function(event) {
         signupLoading.style.display = 'none';
     }
 });
+
 
 // FIXED: Signin form handler
 signinForm.addEventListener('submit', async function(event) {

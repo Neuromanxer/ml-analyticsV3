@@ -964,7 +964,7 @@
             <h3>Time Series Settings</h3>
             <div class="input-row">
               <div class="input-group">
-                <input type="text" id="arima-order" value="1,1,1" placeholder="e.g. 1,1,1">
+                <input type="text" id="arima-order" value="" placeholder="e.g. 1,1,1">
                 <small class="help-text">Parameters for ARIMA model</small>
               </div>
               <div class="input-group">
@@ -1635,11 +1635,30 @@ function prepareAndRunAnalysis() {
       
     case 'time-series-analysis':
       if (!targetCol) return showError('Please specify a target column.');
-      callRealAPI('time-series-analysis', {
+
+      const arimaOrderInput = document.getElementById('arima-order').value.trim();
+
+      const requestPayload = {
         target_column: targetCol,
-        periods: forecastPeriods
-      });
+        periods: forecastPeriods,
+      };
+
+      if (arimaOrderInput) {
+        try {
+          const orderArray = arimaOrderInput.split(',').map(num => parseInt(num.trim(), 10));
+          if (orderArray.length === 3 && orderArray.every(num => !isNaN(num))) {
+            requestPayload.arima_order = orderArray;
+          } else {
+            return showError('ARIMA order must be three comma-separated numbers (e.g., 1,1,1).');
+          }
+        } catch (e) {
+          return showError('Invalid ARIMA order input.');
+        }
+      }
+
+      callRealAPI('time-series-analysis', requestPayload);
       break;
+
       
     case 'survival':
       if (!targetCol || !timeCol) {

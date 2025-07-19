@@ -866,7 +866,7 @@
                       
                       <div id="profile" class="tab-content active">
                           <div class="account-form">
-                              <div class="account-row">
+                            <div class="account-row">
                                   <div class="account-col">
                                       <label for="firstName">First Name</label>
                                       <input type="text" id="firstName" />
@@ -1009,47 +1009,31 @@
                           </div>
                       </div>
 
-                      <div id="billing" class="tab-content">
-                          <h3>Payment Information</h3>
-                          
-                          <div class="account-row">
-                              <div class="account-col">
-                                  <h4>Payment Method</h4>
+                      <div id="terms" class="tab-content">
+                        <h3>Terms of Use Agreement</h3>
 
-                                  <button class="btn btn-sm">Update Payment Method</button>
-                              </div>
-                              <div class="account-col">
-                                  <h4>Billing Address</h4>
-                                  <div class="billing-address">
-                                      <p>John Doe</p>
-                                      <p>123 Main Street</p>
-                                      <p>San Francisco, CA 94105</p>
-                                      <p>United States</p>
-                                  </div>
-                                  <button class="btn btn-sm">Edit Address</button>
-                              </div>
-                          </div>
-                          
-                          <div class="account-row">
-                              <div class="account-col" style="flex-basis: 100%;">
-                                  <h4>Billing History</h4>
-                                  <table class="billing-history-table">
-                                      <thead>
-                                          <tr>
-                                              <th>Date</th>
-                                              <th>Description</th>
-                                              <th>Amount</th>
-                                              <th>Status</th>
-                                              <th>Action</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>
+                        <div class="account-row">
+                            <div class="account-col">
+                                <label>Agreed to Terms</label>
+                                <p id="agreed-to-terms">Loading...</p>
+                            </div>
+                            <div class="account-col">
+                                <label>Agreed At</label>
+                                <p id="agreed-at">Loading...</p>
+                            </div>
+                            <div class="account-col" style="flex-basis: 100%;">
+                                <label>Policy Version</label>
+                                <p id="policy-version">Loading...</p>
+                            </div>
+                        </div>
 
-                                      </tbody>
-                                  </table>
-                              </div>
-                          </div>
-                      </div>
+                        <button class="btn" id="export-metadata-btn">
+                            Export My Data
+                        </button>
+
+                        <p id="export-status" style="margin-top: 10px;"></p>
+                    </div>
+
                       <div id="tokens" class="tab-content">
                         <h3>Token Management</h3>
                         
@@ -1390,6 +1374,7 @@ async function checkUserProfileStatus() {
         return false;
     }
 }
+
 function checkAuthentication() {
     const token = safeStorageGet('access_token');
     const userLoggedIn = safeStorageGet('userLoggedIn');
@@ -1414,6 +1399,50 @@ function checkAuth() {
     return null;
   }
   return safeStorageGet("access_token");
+}
+function exportUserData() {
+  fetch(`${API_BASE_URL}/api/metadata/export`, {
+    headers: {
+      Authorization: "Bearer " + localStorage.getItem("token"),
+    },
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error("Failed to export metadata");
+      return res.blob();
+    })
+    .then((blob) => {
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "user_metadata_export.json"; // or .zip or whatever you return
+      link.click();
+      document.getElementById("export-status").textContent = "✅ Exported successfully.";
+    })
+    .catch((err) => {
+      document.getElementById("export-status").textContent = "❌ Export failed.";
+      console.error(err);
+    });
+}
+function loadTermsStatus() {
+  fetch(`${API_BASE_URL}/api/terms-status`, {
+    headers: {
+      Authorization: "Bearer " + localStorage.getItem("token"),
+    },
+  })
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error("Failed to fetch terms status");
+      }
+      return res.json();
+    })
+    .then((data) => {
+      document.getElementById("agreed-to-terms").textContent = data.agreed_to_terms ? "✅ Yes" : "❌ No";
+      document.getElementById("agreed-at").textContent = data.agreed_at || "N/A";
+      document.getElementById("policy-version").textContent = data.policy_version || "N/A";
+    })
+    .catch((err) => {
+      console.error("Failed to load terms info:", err);
+    });
 }
 
 
@@ -2142,6 +2171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTokenBalance();
     loadTokenUsage();
     loadActivityFeed(); // ← add this to update activity UI
+    loadTermsStatus();
     // 2) Set up tab click handlers using the existing openTab function
     const tabs = document.querySelectorAll(".account-tab");
     tabs.forEach((tab) => {
@@ -2152,9 +2182,11 @@ document.addEventListener("DOMContentLoaded", () => {
             
             // Use the existing openTab function
             openTab(e, tabName);
-        });
+            if (tab.textContent.trim() === "Terms") {
+                loadTermsStatus(); // load terms when "Terms" tab is clicked
+        }
     });
-    
+    });
     // 3) Set up save profile button
     const saveProfileBtn = document.getElementById('save-profile-btn');
     if (saveProfileBtn) {
@@ -2174,7 +2206,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggleBtn = document.querySelector(".menu-icon");
     const sidebar = document.getElementById("sidebar");
     const mainContent = document.querySelector(".main-content");
-    
+    document.getElementById("export-metadata-btn").addEventListener("click", exportUserData);
+
     if (toggleBtn && sidebar && mainContent) {
         toggleBtn.addEventListener("click", () => {
             sidebar.classList.toggle("collapsed");

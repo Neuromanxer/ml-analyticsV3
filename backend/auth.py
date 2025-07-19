@@ -126,6 +126,8 @@ class UserCreate(BaseModel):
     name: str
     email: EmailStr
     hashed_password: str
+    agreed_to_terms: bool
+    policy_version: Optional[str] = "v1.0"
 
 
 class UserResponse(BaseModel):
@@ -138,6 +140,14 @@ class UserResponse(BaseModel):
 
     class Config:
         orm_mode = True
+class DataLocationOut(BaseModel):
+    db_name: Optional[str]
+    storage_bucket: Optional[str]
+    storage_region: Optional[str]
+    file_storage_path: Optional[str]  # e.g., "user-uploads/user123/"
+    
+    class Config:
+        orm_mode = True
 class AuthTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -148,6 +158,11 @@ class RegisterResponse(BaseModel):
     token: AuthTokenResponse
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+class TermsStatus(BaseModel):
+    agreed_to_terms: bool
+    agreed_at: datetime | None
+    policy_version: str | None
 class User(Base):
     """
     User model representing a user in the master database.
@@ -193,6 +208,12 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    agreed_to_terms = Column(Boolean, default=False)
+    agreed_at = Column(DateTime)
+    policy_version = Column(String, default="v1.0")
+
+    storage_bucket = Column(String, default="user-uploads")
+    storage_region = Column(String, default="us-east-1")  # or auto-fetch
 
     tokens = Column(Integer, default=0)  # or 0, or however you initialize
     token_usage_logs = relationship("TokenUsageLog", back_populates="user")
@@ -417,7 +438,24 @@ def verify_password_reset_token(token: str) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
         )
-    
+
+@contextmanager
+def get_user_db(current_user: User):
+    """
+    Context manager to get the session for the current user's database.
+    """
+    db = None
+    try:
+        engine = get_user_engine(current_user)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        db = SessionLocal()  # Create a session
+        yield db  # Yield the session to the caller
+    except Exception as e:
+        logger.error(f"Error creating session for user {current_user.email}: {str(e)}")
+        raise  # Raise exception if anything goes wrong
+    finally:
+        if db is not None:
+            db.close()  # Ensure the session is closed when done
 from pydantic import BaseModel, EmailStr
 
 class PasswordResetRequest(BaseModel):
@@ -471,7 +509,15 @@ async def register_user_endpoint(user: UserCreate, db: Session = Depends(get_mas
         hashed_password = get_password_hash(user.hashed_password)
 
         # Register the user and create a new user database/schema
-        db_user = register_user(user.name, user.email, hashed_password, db)
+        db_user = register_user(
+            name=user.name,
+            email=user.email,
+            hashed_password=hashed_password,
+            db=db,
+            agreed_to_terms=user.agreed_to_terms,
+            policy_version=user.policy_version
+        )
+
 
       
         # Create access and refresh tokens for the user
@@ -508,6 +554,14 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         created_at=current_user.created_at,
         tokens=current_user.tokens or 0.0
     )
+@router.get("/user/data-location", response_model=DataLocationOut)
+def get_data_location(current_user: User = Depends(get_current_active_user)):
+    return {
+        "db_name": current_user.db_name,
+        "storage_bucket": current_user.storage_bucket,
+        "storage_region": current_user.storage_region,
+        "file_storage_path": f"{SUPABASE_BUCKET}/{current_user.id}/"
+    }
 
 @router.delete("/me")
 async def delete_user_account(current_user = Depends(get_current_active_user)):
@@ -632,66 +686,68 @@ async def refresh_token_endpoint(
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.query(User).filter(User.email == email).first()
-
 @router.post("/reinit-user", status_code=status.HTTP_200_OK)
 async def reinitialize_user(
     email: str = Form(...),
     db: Session = Depends(get_master_db_session)
 ):
-    # Retrieve the user based on email
+    # ────── Step 1: Retrieve user ──────
     db_user_record = get_user_by_email(db, email)
     if not db_user_record:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Create role name and a new password
-    uid = db_user_record.id  # Assuming the user already has an ID
+    uid = db_user_record.id
     safe_email = email.replace("@", "_at_").replace(".", "_dot_")
     db_user = f"ml_user_{safe_email}_{uid}"
     db_password = secrets.token_urlsafe(16)
 
     try:
         with master_engine.connect() as conn:
-            # Create role if it doesn't exist
+            # ────── Step 2: Create role if it doesn't exist ──────
             result = conn.execute(
                 text("SELECT 1 FROM pg_roles WHERE rolname = :role_name"),
                 {"role_name": db_user}
             ).fetchone()
 
             if not result:
-                logger.info(f"Creating role {db_user}")
+                logger.info(f"🔧 Creating role {db_user}")
                 conn.execute(
                     text(f"CREATE ROLE \"{db_user}\" LOGIN PASSWORD :password"),
                     {"password": db_password}
                 )
             else:
-                logger.info(f"Role {db_user} already exists. Skipping creation.")
+                logger.info(f"✅ Role {db_user} already exists. Skipping creation.")
 
-            # Grant INSERT, SELECT on datasets table
-            conn.execute(
-                text(f"GRANT INSERT, SELECT ON public.datasets TO \"{db_user}\"")
-            )
+            # ────── Step 3: Revoke all privileges first ──────
+            conn.execute(text(f"REVOKE ALL ON SCHEMA public FROM \"{db_user}\""))
+            conn.execute(text(f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM \"{db_user}\""))
 
-            # Confirm permissions
+            # ────── Step 4: Grant minimum required permissions ──────
+            conn.execute(text(f"GRANT USAGE ON SCHEMA public TO \"{db_user}\""))
+            conn.execute(text(f"GRANT INSERT, SELECT ON public.datasets TO \"{db_user}\""))
+            conn.execute(text(f"GRANT INSERT, SELECT ON public.visualizations_metadata TO \"{db_user}\""))
+
+            # ────── Step 5: Optional – Audit permissions ──────
             permissions_check = conn.execute(
                 text("""
-                    SELECT grantee, privilege_type
+                    SELECT grantee, privilege_type, table_name
                     FROM information_schema.role_table_grants
-                    WHERE table_name = 'datasets' AND grantee = :role_name
+                    WHERE grantee = :role_name
                 """),
                 {"role_name": db_user}
             ).fetchall()
 
             if permissions_check:
-                logger.info(f"Permissions granted: {permissions_check}")
+                logger.info(f"🔐 Permissions granted: {permissions_check}")
             else:
-                logger.warning(f"No permissions found for {db_user} on 'datasets'.")
+                logger.warning(f"⚠️ No permissions found for {db_user} on any table.")
 
-        # Update user's db_user and db_password fields
+        # ────── Step 6: Save db credentials to user record ──────
         db_user_record.db_user = db_user
         db_user_record.db_password = db_password
         db.commit()
 
-        logger.info(f"Reinitialized user: {email}")
+        logger.info(f"✅ Reinitialized user: {email}")
         return {
             "message": f"User {email} reinitialized successfully",
             "db_user": db_user,
@@ -699,7 +755,7 @@ async def reinitialize_user(
         }
 
     except Exception as e:
-        logger.error(f"Error reinitializing user: {str(e)}")
+        logger.error(f"❌ Error reinitializing user: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Reinitialization failed")
 import json
@@ -803,50 +859,6 @@ def _append_metadata(user_id: str, new_entry: Dict[str, Any], db: Session) -> No
         raise HTTPException(status_code=500, detail="Error appending metadata")
 import traceback
 
-def _append_limited_metadata(user_id: str, new_entry: Dict[str, Any], db: Session, max_entries: int = 5):
-    """Append a new entry and keep only the most recent ones for that entry's type in SQL."""
-    try:
-        current_type = new_entry.get("type", "other")
-        new_entry_id = new_entry.get("id") or str(uuid4())
-        new_entry["id"] = new_entry_id
-
-        # Fetch existing entries of same type
-        result = db.execute(text("""
-            SELECT id, created_at FROM visualizations_metadata
-            WHERE user_id = :user_id AND type = :type
-            ORDER BY created_at DESC
-        """), {"user_id": str(user_id), "type": current_type})
-        same_type_entries = result.fetchall()
-
-        # Delete oldest if exceeding max_entries
-        if len(same_type_entries) >= max_entries:
-            to_delete = same_type_entries[max_entries - 1:]
-            for row in to_delete:
-                db.execute(
-                    text("DELETE FROM visualizations_metadata WHERE id = :id"),
-                    {"id": row[0]}
-                )
-
-        # Insert the new entry
-        db.execute(text("""
-            INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
-            VALUES (:id, :user_id, :type, :created_at, :metadata)
-        """), {
-            "id": new_entry_id,
-            "user_id": str(user_id),
-            "type": current_type,
-            "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
-            "metadata": json.dumps(new_entry)
-        })
-
-        db.commit()
-        logging.info(f"✅ Saved metadata entry {new_entry_id} for user {user_id} [type={current_type}]")
-
-    except Exception as e:
-        logging.error(f"❌ Failed to append limited metadata for {user_id}: {e}")
-        traceback.print_exc()  # <-- Full traceback in logs
-        raise HTTPException(status_code=500, detail="Error appending limited metadata")
-
 @contextmanager
 def get_user_session_direct(db_name: str):
     """
@@ -865,7 +877,6 @@ def get_user_session_direct(db_name: str):
         yield session
     finally:
         session.close()
-
 
 def get_user_engine(current_user):
     """Create a SQLAlchemy engine for the current user's database using their email as username."""
@@ -895,64 +906,71 @@ def get_user_session(db_name):
         raise
     finally:
         session.close()
-
-def register_user(name: str, email: str, hashed_password: str, db: Session) -> User:
+def register_user(
+    name: str,
+    email: str,
+    hashed_password: str,
+    db: Session,
+    agreed_to_terms: bool = False,
+    policy_version: str = "v1.0"
+) -> User:
     try:
         # Step 1: Create a per-user database (or schema) for isolation
         db_name = create_user_database(email)
 
-        # Generate a safe db_user name and password for the user
+        # Step 2: Generate safe DB user credentials
         safe_email = email.replace('@', '_at_').replace('.', '_dot_')
         uid = secrets.token_urlsafe(8)
         db_user = f"ml_user_{safe_email}_{uid}"
         db_password = secrets.token_urlsafe(16)
 
-        # Step 2: Register user in the master DB
+        # Step 3: Register user in the master DB
         user = User(
             first_name=name,
             email=email,
             hashed_password=hashed_password,
             db_name=db_name,
             db_user=db_user,
-            db_password=db_password  # Store the generated password safely
+            db_password=db_password,
+            agreed_to_terms=agreed_to_terms,
+            agreed_at=datetime.utcnow(),
+            policy_version=policy_version
         )
         db.add(user)
-        db.flush()  # To assign user.id before commit
+        db.flush()
         db.refresh(user)
-        # Step 3: Grant INSERT and SELECT on 'datasets' to the user's role
-        grant_sql = f"""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT FROM pg_roles WHERE rolname = '{db_user}'
-            ) THEN
-                CREATE ROLE "{db_user}" LOGIN PASSWORD '{db_password}';
-            END IF;
 
-            GRANT INSERT, SELECT ON TABLE datasets TO "{db_user}";
-        END $$;
-        """
+        # Step 4: Role Creation & Granting Privileges via db: Session
+        role_exists = db.execute(
+            text("SELECT 1 FROM pg_roles WHERE rolname = :role_name"),
+            {"role_name": db_user}
+        ).fetchone()
 
+        if not role_exists:
+            db.execute(
+                text(f'CREATE ROLE "{db_user}" LOGIN PASSWORD :password'),
+                {"password": db_password}
+            )
 
-        try:
-            # Execute the SQL for role creation and granting privileges
-            with master_engine.connect() as conn:
-                conn.execute(text(grant_sql))
-        except Exception as e:
-            db.rollback()
-            raise Exception(f"Error creating role or granting privileges: {str(e)}")
+        # Revoke all privileges first to ensure clean state
+        db.execute(text(f'REVOKE ALL ON SCHEMA public FROM "{db_user}"'))
+        db.execute(text(f'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "{db_user}"'))
 
-        # Step 4: Get the engine for the user's database and create tables
-        user_engine = get_user_engine(user)  # Get engine using the new user's info
+        # Grant minimum access
+        db.execute(text(f'GRANT USAGE ON SCHEMA public TO "{db_user}"'))
+        db.execute(text(f'GRANT INSERT, SELECT ON TABLE public.datasets TO "{db_user}"'))
+        db.execute(text(f'GRANT INSERT, SELECT ON TABLE public.visualizations_metadata TO "{db_user}"'))
 
-        # Create the tables in the user's database
+        # Step 5: Create tables in user's private DB
+        user_engine = get_user_engine(user)
         Base.metadata.create_all(user_engine)
 
         db.commit()
         return user
+
     except Exception as e:
         db.rollback()
-        raise Exception(f"Error during user registration: {str(e)}")
+        raise Exception(f"❌ Error during user registration: {str(e)}")
 
 def delete_user(user_email: str) -> bool:
     """
@@ -1016,6 +1034,82 @@ def create_user_database(email: str) -> str:
             logger.info(f"✅ Successfully created database: {db_name}")
 
     return db_name
+
+@router.get("/user/terms-status", response_model=TermsStatus)
+async def get_terms_status(current_user: User = Depends(get_current_active_user)):
+    return {
+        "agreed_to_terms": current_user.agreed_to_terms,
+        "agreed_at": current_user.agreed_at,
+        "policy_version": current_user.policy_version
+    }
+@router.get("/user/metadata/export")
+def export_user_data(current_user: User = Depends(get_current_active_user)):
+    try:
+        with get_user_db(current_user) as db:
+            result = db.execute(text("""
+                SELECT metadata FROM visualizations_metadata
+                WHERE user_id = :uid
+            """), {"uid": str(current_user.id)})
+
+            return {
+                "user": current_user.email,
+                "metadata": [row[0] for row in result.fetchall()]
+            }
+    except Exception as e:
+        logger.exception("Error exporting user metadata")
+        raise HTTPException(500, detail="Unable to export user data.")
+@router.delete("/user/delete")
+def delete_user_account(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_master_db_session),
+):
+    try:
+        # Delete metadata from shared visualizations table
+        db.execute(text("DELETE FROM visualizations_metadata WHERE user_id = :uid"), {"uid": str(current_user.id)})
+
+        # Drop user's PostgreSQL role (from master db)
+        db.execute(text(f'DROP ROLE IF EXISTS "{current_user.db_user}"'))
+
+
+
+        with get_user_db(current_user) as user_db:
+            user_db.execute(text("DROP SCHEMA public CASCADE"))
+            user_db.execute(text("CREATE SCHEMA public"))  # optional, reset state
+            user_db.commit()
+
+
+        # Delete user record from main Users table
+        db.delete(current_user)
+        db.commit()
+
+        return {"message": "User account and all data deleted."}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Failed to delete user and data")
+        raise HTTPException(500, detail="Failed to delete user and data.")
+def get_admin_user(current_user: User = Depends(get_current_active_user)):
+    if not current_user.is_admin:  # or use role == 'admin', is_dev, etc.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can perform this action.",
+        )
+    return current_user
+
+@router.delete("/admin/metadata/cleanup")
+def delete_old_metadata(
+    db: Session = Depends(get_master_db_session),
+    current_user: User = Depends(get_admin_user)  # 🔒 admin only
+):
+    try:
+        result = db.execute(text("""
+            DELETE FROM visualizations_metadata
+            WHERE created_at < NOW() - INTERVAL '180 days'
+        """))
+        db.commit()
+        return {"message": f"{result.rowcount} old records deleted from metadata."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete old metadata.")
 
 def get_dataset_by_id(
     user_email: str,
