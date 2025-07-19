@@ -1411,7 +1411,7 @@ function checkAuth() {
   return safeStorageGet("access_token");
 }
 function exportUserData() {
-  fetch(`${API_BASE_URL}/api/metadata/export`, {
+  fetch(`${API_BASE_URL}/api/auth/metadata/export`, {
     headers: {
       Authorization: "Bearer " + localStorage.getItem("token"),
     },
@@ -1434,7 +1434,7 @@ function exportUserData() {
     });
 }
 function loadTermsStatus() {
-  fetch(`${API_BASE_URL}/api/terms-status`, {
+  fetch(`${API_BASE_URL}/api/auth/terms-status`, {
     headers: {
       Authorization: "Bearer " + localStorage.getItem("token"),
     },
