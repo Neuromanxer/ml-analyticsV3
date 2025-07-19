@@ -1113,6 +1113,15 @@
                               </div>
                           </div>
                       </div>
+                      <div id="delete" class="tab-content">
+                        <h3>Delete Account</h3>
+                        <div class="delete-warning" style="background-color: #fce4e4; padding: 1rem; border: 1px solid #e74c3c; border-radius: 5px;">
+                            <p><strong>Warning:</strong> This action is <u>permanent</u> and cannot be undone. All your data, usage history, and stored files will be deleted.</p>
+                        </div>
+                        <br />
+                        <button class="btn delete-btn" id="deleteAccountBtn" style="background-color: #e74c3c; color: white;">Delete My Account</button>
+                    </div>
+
                   </div>
               </div>
           </div>
@@ -2258,6 +2267,33 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
     }
+    document.getElementById('deleteAccountBtn').addEventListener('click', async function () {
+        if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/user/delete', {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`, // Change if using cookies
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                alert("Account successfully deleted.");
+                localStorage.clear(); // Clear tokens or session data if needed
+                window.location.href = '/logout'; // Redirect after deletion
+            } else {
+                const error = await response.json();
+                alert("Error deleting account: " + (error.detail || response.statusText));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("An unexpected error occurred.");
+        }
+    });
 });
 
 </script>

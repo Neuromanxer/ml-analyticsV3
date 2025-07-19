@@ -1058,35 +1058,7 @@ def export_user_data(current_user: User = Depends(get_current_active_user)):
     except Exception as e:
         logger.exception("Error exporting user metadata")
         raise HTTPException(500, detail="Unable to export user data.")
-@router.delete("/user/delete")
-def delete_user_account(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_master_db_session),
-):
-    try:
-        # Delete metadata from shared visualizations table
-        db.execute(text("DELETE FROM visualizations_metadata WHERE user_id = :uid"), {"uid": str(current_user.id)})
 
-        # Drop user's PostgreSQL role (from master db)
-        db.execute(text(f'DROP ROLE IF EXISTS "{current_user.db_user}"'))
-
-
-
-        with get_user_db(current_user) as user_db:
-            user_db.execute(text("DROP SCHEMA public CASCADE"))
-            user_db.execute(text("CREATE SCHEMA public"))  # optional, reset state
-            user_db.commit()
-
-
-        # Delete user record from main Users table
-        db.delete(current_user)
-        db.commit()
-
-        return {"message": "User account and all data deleted."}
-    except Exception as e:
-        db.rollback()
-        logger.exception("Failed to delete user and data")
-        raise HTTPException(500, detail="Failed to delete user and data.")
 def get_admin_user(current_user: User = Depends(get_current_active_user)):
     if not current_user.is_admin:  # or use role == 'admin', is_dev, etc.
         raise HTTPException(
