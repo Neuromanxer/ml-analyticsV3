@@ -2,7 +2,7 @@
 
 from celery import shared_task
 from sqlalchemy import text
-from app.db import get_master_db_session
+from db import get_master_db_session
 import logging
 
 logger = logging.getLogger(__name__)

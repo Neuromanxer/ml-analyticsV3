@@ -1035,14 +1035,14 @@ def create_user_database(email: str) -> str:
 
     return db_name
 
-@router.get("/user/terms-status", response_model=TermsStatus)
+@router.get("/terms-status", response_model=TermsStatus)
 async def get_terms_status(current_user: User = Depends(get_current_active_user)):
     return {
         "agreed_to_terms": current_user.agreed_to_terms,
         "agreed_at": current_user.agreed_at,
         "policy_version": current_user.policy_version
     }
-@router.get("/user/metadata/export")
+@router.get("/metadata/export")
 def export_user_data(current_user: User = Depends(get_current_active_user)):
     try:
         with get_user_db(current_user) as db:
