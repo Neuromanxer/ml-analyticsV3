@@ -720,8 +720,7 @@
             }
         }
     </style>
-</head>
-<head>
+</head><head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MLAnalytics - Account</title>
@@ -855,16 +854,21 @@
                         </div>
                       </div>
                       
-                      
+                      <!-- Reorganized Tabs with Logical Grouping -->
                       <div class="account-tabs">
+                          <!-- PERSONAL GROUP -->
                           <div class="account-tab active">Profile</div>
-                          <div class="account-tab">Subscription</div>
-                          <div class="account-tab">Terms</div>
-                          <div class="account-tab">Tokens</div>
                           <div class="account-tab">Activity</div>
-                          <div class="account-tab">Delete</div>
+                          <!-- BILLING GROUP -->
+                          <div class="account-tab">Subscription</div>
+                          <div class="account-tab">Tokens</div>
+                          <!-- LEGAL GROUP -->
+                          <div class="account-tab">Terms</div>
+                          <!-- DANGER ZONE -->
+                          <div class="account-tab">Delete Account</div>
                       </div>
                       
+                      <!-- PERSONAL GROUP CONTENT -->
                       <div id="profile" class="tab-content active">
                           <div class="account-form">
                             <div class="account-row">
@@ -942,6 +946,12 @@
                           </div>
                       </div>
                       
+                      <div id="activity" class="tab-content">
+                          <h3>Recent Activity</h3>
+                          
+                      </div>
+                      
+                      <!-- BILLING GROUP CONTENT -->
                       <div id="subscription" class="tab-content">
                           <h3>Current Plan: <span id="current-plan-name">Loading...</span></h3>
                           <p>Your subscription renews on <span id="renewal-date">Loading...</span></p>
@@ -1009,31 +1019,6 @@
                               </div>
                           </div>
                       </div>
-
-                      <div id="terms" class="tab-content">
-                        <h3>Terms of Use Agreement</h3>
-
-                        <div class="account-row">
-                            <div class="account-col">
-                                <label>Agreed to Terms</label>
-                                <p id="agreed-to-terms">Loading...</p>
-                            </div>
-                            <div class="account-col">
-                                <label>Agreed At</label>
-                                <p id="agreed-at">Loading...</p>
-                            </div>
-                            <div class="account-col" style="flex-basis: 100%;">
-                                <label>Policy Version</label>
-                                <p id="policy-version">Loading...</p>
-                            </div>
-                        </div>
-
-                        <button class="btn" id="export-metadata-btn">
-                            Export My Data
-                        </button>
-
-                        <p id="export-status" style="margin-top: 10px;"></p>
-                    </div>
 
                       <div id="tokens" class="tab-content">
                         <h3>Token Management</h3>
@@ -1108,12 +1093,33 @@
                           </div>
                       </div>
                       
-                      <div id="activity" class="tab-content">
-                          <h3>Recent Activity</h3>
-                          
-                              </div>
-                          </div>
+                      <!-- LEGAL GROUP CONTENT -->
+                      <div id="terms" class="tab-content">
+                        <h3>Terms of Use Agreement</h3>
+
+                        <div class="account-row">
+                            <div class="account-col">
+                                <label>Agreed to Terms</label>
+                                <p id="agreed-to-terms">Loading...</p>
+                            </div>
+                            <div class="account-col">
+                                <label>Agreed At</label>
+                                <p id="agreed-at">Loading...</p>
+                            </div>
+                            <div class="account-col" style="flex-basis: 100%;">
+                                <label>Policy Version</label>
+                                <p id="policy-version">Loading...</p>
+                            </div>
+                        </div>
+
+                        <button class="btn" id="export-metadata-btn">
+                            Export My Data
+                        </button>
+
+                        <p id="export-status" style="margin-top: 10px;"></p>
                       </div>
+
+                      <!-- DANGER ZONE CONTENT -->
                       <div id="delete" class="tab-content">
                         <h3>Delete Account</h3>
                         <div class="delete-warning" style="background-color: #fce4e4; padding: 1rem; border: 1px solid #e74c3c; border-radius: 5px;">
@@ -1121,7 +1127,7 @@
                         </div>
                         <br />
                         <button class="btn delete-btn" id="deleteAccountBtn" style="background-color: #e74c3c; color: white;">Delete My Account</button>
-                    </div>
+                      </div>
 
                   </div>
               </div>
