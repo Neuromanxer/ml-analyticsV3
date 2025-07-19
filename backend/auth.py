@@ -554,14 +554,14 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
         created_at=current_user.created_at,
         tokens=current_user.tokens or 0.0
     )
-@router.get("/user/data-location", response_model=DataLocationOut)
-def get_data_location(current_user: User = Depends(get_current_active_user)):
-    return {
-        "db_name": current_user.db_name,
-        "storage_bucket": current_user.storage_bucket,
-        "storage_region": current_user.storage_region,
-        "file_storage_path": f"{SUPABASE_BUCKET}/{current_user.id}/"
-    }
+# @router.get("/user/data-location", response_model=DataLocationOut)
+# def get_data_location(current_user: User = Depends(get_current_active_user)):
+#     return {
+#         "db_name": current_user.db_name,
+#         "storage_bucket": current_user.storage_bucket,
+#         "storage_region": current_user.storage_region,
+#         "file_storage_path": f"{SUPABASE_BUCKET}/{current_user.id}/"
+#     }
 
 @router.delete("/me")
 async def delete_user_account(current_user = Depends(get_current_active_user)):
