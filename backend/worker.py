@@ -103,7 +103,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 # Assuming you have these imports for your auth system
 # from your_auth_module import get_current_active_user, User
 
-from .auth import _append_limited_metadata
+from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
 def do_classification(
     user_id: str,
     file_path: str = None,

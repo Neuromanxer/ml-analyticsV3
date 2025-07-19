@@ -858,6 +858,49 @@ def _append_metadata(user_id: str, new_entry: Dict[str, Any], db: Session) -> No
         logging.error(f"❌ Error appending metadata for user {user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error appending metadata")
 import traceback
+def _append_limited_metadata(user_id: str, new_entry: Dict[str, Any], db: Session, max_entries: int = 5):
+    """Append a new entry and keep only the most recent ones for that entry's type in SQL."""
+    try:
+        current_type = new_entry.get("type", "other")
+        new_entry_id = new_entry.get("id") or str(uuid4())
+        new_entry["id"] = new_entry_id
+
+        # Fetch existing entries of same type
+        result = db.execute(text("""
+            SELECT id, created_at FROM visualizations_metadata
+            WHERE user_id = :user_id AND type = :type
+            ORDER BY created_at DESC
+        """), {"user_id": str(user_id), "type": current_type})
+        same_type_entries = result.fetchall()
+
+        # Delete oldest if exceeding max_entries
+        if len(same_type_entries) >= max_entries:
+            to_delete = same_type_entries[max_entries - 1:]
+            for row in to_delete:
+                db.execute(
+                    text("DELETE FROM visualizations_metadata WHERE id = :id"),
+                    {"id": row[0]}
+                )
+
+        # Insert the new entry
+        db.execute(text("""
+            INSERT INTO visualizations_metadata (id, user_id, type, created_at, metadata)
+            VALUES (:id, :user_id, :type, :created_at, :metadata)
+        """), {
+            "id": new_entry_id,
+            "user_id": str(user_id),
+            "type": current_type,
+            "created_at": new_entry.get("created_at", datetime.utcnow().isoformat()),
+            "metadata": json.dumps(new_entry)
+        })
+
+        db.commit()
+        logging.info(f"✅ Saved metadata entry {new_entry_id} for user {user_id} [type={current_type}]")
+
+    except Exception as e:
+        logging.error(f"❌ Failed to append limited metadata for {user_id}: {e}")
+        traceback.print_exc()  # <-- Full traceback in logs
+        raise HTTPException(status_code=500, detail="Error appending limited metadata")
 
 @contextmanager
 def get_user_session_direct(db_name: str):
