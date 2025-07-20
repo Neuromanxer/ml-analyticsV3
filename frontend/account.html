@@ -5,721 +5,576 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Dashboard - ML Analytics</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-
-        /* Layout Structure */
-        .layout {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        .main-content {
-            flex: 1;
-            margin-left: 280px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-            padding: 15px 0;
-            position: sticky;
-            top: 0;
-            z-index: 50;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        .navbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo h1 {
-            color: #0099ff;
-            font-weight: 700;
-            font-size: 1.8rem;
-        }
-
-        .logo span {
-            color: #667eea;
-        }
-
-        nav ul {
-            display: flex;
-            list-style: none;
-            gap: 30px;
-        }
-
-        nav a {
-            text-decoration: none;
-            color: #666;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        nav a:hover {
-            color: #0099ff;
-        }
-
-        .menu-icon {
-            display: none;
-            cursor: pointer;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: 280px;
-            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
-            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
-            padding: 25px 0;
-            display: flex;
-            flex-direction: column;
-            z-index: 100;
-            min-height: 100vh;
-            position: fixed;
-            left: 0;
-            top: 0;
-        }
-        
-        .sidebar-logo {
-            display: flex;
-            align-items: center;
-            padding: 0 25px;
-            margin-bottom: 40px;
-        }
-        
-        .sidebar-logo i {
-            font-size: 1.8rem;
-            color: #0099ff;
-            margin-right: 12px;
-        }
-        
-        .sidebar-logo h1 {
-            color: #0099ff;
-            font-weight: 700;
-            font-size: 1.6rem;
-            margin: 0;
-        }
-        
-        .sidebar-section {
-            margin-bottom: 30px;
-        }
-        
-        .sidebar-section-title {
-            font-size: 0.75rem;
-            color: #999;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            padding: 0 25px;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-        
-        .sidebar-menu {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .sidebar-menu-item {
-            margin: 0 15px 8px 15px;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            overflow: hidden;
-        }
-        
-        .sidebar-menu-item a,
-        .sidebar-menu-item > div {
-            padding: 14px 15px;
-            display: flex;
-            align-items: center;
-            color: #666;
-            cursor: pointer;
-            font-weight: 500;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            border-radius: 12px;
-        }
-        
-        .sidebar-menu-item:hover a,
-        .sidebar-menu-item:hover > div {
-            background-color: rgba(0, 153, 255, 0.08);
-            color: #0099ff;
-            transform: translateX(3px);
-        }
-        
-        .sidebar-menu-item.active a,
-        .sidebar-menu-item.active > div {
-            background: linear-gradient(135deg, #0099ff, #0066cc);
-            color: white;
-            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
-            transform: translateX(0);
-        }
-        
-        .sidebar-menu-item i {
-            margin-right: 12px;
-            width: 20px;
-            text-align: center;
-            font-size: 1.1rem;
-        }
-        
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 0 15px;
-        }
-        
-        .sidebar-footer-item {
-            display: flex;
-            align-items: center;
-            color: #666;
-            cursor: pointer;
-            font-weight: 500;
-            padding: 12px 15px;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-        }
-        
-        .sidebar-footer-item:hover {
-            background-color: rgba(0, 153, 255, 0.08);
-            color: #0099ff;
-        }
-        
-        .sidebar-footer-item i {
-            margin-right: 12px;
-            font-size: 1.1rem;
-        }
-
-        .account-page {
-            padding: 40px 0;
-            flex: 1;
-        }
-
-        .account-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .account-container h2 {
-            color: #2d3748;
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 30px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-align: center;
-        }
-
-        .dashboard-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-
-        .stat-card {
-            background: linear-gradient(135deg, #fff, #f8fafc);
-            border: 2px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 24px;
-            text-align: center;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.15);
-        }
-
-        .stat-card i {
-            font-size: 2.5rem;
-            color: #667eea;
-            margin-bottom: 12px;
-        }
-
-        .stat-card h3 {
-            color: #2d3748;
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-card p {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #667eea;
-        }
-
-        .usage-bar {
-            background: #e2e8f0;
-            height: 8px;
-            border-radius: 4px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .usage-bar-fill {
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-
-        .account-tabs {
-            display: flex;
-            background: #f8fafc;
-            border-radius: 12px;
-            padding: 4px;
-            margin-bottom: 30px;
-            overflow-x: auto;
-        }
-
-        .account-tab {
-            flex: 1;
-            padding: 12px 20px;
-            text-align: center;
-            cursor: pointer;
-            border-radius: 8px;
-            font-weight: 600;
-            color: #666;
-            transition: all 0.3s ease;
-            white-space: nowrap;
-        }
-
-        .account-tab.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        .tab-content {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .account-form {
-            max-width: 100%;
-        }
-
-        .account-row {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .account-col {
-            flex: 1;
-            min-width: 250px;
-        }
-
-        .account-col label {
-            display: block;
-            font-weight: 600;
-            color: #2d3748;
-            margin-bottom: 8px;
-        }
-
-        .account-col input,
-        .account-col select,
-        .account-col textarea {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-            background: white;
-        }
-
-        .account-col input:focus,
-        .account-col select:focus,
-        .account-col textarea:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .account-col textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-
-        .btn {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-            margin-top: 20px;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn-sm {
-            padding: 8px 16px;
-            font-size: 0.9rem;
-            margin-top: 8px;
-            margin-right: 8px;
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-        }
-
-        .btn-danger {
-            background: #dc3545;
-        }
-
-        .btn-disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-        }
-
-        .plans-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
-        }
-
-        .plan-card {
-            background: white;
-            border: 2px solid #e2e8f0;
-            border-radius: 16px;
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .plan-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-        }
-
-        .plan-card.popular {
-            border-color: #667eea;
-            position: relative;
-        }
-
-        .plan-card.popular::before {
-            content: 'Most Popular';
-            position: absolute;
-            top: -1px;
-            right: 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            padding: 4px 12px;
-            border-radius: 0 0 8px 8px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .plan-header {
-            padding: 24px;
-            text-align: center;
-        }
-
-        .plan-header h3 {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-
-        .plan-price {
-            font-size: 2.5rem;
-            font-weight: 700;
-        }
-
-        .plan-price span {
-            font-size: 1rem;
-            opacity: 0.7;
-        }
-
-        .plan-features {
-            padding: 0 24px;
-        }
-
-        .plan-features ul {
-            list-style: none;
-        }
-
-        .plan-features li {
-            padding: 8px 0;
-            display: flex;
-            align-items: center;
-        }
-
-        .plan-features i {
-            margin-right: 12px;
-            width: 16px;
-        }
-
-        .fa-check {
-            color: #28a745;
-        }
-
-        .fa-times {
-            color: #dc3545;
-        }
-
-        .plan-footer {
-            padding: 24px;
-        }
-
-        .recent-activity {
-            max-height: 500px;
-            overflow-y: auto;
-        }
-
-        .activity-item {
-            display: flex;
-            align-items: center;
-            padding: 16px;
-            margin-bottom: 12px;
-            background: #f8fafc;
-            border-radius: 12px;
-            border-left: 4px solid #667eea;
-        }
-
-        .activity-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 16px;
-        }
-
-        .activity-icon i {
-            color: white;
-            font-size: 1.2rem;
-        }
-
-        .activity-details {
-            flex: 1;
-        }
-
-        .activity-details h4 {
-            color: #2d3748;
-            font-size: 1rem;
-            margin-bottom: 4px;
-        }
-
-        .activity-details p {
-            color: #666;
-            font-size: 0.9rem;
-        }
-
-        .activity-time {
-            color: #999;
-            font-size: 0.85rem;
-        }
-
-        .api-key-display {
-            background: #f8fafc;
-            padding: 12px;
-            border-radius: 8px;
-            border: 2px solid #e2e8f0;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 8px;
-        }
-
-        .rate-limits-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .rate-limits-table th,
-        .rate-limits-table td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .rate-limits-table th {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            font-weight: 600;
-        }
-
-        .rate-limits-table tbody tr:hover {
-            background: #f8fafc;
-        }
-
-        .footer {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            margin-top: 40px;
-            padding: 40px 0 20px;
-        }
-
-        .footer .row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-            margin-bottom: 30px;
-        }
-
-        .footer h3 {
-            color: #2d3748;
-            margin-bottom: 16px;
-        }
-
-        .footer ul {
-            list-style: none;
-        }
-
-        .footer li {
-            margin-bottom: 8px;
-            color: #666;
-            cursor: pointer;
-            transition: color 0.3s ease;
-        }
-
-        .footer li:hover {
-            color: #0099ff;
-        }
-
-        .footer hr {
-            border: none;
-            height: 1px;
-            background: #e2e8f0;
-            margin: 20px 0;
-        }
-
-        .copyright {
-            text-align: center;
-            color: #666;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-        }
-
-        .loading i {
-            font-size: 3rem;
-            color: #667eea;
-            animation: spin 2s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-280px);
-                transition: transform 0.3s ease;
-            }
-
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-
-            .main-content {
-                margin-left: 0;
-            }
-
-            .menu-icon {
-                display: block;
-            }
-
-            nav ul {
-                display: none;
-            }
-
-            .dashboard-stats {
-                grid-template-columns: 1fr;
-            }
-
-            .account-row {
-                flex-direction: column;
-            }
-
-            .account-col {
-                min-width: auto;
-            }
-
-            .plans-container {
-                grid-template-columns: 1fr;
-            }
-
-            .account-tabs {
-                flex-direction: column;
-            }
-
-            .account-tab {
-                text-align: left;
-            }
-        }
-    </style>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 2rem 0;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .sidebar-logo i {
+      font-size: 1.5rem;
+      color: #667eea;
+    }
+
+    .sidebar-logo h1 {
+      font-size: 1.5rem;
+      color: #333;
+      font-weight: 700;
+    }
+
+    .sidebar-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .sidebar-section-title {
+      color: #666;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 0 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .sidebar-menu {
+      list-style: none;
+    }
+
+    .sidebar-menu-item {
+      margin: 0.25rem 1rem;
+    }
+
+    .sidebar-menu-item a {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      text-decoration: none;
+      color: #555;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar-menu-item.active a,
+    .sidebar-menu-item a:hover {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      transform: translateX(4px);
+    }
+
+    .sidebar-footer {
+      position: absolute;
+      bottom: 2rem;
+      left: 0;
+      right: 0;
+      padding: 0 2rem;
+    }
+
+    .sidebar-footer-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      color: #e74c3c;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .sidebar-footer-item:hover {
+      background: rgba(231, 76, 60, 0.1);
+    }
+
+    .main-content {
+      flex: 1;
+      margin-left: 280px;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .account-page {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 4rem;
+      text-align: center;
+    }
+
+    .loading i {
+      font-size: 2rem;
+      color: #667eea;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .dashboard-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin: 2rem 0;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      border-radius: 15px;
+      padding: 1.5rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+    }
+
+    .stat-card i {
+      font-size: 2rem;
+      color: #667eea;
+      margin-bottom: 1rem;
+    }
+
+    .stat-card h3 {
+      color: #333;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card p {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    /* Tab Groups Styling */
+    .tab-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      margin: 2rem 0;
+    }
+
+    .tab-group {
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 15px;
+      padding: 1.5rem;
+      border: 1px solid rgba(102, 126, 234, 0.1);
+    }
+
+    .tab-group-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tab-group-title i {
+      color: #667eea;
+    }
+
+    .tab-group-tabs {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .account-tab {
+      padding: 0.75rem 1.5rem;
+      background: rgba(255, 255, 255, 0.8);
+      border: 2px solid transparent;
+      border-radius: 25px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      color: #555;
+    }
+
+    .account-tab:hover {
+      background: rgba(102, 126, 234, 0.1);
+      border-color: rgba(102, 126, 234, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .account-tab.active {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .danger-zone {
+      border-color: rgba(231, 76, 60, 0.2) !important;
+      background: rgba(231, 76, 60, 0.05) !important;
+    }
+
+    .danger-zone .tab-group-title {
+      color: #e74c3c;
+    }
+
+    .danger-zone .account-tab {
+      color: #e74c3c;
+      border-color: rgba(231, 76, 60, 0.3);
+    }
+
+    .danger-zone .account-tab:hover {
+      background: rgba(231, 76, 60, 0.1);
+    }
+
+    .danger-zone .account-tab.active {
+      background: linear-gradient(135deg, #e74c3c, #c0392b);
+      color: white;
+    }
+
+    .tab-content {
+      display: none;
+      margin-top: 2rem;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 15px;
+      border: 1px solid rgba(102, 126, 234, 0.1);
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .account-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .account-row {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .account-col {
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .account-col label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .account-col input,
+    .account-col textarea,
+    .account-col select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid rgba(102, 126, 234, 0.2);
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .account-col input:focus,
+    .account-col textarea:focus,
+    .account-col select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 25px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    }
+
+    .delete-btn {
+      background: linear-gradient(135deg, #e74c3c, #c0392b) !important;
+    }
+
+    .delete-btn:hover {
+      box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3) !important;
+    }
+
+    .plans-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin: 2rem 0;
+    }
+
+    .plan-card {
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(102, 126, 234, 0.2);
+      border-radius: 15px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .plan-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(102, 126, 234, 0.2);
+    }
+
+    .plan-card.popular {
+      border-color: #667eea;
+      transform: scale(1.05);
+    }
+
+    .plan-header {
+      padding: 2rem;
+      text-align: center;
+      background: #f8f9fa;
+    }
+
+    .plan-header h3 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .plan-price {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .plan-price span {
+      font-size: 1rem;
+      opacity: 0.7;
+    }
+
+    .plan-features {
+      padding: 2rem;
+    }
+
+    .plan-features ul {
+      list-style: none;
+    }
+
+    .plan-features li {
+      padding: 0.5rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .plan-features .fas.fa-check {
+      color: #27ae60;
+    }
+
+    .plan-features .fas.fa-times {
+      color: #e74c3c;
+    }
+
+    .plan-footer {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .token-overview {
+      display: flex;
+      justify-content: center;
+      margin: 2rem 0;
+    }
+
+    .token-balance-card {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 2rem;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+      border-radius: 15px;
+      border: 2px solid rgba(102, 126, 234, 0.2);
+    }
+
+    .token-balance-card i {
+      font-size: 3rem;
+      color: #667eea;
+    }
+
+    .token-amount {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .token-value {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .token-packages {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .token-package {
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(102, 126, 234, 0.2);
+      border-radius: 15px;
+      padding: 1.5rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .token-package:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.2);
+    }
+
+    .token-package.popular {
+      border-color: #667eea;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    }
+
+    .package-header {
+      margin-bottom: 1rem;
+    }
+
+    .token-count {
+      display: block;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 0.5rem;
+    }
+
+    .package-price {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .token-usage-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .token-usage-table th,
+    .token-usage-table td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+    }
+
+    .token-usage-table th {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+      font-weight: 600;
+    }
+
+    .delete-warning {
+      background-color: rgba(231, 76, 60, 0.1);
+      padding: 1.5rem;
+      border: 2px solid rgba(231, 76, 60, 0.3);
+      border-radius: 10px;
+      margin-bottom: 1rem;
+    }
+
+    .delete-warning p {
+      color: #e74c3c;
+      font-weight: 500;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      .account-row {
+        flex-direction: column;
+      }
+
+      .plans-container {
+        grid-template-columns: 1fr;
+      }
+
+      .tab-group-tabs {
+        flex-direction: column;
+      }
+
+      .dashboard-stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 <!DOCTYPE html>
 <html lang="en">
 <head>
