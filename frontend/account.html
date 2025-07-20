@@ -1417,10 +1417,13 @@ function checkAuth() {
   return safeStorageGet("access_token");
 }
 function exportUserData() {
+  const token = safeStorageGet('access_token');
+
   fetch(`${API_BASE_URL}/api/auth/metadata/export`, {
     headers: {
-      Authorization: "Bearer " + localStorage.getItem("token"),
-    },
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   })
     .then((res) => {
       if (!res.ok) throw new Error("Failed to export metadata");
@@ -1430,7 +1433,7 @@ function exportUserData() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "user_metadata_export.json"; // or .zip or whatever you return
+      link.download = "user_metadata_export.json";
       link.click();
       document.getElementById("export-status").textContent = "✅ Exported successfully.";
     })
@@ -1439,11 +1442,15 @@ function exportUserData() {
       console.error(err);
     });
 }
+
 function loadTermsStatus() {
+  const token = safeStorageGet('access_token'); // ✅ Match token fetch method
+
   fetch(`${API_BASE_URL}/api/auth/terms-status`, {
     headers: {
-      Authorization: "Bearer " + localStorage.getItem("token"),
-    },
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   })
     .then((res) => {
       if (!res.ok) {
@@ -1460,6 +1467,7 @@ function loadTermsStatus() {
       console.error("Failed to load terms info:", err);
     });
 }
+
 
 
 async function saveProfile() {
