@@ -86,3 +86,8 @@ def get_file_url(file_path: str, expires_in: int = 3600) -> str:
 
     # ✅ Safely return the signed URL from the dict
     return response.get("signedURL", "")
+def list_user_files(user_id: str):
+    response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+    if getattr(response, "error", None):
+        raise Exception(f"Failed to list files: {response.error.message}")
+    return response  # ✅ return the list of files

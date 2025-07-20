@@ -539,7 +539,19 @@ class UpdateProfileRequest(BaseModel):
     timezone: str = Field(..., pattern="^(pst|est|utc|gmt)$")
     password: str | None = Field(None, min_length=6)
 
+class PasswordChangeRequest(BaseModel):
+    new_password: str
 
+@router.put("/user/change-password")
+def change_password(
+    payload: PasswordChangeRequest,
+    db: Session = Depends(get_master_db_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    hashed_pw = pwd_context.hash(payload.new_password)
+    current_user.hashed_password = hashed_pw
+    db.commit()
+    return {"message": "Password changed successfully."}
 @router.get("/profile")
 def get_profile(current_user: User = Depends(get_current_active_user)):
     return {
@@ -597,3 +609,67 @@ async def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update profile."
         )
+from .storage import list_user_files
+@router.post("/user/request-export")
+def request_data_export(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_master_db_session)
+):
+    try:
+        user_id = str(current_user.id)
+
+        # --- 1. Profile Info ---
+        profile = {
+            "user_id": user_id,
+            "email": current_user.email,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "company": current_user.company,
+            "role": current_user.role,
+            "bio": current_user.bio,
+            "timezone": current_user.timezone,
+            "agreed_to_terms": current_user.agreed_to_terms,
+            "agreed_at": str(current_user.agreed_at),
+            "policy_version": current_user.policy_version,
+            "tokens_remaining": current_user.tokens,
+            "total_cost_dollars": current_user.total_cost_dollars,
+        }
+
+        # --- 2. Files ---
+        file_info = []
+        files = list_user_files(user_id)
+        for f in files or []:
+            file_info.append({
+                "file_name": f["name"],
+                "size": f["metadata"]["size"],
+                "created_at": f["created_at"],
+                "download_url": get_file_url(f"{user_id}/{f['name']}", expires_in=3600)
+            })
+
+        # --- 3. Visualizations ---
+        vis_result = db.execute(text("""
+            SELECT type, created_at, metadata FROM visualizations_metadata
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+        """), {"user_id": user_id})
+
+        visualizations = [
+            {
+                "type": row["type"],
+                "created_at": row["created_at"],
+                "metadata": json.loads(row["metadata"])
+            } for row in vis_result.fetchall()
+        ]
+
+        # --- 4. Package JSON ---
+        export_data = {
+            "profile": profile,
+            "uploaded_files": file_info,
+            "ai_insights": visualizations,
+        }
+
+        return export_data
+
+    except Exception as e:
+        logging.error(f"❌ Failed to generate export for {current_user.id}: {str(e)}")
+        raise HTTPException(500, "Failed to generate export")

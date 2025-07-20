@@ -823,12 +823,7 @@
         <!-- Main Content -->
         <div class="main-content">
             <div class="account-page container">
-                <div class="account-container">
-                    <div id="loading" class="loading">
-                        <i class="fas fa-spinner"></i>
-                        <p>Loading account data...</p>
-                    </div>
-                    
+                <div class="account-container">                    
                     <div id="account-content" style="display: block;">
                         <h2>Account Dashboard</h2>
                         
@@ -1258,6 +1253,11 @@
                                 <h4>Data Export</h4>
                                 <p>You can request an export of all your personal data at any time.</p>
                                 <button class="btn" onclick="requestDataExport()">Request Data Export</button>
+                                  <div style="margin-left: 1.5rem; font-size: 0.9rem;">
+                                    <p><strong>Agreed:</strong> <span id="agreed-to-terms">Loading...</span></p>
+                                    <p><strong>Agreed At:</strong> <span id="agreed-at">Loading...</span></p>
+                                    <p><strong>Policy Version:</strong> <span id="policy-version">Loading...</span></p>
+                                </div>
                             </div>
                             
                             <button class="btn">Save Preferences</button>
@@ -2333,19 +2333,60 @@ function signOutUser() {
     // Redirect to login page
     window.location.href = "/login.html"; // Adjust the path if needed
 }
-function signOutUser() {
-    // Clear tokens from localStorage or wherever you saved them
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("current_user");
 
-    // Optional: Clear session storage if used
-    sessionStorage.clear();
+function setupPasswordChangeForm() {
+    const passwordInput = document.getElementById("password");
+    const confirmInput = document.getElementById("confirmPassword");
 
-    // Redirect to login page
-    window.location.href = "/login.html"; // Adjust the path if needed
+    const saveBtn = document.querySelector(".btn"); // Or create a separate button if needed
+    if (!saveBtn) return;
+
+    saveBtn.addEventListener("click", async function (e) {
+        e.preventDefault();
+
+        const password = passwordInput.value.trim();
+        const confirmPassword = confirmInput.value.trim();
+
+        if (!password || !confirmPassword) {
+            alert("Please fill out both password fields.");
+            return;
+        }
+
+        if (password.length < 6) {
+            alert("Password must be at least 6 characters.");
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            alert("Passwords do not match.");
+            return;
+        }
+
+        try {
+           const response = await fetch(`${API_BASE_URL}/user/change-password`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ new_password: password })
+            });
+
+
+            if (response.ok) {
+                alert("Password changed successfully.");
+                passwordInput.value = "";
+                confirmInput.value = "";
+            } else {
+                const error = await response.json();
+                alert("Error: " + (error.detail || response.statusText));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("An error occurred while updating your password.");
+        }
+    });
 }
-
 document.addEventListener("DOMContentLoaded", () => {
     // 1) Load account data on page load
     const authHeader = { 
@@ -2356,6 +2397,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTokenUsage();
     loadActivityFeed(); // ← add this to update activity UI
     loadTermsStatus();
+    setupPasswordChangeForm();
     // 2) Set up tab click handlers using the existing openTab function
     const tabs = document.querySelectorAll(".account-tab");
     tabs.forEach((tab) => {
