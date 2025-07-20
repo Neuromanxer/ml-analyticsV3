@@ -120,11 +120,15 @@
       flex: 1;
       margin-left: 280px;
       padding: 2rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
     .container {
       max-width: 1200px;
       margin: 0 auto;
+      flex: 1;
     }
 
     .account-page {
@@ -133,6 +137,7 @@
       border-radius: 20px;
       padding: 2rem;
       box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      margin-bottom: 2rem;
     }
 
     .loading {
@@ -548,6 +553,162 @@
       font-weight: 500;
     }
 
+    .activity-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .activity-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.5rem;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 10px;
+      border: 1px solid rgba(102, 126, 234, 0.1);
+    }
+
+    .activity-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .activity-content h4 {
+      margin-bottom: 0.5rem;
+      color: #333;
+    }
+
+    .activity-content p {
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
+
+    .activity-time {
+      color: #999;
+      font-size: 0.9rem;
+    }
+
+    .terms-section {
+      margin-bottom: 2rem;
+    }
+
+    .terms-section h4 {
+      margin-bottom: 1rem;
+      color: #333;
+    }
+
+    .terms-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .terms-item input[type="checkbox"] {
+      width: auto;
+    }
+
+    .delete-section ul {
+      color: #666;
+    }
+
+    .delete-confirmation {
+      margin: 1rem 0;
+    }
+
+    .delete-confirmation label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #333;
+    }
+
+    .delete-confirmation input[type="checkbox"] {
+      width: auto;
+    }
+
+    /* Footer Styling */
+    .footer {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(102, 126, 234, 0.1);
+      margin-top: auto;
+    }
+
+    .footer .container {
+      padding: 3rem 0 1rem 0;
+    }
+
+    .footer .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .footer-col-1,
+    .footer-col-2,
+    .footer-col-3,
+    .footer-col-4 {
+      padding: 0 1rem;
+    }
+
+    .footer h3 {
+      color: #333;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .footer p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .footer ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .footer ul li {
+      margin-bottom: 0.5rem;
+    }
+
+    .footer ul li a,
+    .footer ul li {
+      color: #666;
+      text-decoration: none;
+      transition: color 0.3s ease;
+      cursor: pointer;
+    }
+
+    .footer ul li:hover,
+    .footer ul li a:hover {
+      color: #667eea;
+    }
+
+    .footer hr {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.2), transparent);
+      margin: 2rem 0 1rem 0;
+    }
+
+    .footer .copyright {
+      text-align: center;
+      color: #999;
+      font-size: 0.9rem;
+      margin: 0;
+    }
+
     @media (max-width: 768px) {
       .sidebar {
         transform: translateX(-100%);
@@ -573,8 +734,13 @@
       .dashboard-stats {
         grid-template-columns: 1fr;
       }
+
+      .footer .row {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
     }
-  </style>
+    </style>
 <!DOCTYPE html>
 <html lang="en">
 <head>
