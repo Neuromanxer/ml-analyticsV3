@@ -720,463 +720,602 @@
             }
         }
     </style>
-</head><head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MLAnalytics - Account</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLAnalytics - Account</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-  <div class="layout">
-      <!-- Sidebar -->
-      <div class="sidebar" id="sidebar">
-        <div class="sidebar-logo">
-            <i class="fas fa-chart-line"></i>
-            <h1>MLAnalytics</h1>
-        </div>
-        
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">MAIN</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item">
-                    <a href="wizard.html">
-                      <i class="fas fa-rocket"></i>
-                      Run New Experiment
-                    </a>
-                </li>
-                <li class="sidebar-menu-item">
-                    <a href="dashboard.html">
-                        <i class="fas fa-home"></i>
-                        Dashboard
-                    </a>
-                </li>
-                <li class="sidebar-menu-item">
-                    <a href="gallery.html">
-                        <i class="fas fa-project-diagram"></i>
-                        Gallery
-                    </a>
-                </li>
-                <li class="sidebar-menu-item">
-                    <a href="datasets.html">
-                        <i class="fas fa-database"></i>
-                        Datasets
-                    </a>
-                </li>
-            </ul>
-        </div>
-        
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">SETTINGS</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item active">
-                    <a href="account.html">
-                        <i class="fas fa-user"></i>
-                        Account
-                    </a>
-                </li>
-            </ul>
-        </div>
+    <div class="layout">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <i class="fas fa-chart-line"></i>
+                <h1>MLAnalytics</h1>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">MAIN</div>
+                <ul class="sidebar-menu">
+                    <li class="sidebar-menu-item">
+                        <a href="wizard.html">
+                            <i class="fas fa-rocket"></i>
+                            Run New Experiment
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="dashboard.html">
+                            <i class="fas fa-home"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="gallery.html">
+                            <i class="fas fa-project-diagram"></i>
+                            Gallery
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="datasets.html">
+                            <i class="fas fa-database"></i>
+                            Datasets
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">SETTINGS</div>
+                <ul class="sidebar-menu">
+                    <li class="sidebar-menu-item active">
+                        <a href="account.html">
+                            <i class="fas fa-user"></i>
+                            Account
+                        </a>
+                    </li>
+                </ul>
+            </div>
 
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">COMMUNITY</div>
-            <ul class="sidebar-menu">
-                <li class="sidebar-menu-item">
-                    <a href="contact.html">
-                        <i class="fas fa-users"></i>
-                        Contact
-                    </a>
-                </li>
-            </ul>
-        </div>
-        
-        <div class="sidebar-footer">
-            <div class="sidebar-footer-item" onclick="signOutUser()">
-                <i class="fas fa-sign-out-alt"></i>
-                Sign out
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">COMMUNITY</div>
+                <ul class="sidebar-menu">
+                    <li class="sidebar-menu-item">
+                        <a href="contact.html">
+                            <i class="fas fa-users"></i>
+                            Contact
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-item" onclick="signOutUser()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sign out
+                </div>
             </div>
         </div>
-             
-    </div>
 
-      <!-- Main Content -->
-      <div class="main-content">
-          <div class="header">
-              <div class="container">
-                  <div class="navbar">
-                      <div class="logo">
-                          <h1>ML<span>Analytics</span></h1>
-                      </div>
-                      <div class="menu-icon">
-                          <i class="fas fa-bars"></i>
-                      </div>
-                      <nav>
-                          <ul>
-                              <li><a href="#home">Home</a></li>
-                              <li><a href="#models">Models</a></li>
-                              <li><a href="#visualization">Visualization</a></li>
-                              <li><a href="#account">Account</a></li>
-                          </ul>
-                      </nav>
-                  </div>
-              </div>
-          </div>
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="account-page container">
+                <div class="account-container">
+                    <div id="loading" class="loading">
+                        <i class="fas fa-spinner"></i>
+                        <p>Loading account data...</p>
+                    </div>
+                    
+                    <div id="account-content" style="display: block;">
+                        <h2>Account Dashboard</h2>
+                        
+                        <div class="dashboard-stats">
+                            <div class="stat-card">
+                                <i class="fas fa-database"></i>
+                                <h3>MB Processed</h3>
+                                <p id="mb-used">1,247.50</p>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-clock"></i>
+                                <h3>Compute Time (sec)</h3>
+                                <p id="compute-seconds">3,890.25</p>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-coins"></i>
+                                <h3>Tokens Remaining</h3>
+                                <p id="tokens-remaining">127</p>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-calendar-check"></i>
+                                <h3>Plan Status</h3>
+                                <p id="plan-status">Professional</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Reorganized Tab Groups -->
+                        <div class="tab-groups">
+                            <!-- Personal Information Group -->
+                            <div class="tab-group">
+                                <div class="tab-group-title">
+                                    <i class="fas fa-user"></i>
+                                    Personal Information
+                                </div>
+                                <div class="tab-group-tabs">
+                                    <div class="account-tab active" data-tab="profile">Profile</div>
+                                    <div class="account-tab" data-tab="activity">Activity</div>
+                                </div>
+                            </div>
 
-          <div class="account-page container">
-              <div class="account-container">
-                  <div id="loading" class="loading">
-                      <i class="fas fa-spinner"></i>
-                      <p>Loading account data...</p>
-                  </div>
-                  
-                  <div id="account-content" style="display: none;">
-                      <h2>Account Dashboard</h2>
-                      
-                      <div class="dashboard-stats">
-                        <div class="stat-card">
-                          <i class="fas fa-database"></i>
-                          <h3>MB Processed</h3>
-                          <p id="mb-used">0.00</p>
+                            <!-- Billing & Subscriptions Group -->
+                            <div class="tab-group">
+                                <div class="tab-group-title">
+                                    <i class="fas fa-credit-card"></i>
+                                    Billing & Subscriptions
+                                </div>
+                                <div class="tab-group-tabs">
+                                    <div class="account-tab" data-tab="subscription">Subscription</div>
+                                    <div class="account-tab" data-tab="tokens">Tokens</div>
+                                </div>
+                            </div>
+
+                            <!-- Legal & Privacy Group -->
+                            <div class="tab-group">
+                                <div class="tab-group-title">
+                                    <i class="fas fa-shield-alt"></i>
+                                    Legal & Privacy
+                                </div>
+                                <div class="tab-group-tabs">
+                                    <div class="account-tab" data-tab="terms">Terms & Data</div>
+                                </div>
+                            </div>
+
+                            <!-- Danger Zone Group -->
+                            <div class="tab-group danger-zone">
+                                <div class="tab-group-title">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    Danger Zone
+                                </div>
+                                <div class="tab-group-tabs">
+                                    <div class="account-tab" data-tab="delete">Delete Account</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="stat-card">
-                          <i class="fas fa-clock"></i>
-                          <h3>Compute Time (sec)</h3>
-                          <p id="compute-seconds">0.00</p>
+                        
+                        <div id="profile" class="tab-content active">
+                            <div class="account-form">
+                                <div class="account-row">
+                                    <div class="account-col">
+                                        <label for="firstName">First Name</label>
+                                        <input type="text" id="firstName" value="John" />
+                                    </div>
+                                    <div class="account-col">
+                                        <label for="lastName">Last Name</label>
+                                        <input type="text" id="lastName" value="Doe" />
+                                    </div>
+                                </div>
+                                
+                                <div class="account-row">
+                                    <div class="account-col">
+                                        <label for="email">Email</label>
+                                        <input type="email" id="email" value="john.doe@example.com" />
+                                    </div>
+                                    <div class="account-col">
+                                        <label for="phone">Phone</label>
+                                        <input type="tel" id="phone" value="+1 (555) 123-4567" />
+                                    </div>
+                                </div>
+                                
+                                <div class="account-row">
+                                    <div class="account-col">
+                                        <label for="company">Company</label>
+                                        <input type="text" id="company" value="Tech Innovations Inc." />
+                                    </div>
+                                    <div class="account-col">
+                                        <label for="role">Role</label>
+                                        <input type="text" id="role" value="Data Scientist" />
+                                    </div>
+                                </div>
+                                
+                                <div class="account-row">
+                                    <div class="account-col">
+                                        <label for="password">Change Password</label>
+                                        <input type="password" id="password" placeholder="New Password" />
+                                    </div>
+                                    <div class="account-col">
+                                        <label for="confirmPassword">Confirm Password</label>
+                                        <input type="password" id="confirmPassword" placeholder="Confirm New Password" />
+                                    </div>
+                                </div>
+                                
+                                <div class="account-row">
+                                    <div class="account-col" style="flex-basis: 100%;">
+                                        <label for="bio">Bio</label>
+                                        <textarea id="bio" rows="4">Experienced data scientist with a passion for machine learning and AI...</textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="account-row">
+                                    <div class="account-col">
+                                        <label for="notifications">Email Notifications</label>
+                                        <select id="notifications">
+                                            <option value="all">All Notifications</option>
+                                            <option value="important" selected>Important Only</option>
+                                            <option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="account-col">
+                                        <label for="timezone">Timezone</label>
+                                        <select id="timezone">
+                                            <option value="pst">Pacific Time (PST)</option>
+                                            <option value="est" selected>Eastern Time (EST)</option>
+                                            <option value="utc">UTC</option>
+                                            <option value="gmt">GMT</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <button class="btn">Save Changes</button>
+                            </div>
                         </div>
-                        <div class="stat-card">
-                          <i class="fas fa-coins"></i>
-                          <h3>Tokens Remaining</h3>
-                          <p id="tokens-remaining">0</p>
-                        </div>
-                        <div class="stat-card">
-                          <i class="fas fa-calendar-check"></i>
-                          <h3>Plan Status</h3>
-                          <p id="plan-status"></p>
-                        </div>
-                      </div>
-                      
-                      <!-- Reorganized Tabs with Logical Grouping -->
-                      <div class="account-tabs">
-                          <!-- PERSONAL GROUP -->
-                          <div class="account-tab active">Profile</div>
-                          <div class="account-tab">Activity</div>
-                          <!-- BILLING GROUP -->
-                          <div class="account-tab">Subscription</div>
-                          <div class="account-tab">Tokens</div>
-                          <!-- LEGAL GROUP -->
-                          <div class="account-tab">Terms</div>
-                          <!-- DANGER ZONE -->
-                          <div class="account-tab">Delete Account</div>
-                      </div>
-                      
-                      <!-- PERSONAL GROUP CONTENT -->
-                      <div id="profile" class="tab-content active">
-                          <div class="account-form">
-                            <div class="account-row">
-                                  <div class="account-col">
-                                      <label for="firstName">First Name</label>
-                                      <input type="text" id="firstName" />
-                                  </div>
-                                  <div class="account-col">
-                                      <label for="lastName">Last Name</label>
-                                      <input type="text" id="lastName" />
-                                  </div>
-                              </div>
-                              
-                              <div class="account-row">
-                                  <div class="account-col">
-                                      <label for="email">Email</label>
-                                      <input type="email" id="email" />
-                                  </div>
-                                  <div class="account-col">
-                                      <label for="phone">Phone</label>
-                                      <input type="tel" id="phone" />
-                                  </div>
-                              </div>
-                              
-                              <div class="account-row">
-                                  <div class="account-col">
-                                      <label for="company">Company</label>
-                                      <input type="text" id="company" />
-                                  </div>
-                                  <div class="account-col">
-                                      <label for="role">Role</label>
-                                      <input type="text" id="role" />
-                                  </div>
-                              </div>
-                              
-                              <div class="account-row">
-                                  <div class="account-col">
-                                      <label for="password">Change Password</label>
-                                      <input type="password" id="password" placeholder="New Password" />
-                                  </div>
-                                  <div class="account-col">
-                                      <label for="confirmPassword">Confirm Password</label>
-                                      <input type="password" id="confirmPassword" placeholder="Confirm New Password" />
-                                  </div>
-                              </div>
-                              
-                              <div class="account-row">
-                                  <div class="account-col" style="flex-basis: 100%;">
-                                      <label for="bio">Bio</label>
-                                      <textarea id="bio"></textarea>
-                                  </div>
-                              </div>
-                              
-                              <div class="account-row">
-                                  <div class="account-col">
-                                      <label for="notifications">Email Notifications</label>
-                                      <select id="notifications">
-                                          <option value="all">All Notifications</option>
-                                          <option value="important">Important Only</option>
-                                          <option value="none">None</option>
-                                      </select>
-                                  </div>
-                                  <div class="account-col">
-                                      <label for="timezone">Timezone</label>
-                                      <select id="timezone">
-                                          <option value="pst">Pacific Time (PST)</option>
-                                          <option value="est">Eastern Time (EST)</option>
-                                          <option value="utc">UTC</option>
-                                          <option value="gmt">GMT</option>
-                                      </select>
-                                  </div>
-                              </div>
-                              
-                              <button class="btn">Save Changes</button>
-                          </div>
-                      </div>
-                      
-                      <div id="activity" class="tab-content">
-                          <h3>Recent Activity</h3>
-                          
-                      </div>
-                      
-                      <!-- BILLING GROUP CONTENT -->
-                      <div id="subscription" class="tab-content">
-                          <h3>Current Plan: <span id="current-plan-name">Loading...</span></h3>
-                          <p>Your subscription renews on <span id="renewal-date">Loading...</span></p>
-                          
-                          <div class="plans-container">
-                              <div class="plan-card">
-                                  <div class="plan-header" style="background: #f8f9fa;">
-                                      <h3>Starter</h3>
-                                      <div class="plan-price">$29<span>/month</span></div>
-                                  </div>
-                                  <div class="plan-features">
-                                      <ul>
+                        
+                        <div id="subscription" class="tab-content">
+                            <h3>Current Plan: <span id="current-plan-name">Professional</span></h3>
+                            <p>Your subscription renews on <span id="renewal-date">August 19, 2025</span></p>
+                            
+                            <div class="plans-container">
+                                <div class="plan-card">
+                                    <div class="plan-header" style="background: #f8f9fa;">
+                                        <h3>Starter</h3>
+                                        <div class="plan-price">$29<span>/month</span></div>
+                                    </div>
+                                    <div class="plan-features">
                                         <ul>
                                             <li><i class="fas fa-check"></i> <strong>35 Tokens</strong> / Month <span style="color: green;">(+21% Bonus)</span></li>
                                             <li><i class="fas fa-check"></i> Equivalent to 1.75GB or 700s processing</li>                                            
-                                          <li><i class="fas fa-check"></i> Email Support</li>
-                                          <li><i class="fas fa-check"></i> Basic Analytics</li>
-                                          <li><i class="fas fa-times"></i> Custom Models</li>
-                                          <li><i class="fas fa-times"></i> Advanced Visualization</li>                                 
-                                      </ul>
-                                  </div>
-                                  <div class="plan-footer">
-                                    <button class="btn" data-plan="starter">Select Plan</button>
-                                  </div>
-                              </div>
-                              
-                              <div class="plan-card popular">
-                                  <div class="plan-header" style="background: linear-gradient(135deg, #0066cc, #0099ff); color: white;">
-                                      <h3 style="color: white;">Professional</h3>
-                                      <div class="plan-price" style="color: white;">$59<span style="color: rgba(255,255,255,0.8);">/month</span></div>
-                                  </div>
-                                  <div class="plan-features">
-                                    <ul>
-                                        <li><i class="fas fa-check"></i> <strong>80 Tokens</strong> / Month <span style="color: green;">(+36% Bonus)</span></li>
-                                        <li><i class="fas fa-check"></i> Equivalent to 4GB or 1,600s processing</li>                                        
-                                      <li><i class="fas fa-check"></i> Priority Support</li>
-                                      <li><i class="fas fa-check"></i> Advanced Analytics</li>
-                                      <li><i class="fas fa-check"></i> Custom Models</li>
-                                      <li><i class="fas fa-times"></i> White Label</li>
-                                  </ul>
-                                  </div>
-                                  <div class="plan-footer">
-                                    <button class="btn" data-plan="professional">Select Plan</button>
-                                  </div>
-                              </div>
-                              
-                              <div class="plan-card">
-                                  <div class="plan-header" style="background: #f8f9fa;">
-                                      <h3>Enterprise</h3>
-                                      <div class="plan-price">$99<span>/month</span></div>
-                                  </div>
-                                  <div class="plan-features">
-                                    <ul>
-                                        <li><i class="fas fa-check"></i> <strong>150 Tokens</strong> / Month <span style="color: green;">(+51% Bonus)</span></li>
-                                        <li><i class="fas fa-check"></i> Equivalent to 7.5GB or 3,000s processing</li>                                        
-                                      <li><i class="fas fa-check"></i> 24/7 Support</li>
-                                      <li><i class="fas fa-check"></i> Advanced Analytics</li>
-                                      <li><i class="fas fa-check"></i> Custom Models</li>
-                                      <li><i class="fas fa-check"></i> White Label</li>
-                                  </ul>                                  
-                                  </div>
-                                  <div class="plan-footer">
-                                    <button class="btn" data-plan="enterprise">Select Plan</button>
-                                  </div>
-                              </div>
-                          </div>
-                      </div>
+                                            <li><i class="fas fa-check"></i> Email Support</li>
+                                            <li><i class="fas fa-check"></i> Basic Analytics</li>
+                                            <li><i class="fas fa-times"></i> Custom Models</li>
+                                            <li><i class="fas fa-times"></i> Advanced Visualization</li>                                 
+                                        </ul>
+                                    </div>
+                                    <div class="plan-footer">
+                                        <button class="btn" data-plan="starter">Select Plan</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="plan-card popular">
+                                    <div class="plan-header" style="background: linear-gradient(135deg, #0066cc, #0099ff); color: white;">
+                                        <h3 style="color: white;">Professional</h3>
+                                        <div class="plan-price" style="color: white;">$59<span style="color: rgba(255,255,255,0.8);">/month</span></div>
+                                    </div>
+                                    <div class="plan-features">
+                                        <ul>
+                                            <li><i class="fas fa-check"></i> <strong>80 Tokens</strong> / Month <span style="color: green;">(+36% Bonus)</span></li>
+                                            <li><i class="fas fa-check"></i> Equivalent to 4GB or 1,600s processing</li>                                        
+                                            <li><i class="fas fa-check"></i> Priority Support</li>
+                                            <li><i class="fas fa-check"></i> Advanced Analytics</li>
+                                            <li><i class="fas fa-check"></i> Custom Models</li>
+                                            <li><i class="fas fa-times"></i> White Label</li>
+                                        </ul>
+                                    </div>
+                                    <div class="plan-footer">
+                                        <button class="btn" data-plan="professional">Current Plan</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="plan-card">
+                                    <div class="plan-header" style="background: #f8f9fa;">
+                                        <h3>Enterprise</h3>
+                                        <div class="plan-price">$99<span>/month</span></div>
+                                    </div>
+                                    <div class="plan-features">
+                                        <ul>
+                                            <li><i class="fas fa-check"></i> <strong>150 Tokens</strong> / Month <span style="color: green;">(+51% Bonus)</span></li>
+                                            <li><i class="fas fa-check"></i> Equivalent to 7.5GB or 3,000s processing</li>                                        
+                                            <li><i class="fas fa-check"></i> 24/7 Support</li>
+                                            <li><i class="fas fa-check"></i> Advanced Analytics</li>
+                                            <li><i class="fas fa-check"></i> Custom Models</li>
+                                            <li><i class="fas fa-check"></i> White Label</li>
+                                            <li><i class="fas fa-check"></i> API Access</li>
+                                        </ul>
+                                    </div>
+                                    <div class="plan-footer">
+                                        <button class="btn" data-plan="enterprise">Upgrade</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-                      <div id="tokens" class="tab-content">
-                        <h3>Token Management</h3>
-                        
-                        <div class="token-overview">
-                            <div class="token-balance-card">
-                                <i class="fas fa-coins"></i>
-                                <div class="token-info">
-                                    <h4>Current Balance</h4>
-                                    <div class="token-amount" id="token-balance">Loading...</div>
-                                    <p class="token-value" id="token-dollar-value">≈ Loading...</p>
+                        <div id="tokens" class="tab-content">
+                            <h3>Token Management</h3>
+                            
+                            <div class="token-overview">
+                                <div class="token-balance-card">
+                                    <i class="fas fa-coins"></i>
+                                    <div class="token-info">
+                                        <h4>Current Balance</h4>
+                                        <div class="token-amount" id="token-balance">127 Tokens</div>
+                                        <p class="token-value" id="token-dollar-value">≈ $127.00</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="account-row">
+                                <div class="account-col">
+                                    <h4>Purchase Tokens</h4>
+                                    <div class="token-packages">
+                                        <div class="token-package">
+                                            <div class="package-header">
+                                                <span class="token-count">10 Tokens</span>
+                                                <span class="package-price">$10.00</span>
+                                            </div>
+                                            <button class="btn btn-sm" onclick="purchaseTokens(10)">Purchase</button>
+                                        </div>
+                                        
+                                        <div class="token-package">
+                                            <div class="package-header">
+                                                <span class="token-count">45 Tokens</span>
+                                                <span class="package-price">$45.00</span>
+                                            </div>
+                                            <button class="btn btn-sm" onclick="purchaseTokens(45)">Purchase</button>
+                                        </div>
+                                        
+                                        <div class="token-package popular">
+                                            <div class="package-header">
+                                                <span class="token-count">80 Tokens</span>
+                                                <span class="package-price">$80.00</span>
+                                            </div>
+                                            <button class="btn btn-sm" onclick="purchaseTokens(80)">Purchase</button>
+                                        </div>
+                                        
+                                        <div class="token-package">
+                                            <div class="package-header">
+                                                <span class="token-count">375 Tokens</span>
+                                                <span class="package-price">$375.00</span>
+                                            </div>
+                                            <button class="btn btn-sm" onclick="purchaseTokens(375)">Purchase</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="account-row">
+                                <div class="account-col" style="flex-basis: 100%;">
+                                    <h4>Token Usage History</h4>
+                                    <table class="token-usage-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Service</th>
+                                                <th>Tokens Used</th>
+                                                <th>Cost</th>
+                                                <th>Remaining Balance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>July 18, 2025</td>
+                                                <td>ML Training</td>
+                                                <td>15</td>
+                                                <td>$15.00</td>
+                                                <td>127</td>
+                                            </tr>
+                                            <tr>
+                                                <td>July 17, 2025</td>
+                                                <td>Data Processing</td>
+                                                <td>8</td>
+                                                <td>$8.00</td>
+                                                <td>142</td>
+                                            </tr>
+                                            <tr>
+                                                <td>July 16, 2025</td>
+                                                <td>Model Inference</td>
+                                                <td>22</td>
+                                                <td>$22.00</td>
+                                                <td>150</td>
+                                            </tr>
+                                            <tr>
+                                                <td>July 15, 2025</td>
+                                                <td>Visualization</td>
+                                                <td>5</td>
+                                                <td>$5.00</td>
+                                                <td>172</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="account-row">
-                          <div class="account-col">
-                            <h4>Purchase Tokens</h4>
-                            <div class="token-packages">
+                        <div id="activity" class="tab-content">
+                            <h3>Recent Activity</h3>
                             
-                              <div class="token-package">
-                                <div class="package-header">
-                                  <span class="token-count">10 Tokens</span>
-                                  <span class="package-price">$10.00</span>
+                            <div class="activity-timeline">
+                                <div class="activity-item">
+                                    <div class="activity-icon">
+                                        <i class="fas fa-rocket"></i>
+                                    </div>
+                                    <div class="activity-content">
+                                        <h4>New Experiment Started</h4>
+                                        <p>Classification model training on customer dataset</p>
+                                        <span class="activity-time">2 hours ago</span>
+                                    </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="purchaseTokens(10)">Purchase</button>
-                              </div>
-                            
-                              <div class="token-package">
-                                <div class="package-header">
-                                  <span class="token-count">45 Tokens</span>
-                                  <span class="package-price">$45.00</span>
+                                
+                                <div class="activity-item">
+                                    <div class="activity-icon">
+                                        <i class="fas fa-download"></i>
+                                    </div>
+                                    <div class="activity-content">
+                                        <h4>Dataset Uploaded</h4>
+                                        <p>customer_data_v2.csv (2.3 MB)</p>
+                                        <span class="activity-time">5 hours ago</span>
+                                    </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="purchaseTokens(45)">Purchase</button>
-                              </div>
-                            
-                              <div class="token-package popular">
-                                <div class="package-header">
-                                  <span class="token-count">80 Tokens</span>
-                                  <span class="package-price">$80.00</span>
+                                
+                                <div class="activity-item">
+                                    <div class="activity-icon">
+                                        <i class="fas fa-chart-bar"></i>
+                                    </div>
+                                    <div class="activity-content">
+                                        <h4>Visualization Created</h4>
+                                        <p>Sales performance dashboard</p>
+                                        <span class="activity-time">1 day ago</span>
+                                    </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="purchaseTokens(80)">Purchase</button>
-                              </div>
-                            
-                              <div class="token-package">
-                                <div class="package-header">
-                                  <span class="token-count">375 Tokens</span>
-                                  <span class="package-price">$375.00</span>
+                                
+                                <div class="activity-item">
+                                    <div class="activity-icon">
+                                        <i class="fas fa-cog"></i>
+                                    </div>
+                                    <div class="activity-content">
+                                        <h4>Model Configuration Updated</h4>
+                                        <p>Updated hyperparameters for regression model</p>
+                                        <span class="activity-time">2 days ago</span>
+                                    </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="purchaseTokens(375)">Purchase</button>
-                              </div>
-                            
-                            </div>                            
-                          <div class="account-row">
-                              <div class="account-col" style="flex-basis: 100%;">
-                                  <h4>Token Usage History</h4>
-                                  <table class="token-usage-table">
-                                      <thead>
-                                          <tr>
-                                              <th>Date</th>
-                                              <th>Service</th>
-                                              <th>Tokens Used</th>
-                                              <th>Cost</th>
-                                              <th>Remaining Balance</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>
-                                         
-                                      </tbody>
-                                  </table>
-                              </div>
-                          </div>
-                      </div>
-                      
-                      <!-- LEGAL GROUP CONTENT -->
-                      <div id="terms" class="tab-content">
-                        <h3>Terms of Use Agreement</h3>
-
-                        <div class="account-row">
-                            <div class="account-col">
-                                <label>Agreed to Terms</label>
-                                <p id="agreed-to-terms">Loading...</p>
-                            </div>
-                            <div class="account-col">
-                                <label>Agreed At</label>
-                                <p id="agreed-at">Loading...</p>
-                            </div>
-                            <div class="account-col" style="flex-basis: 100%;">
-                                <label>Policy Version</label>
-                                <p id="policy-version">Loading...</p>
+                                
+                                <div class="activity-item">
+                                    <div class="activity-icon">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div class="activity-content">
+                                        <h4>Profile Updated</h4>
+                                        <p>Changed notification preferences</p>
+                                        <span class="activity-time">3 days ago</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <button class="btn" id="export-metadata-btn">
-                            Export My Data
-                        </button>
-
-                        <p id="export-status" style="margin-top: 10px;"></p>
-                      </div>
-
-                      <!-- DANGER ZONE CONTENT -->
-                      <div id="delete" class="tab-content">
-                        <h3>Delete Account</h3>
-                        <div class="delete-warning" style="background-color: #fce4e4; padding: 1rem; border: 1px solid #e74c3c; border-radius: 5px;">
-                            <p><strong>Warning:</strong> This action is <u>permanent</u> and cannot be undone. All your data, usage history, and stored files will be deleted.</p>
+                        <div id="terms" class="tab-content">
+                            <h3>Terms & Data Privacy</h3>
+                            
+                            <div class="terms-section">
+                                <h4>Data Processing Agreement</h4>
+                                <div class="terms-item">
+                                    <input type="checkbox" id="data-processing" checked>
+                                    <label for="data-processing">
+                                        I agree to the <a href="#" style="color: #0066cc;">Data Processing Agreement</a> and understand how my data is processed.
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="terms-section">
+                                <h4>Terms of Service</h4>
+                                <div class="terms-item">
+                                    <input type="checkbox" id="terms-service" checked>
+                                    <label for="terms-service">
+                                        I have read and agree to the <a href="#" style="color: #0066cc;">Terms of Service</a>.
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="terms-section">
+                                <h4>Privacy Policy</h4>
+                                <div class="terms-item">
+                                    <input type="checkbox" id="privacy-policy" checked>
+                                    <label for="privacy-policy">
+                                        I acknowledge that I have read the <a href="#" style="color: #0066cc;">Privacy Policy</a>.
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="terms-section">
+                                <h4>Marketing Communications</h4>
+                                <div class="terms-item">
+                                    <input type="checkbox" id="marketing-comms">
+                                    <label for="marketing-comms">
+                                        I would like to receive marketing communications and product updates via email.
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="terms-section">
+                                <h4>Data Export</h4>
+                                <p>You can request an export of all your personal data at any time.</p>
+                                <button class="btn" onclick="requestDataExport()">Request Data Export</button>
+                            </div>
+                            
+                            <button class="btn">Save Preferences</button>
                         </div>
-                        <br />
-                        <button class="btn delete-btn" id="deleteAccountBtn" style="background-color: #e74c3c; color: white;">Delete My Account</button>
-                      </div>
+                        
+                        <div id="delete" class="tab-content">
+                            <h3>Delete Account</h3>
+                            <div class="delete-warning" style="background-color: #fce4e4; padding: 1rem; border: 1px solid #e74c3c; border-radius: 5px; margin-bottom: 1rem;">
+                                <p><strong>Warning:</strong> This action is <u>permanent</u> and cannot be undone. All your data, usage history, and stored files will be deleted.</p>
+                            </div>
+                            
+                            <div class="delete-section">
+                                <h4>What will be deleted:</h4>
+                                <ul style="margin: 1rem 0; padding-left: 2rem;">
+                                    <li>All uploaded datasets and files</li>
+                                    <li>Machine learning models and experiments</li>
+                                    <li>Usage history and analytics</li>
+                                    <li>Account settings and preferences</li>
+                                    <li>Subscription and billing information</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="delete-confirmation" style="margin: 1rem 0;">
+                                <label for="delete-confirm">
+                                    <input type="checkbox" id="delete-confirm"> 
+                                    I understand that this action cannot be undone
+                                </label>
+                            </div>
+                            
+                            <button class="btn delete-btn" id="deleteAccountBtn" style="background-color: #e74c3c; color: white;" onclick="deleteAccount()">Delete My Account</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                  </div>
-              </div>
-          </div>
-      </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-      <div class="container">
-          <div class="row">
-              <div class="footer-col-1">
-                  <h3>ML Analytics Platform</h3>
-                  <p>Streamline your machine learning workflow with our comprehensive analytics platform</p>
-              </div>
-              <div class="footer-col-2">
-                  <h3>Quick Links</h3>
-                  <ul>
-                      <li>Home</li>
-                      <li>Models</li>
-                      <li>Visualization</li>
-                      <li>Account</li>
-                  </ul>
-              </div>
-              <div class="footer-col-3">
-                  <h3>Resources</h3>
-                  <ul>
-                      <li>Documentation</li>
-                      <li>Tutorials</li>
-                      <li>Blog</li>
-                      <li>Community</li>
-                      <li>Support</li>
-                  </ul>
-              </div>
-              <div class="footer-col-4">
-                  <h3>Follow Us</h3>
-                  <ul>
-                      <li>Facebook</li>
-                      <li>Twitter</li>
-                      <li>Instagram</li>
-                      <li>LinkedIn</li>
-                      <li>YouTube</li>
-                  </ul>
-              </div>
-          </div>
-          <hr>
-          <p class="copyright">Copyright 2025 - ML Analytics Platform</p>
-      </div>
-  </div>
+    <!-- Footer -->
+    <div class="footer">
+        <div class="container">
+            <div class="row">
+                <div class="footer-col-1">
+                    <h3>ML Analytics Platform</h3>
+                    <p>Streamline your machine learning workflow with our comprehensive analytics platform</p>
+                </div>
+                <div class="footer-col-2">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li>Home</li>
+                        <li>Models</li>
+                        <li>Visualization</li>
+                        <li>Account</li>
+                    </ul>
+                </div>
+                <div class="footer-col-3">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li>Documentation</li>
+                        <li>Tutorials</li>
+                        <li>Blog</li>
+                        <li>Community</li>
+                        <li>Support</li>
+                    </ul>
+                </div>
+                <div class="footer-col-4">
+                    <h3>Follow Us</h3>
+                    <ul>
+                        <li>Facebook</li>
+                        <li>Twitter</li>
+                        <li>Instagram</li>
+                        <li>LinkedIn</li>
+                        <li>YouTube</li>
+                    </ul>
+                </div>
+            </div>
+            <hr>
+            <p class="copyright">Copyright 2025 - ML Analytics Platform</p>
+        </div>
+    </div>
 </body>
 <script>
 const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
