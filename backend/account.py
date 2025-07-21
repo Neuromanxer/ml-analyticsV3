@@ -609,8 +609,17 @@ async def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update profile."
         )
-from .storage import list_user_files
-@router.post("/user/request-export")
+from .storage import list_user_files, get_file_url
+import json
+import logging
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
+from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+
+@router.post("/request-export")
 def request_data_export(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_master_db_session)
