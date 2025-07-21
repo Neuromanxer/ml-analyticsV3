@@ -734,7 +734,7 @@ def delete_all_user_data(current_user: User = Depends(get_current_active_user), 
 from datetime import datetime, timedelta
 from fastapi import HTTPException, Depends
 from supabase import create_client, Client
-from storage import supabase, SUPABASE_BUCKET
+from .storage import supabase, SUPABASE_BUCKET
 import os
 @router.delete("/metadata/cleanup")
 async def delete_my_old_metadata(current_user: User = Depends(get_current_active_user)):
