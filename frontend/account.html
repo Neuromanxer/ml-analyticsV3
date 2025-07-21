@@ -895,8 +895,15 @@
                                 </div>
                                 <div class="tab-group-tabs">
                                     <div class="account-tab" data-tab="delete">Delete Account</div>
+                                    <div class="account-tab" data-tab="delete-data">Delete All Data</div> <!-- 👈 NEW -->
                                 </div>
                             </div>
+                            <div id="delete-data" class="tab-content">
+                            <h3>Delete All Data</h3>
+                            <p style="color: #b30000;"><strong>This will permanently delete all files, insights, and metadata associated with your account.</strong></p>
+                            <button class="btn delete-btn" id="deleteDataBtn" style="background-color: #e74c3c; color: white;">Delete All My Data</button>
+                        </div>
+
                         </div>
                         
                         <div id="profile" class="tab-content active">
@@ -2374,6 +2381,7 @@ async function loadTokenUsage() {
     if (tbody) tbody.innerHTML = "<tr><td colspan='3'>Error</td></tr>";
   }
 }
+
 function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
     localStorage.removeItem("access_token");
@@ -2440,6 +2448,32 @@ function setupPasswordChangeForm() {
         }
     });
 }
+function setupDeleteDataButton() {
+    const btn = document.getElementById("deleteDataBtn");
+    if (!btn) return;
+
+    btn.addEventListener("click", async function () {
+        if (!confirm("⚠️ Are you sure? This will delete all your uploaded files, models, and insights permanently.")) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/account/delete-all-data`, {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${safeStorageGet("access_token")}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (!response.ok) throw new Error("Failed to delete data");
+            const data = await response.json();
+
+            alert("✅ " + data.message);
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert("❌ Could not delete your data. Please try again.");
+        }
+    });
+}
 document.addEventListener("DOMContentLoaded", () => {
     // 1) Load account data on page load
     const authHeader = { 
@@ -2451,6 +2485,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadActivityFeed(); // ← add this to update activity UI
     loadTermsStatus();
     setupPasswordChangeForm();
+    setupDeleteDataButton();
     // 2) Set up tab click handlers using the existing openTab function
     const tabs = document.querySelectorAll(".account-tab");
     tabs.forEach((tab) => {

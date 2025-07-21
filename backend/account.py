@@ -682,3 +682,52 @@ def request_data_export(
     except Exception as e:
         logging.error(f"❌ Failed to generate export for {current_user.id}: {str(e)}")
         raise HTTPException(500, "Failed to generate export")
+from .storage import delete_file_from_supabase
+@router.delete("/delete-all-data")
+def delete_all_user_data(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_master_db_session)):
+    try:
+        user_id = str(current_user.id)
+
+        # Step 1: Delete files associated with the user
+        files = list_user_files(user_id)
+        if not files:
+            logging.info(f"No files found for user {user_id}")
+        
+        for f in files or []:
+            file_path = f"{user_id}/{f['name']}"
+            logging.info(f"Deleting file: {file_path}")
+            delete_file_from_supabase(file_path)
+
+        # Step 2: Delete visualizations metadata
+        logging.info(f"Deleting visualizations metadata for user {user_id}")
+        delete_vis_response = db.execute(text("""
+            DELETE FROM visualizations_metadata WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        # Step 3: Delete user profile info (if stored in a user-specific table, e.g., 'user_profiles')
+        logging.info(f"Deleting user profile info for user {user_id}")
+        delete_profile_response = db.execute(text("""
+            DELETE FROM user_profiles WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        # Step 4: Delete any other user-specific data (e.g., audit logs, activities)
+        logging.info(f"Deleting user activity logs for user {user_id}")
+        delete_activity_response = db.execute(text("""
+            DELETE FROM user_activity WHERE user_id = :user_id
+        """), {"user_id": user_id})
+
+        # Step 5: Delete user from the main user table
+        logging.info(f"Deleting user record for user {user_id}")
+        delete_user_response = db.execute(text("""
+            DELETE FROM users WHERE id = :user_id
+        """), {"user_id": user_id})
+
+        # Commit the changes
+        db.commit()
+
+        return {"message": f"✅ Successfully deleted all data for user {current_user.id}."}
+
+    except Exception as e:
+        logging.exception(f"❌ Failed to delete all data for user {current_user.id}: {str(e)}")
+        db.rollback()  # Rollback any partial changes
+        raise HTTPException(status_code=500, detail="Failed to delete all user data.")

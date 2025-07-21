@@ -1086,28 +1086,7 @@ async def get_terms_status(current_user: User = Depends(get_current_active_user)
         "policy_version": current_user.policy_version
     }
 from .storage import supabase
-@router.get("/metadata/export")
-def export_user_data(current_user: User = Depends(get_current_active_user)):
-    try:
-        user_id = str(current_user.id)
 
-        response = supabase.table("visualizations_metadata")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .execute()
-
-        # ✅ FIX: Safely handle missing `.error`
-        if not response or not hasattr(response, "data"):
-            raise Exception("Supabase returned an invalid response")
-
-        return {
-            "user": current_user.email,
-            "metadata": response.data
-        }
-
-    except Exception as e:
-        logging.exception("Error exporting user metadata")
-        raise HTTPException(status_code=500, detail="Unable to export user data.")
 def get_admin_user(current_user: User = Depends(get_current_active_user)):
     if not current_user.is_admin:  # or use role == 'admin', is_dev, etc.
         raise HTTPException(
@@ -1151,41 +1130,6 @@ def delete_my_old_metadata(current_user: User = Depends(get_current_active_user)
     except Exception as e:
         logging.exception(f"❌ Failed to delete old metadata for user {user_id}")
         raise HTTPException(status_code=500, detail="Failed to delete your old metadata.")
-    
-@router.delete("/metadata/delete-all")
-def delete_my_metadata(current_user: User = Depends(get_current_active_user)):
-    try:
-        user_id = str(current_user.id)
-
-        # Step 1: Fetch this user's record IDs
-        fetch_response = supabase.table("visualizations_metadata")\
-            .select("id")\
-            .eq("user_id", user_id)\
-            .execute()
-
-        if fetch_response.error:
-            raise Exception(fetch_response.error.message)
-
-        records = fetch_response.data or []
-        record_ids = [record["id"] for record in records]
-
-        if not record_ids:
-            return {"message": "✅ You have no metadata to delete."}
-
-        # Step 2: Delete the user's records by ID
-        delete_response = supabase.table("visualizations_metadata")\
-            .delete()\
-            .in_("id", record_ids)\
-            .execute()
-
-        if delete_response.error:
-            raise Exception(delete_response.error.message)
-
-        return {"message": f"✅ Deleted your {len(record_ids)} metadata records."}
-
-    except Exception as e:
-        logging.exception(f"❌ Failed to delete metadata for user {current_user.id}")
-        raise HTTPException(status_code=500, detail="Failed to delete your metadata.")
 
 def get_dataset_by_id(
     user_email: str,

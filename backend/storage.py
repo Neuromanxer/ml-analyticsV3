@@ -90,3 +90,19 @@ def list_user_files(user_id: str):
     if getattr(response, "error", None):
         raise Exception(f"Failed to list files: {response.error.message}")
     return response  # ✅ return the list of files
+def delete_file_from_supabase(file_path: str):
+    """Deletes a file from Supabase storage."""
+    try:
+        response = supabase.storage.from_(SUPABASE_BUCKET).remove([file_path])
+        
+        # Check if there was an error in the response
+        if getattr(response, "error", None):
+            raise Exception(f"Failed to delete file: {response.error.message}")
+
+        # If no error, return a success message or a status
+        return {"message": f"✅ File '{file_path}' deleted successfully."}
+
+    except Exception as e:
+        # Log the error and raise it
+        logging.error(f"❌ Error deleting file '{file_path}': {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
