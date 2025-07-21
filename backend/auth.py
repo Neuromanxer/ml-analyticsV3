@@ -1090,7 +1090,7 @@ from .storage import supabase
 class AgreementData(BaseModel):
     termsAccepted: bool
     privacyAccepted: bool
-
+ 
 @router.post("/user/agreements")
 async def update_user_agreements(
     agreement_data: AgreementData,

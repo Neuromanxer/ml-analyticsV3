@@ -937,7 +937,7 @@
                                     </div>
                                     <div class="account-col">
                                         <label for="role">Role</label>
-                                        <input type="text" id="role" value="Data Scientist" />
+                                        <input type="text" id="role" disabled />
                                     </div>
                                 </div>
                                 
@@ -1618,41 +1618,45 @@ function exportUserData() {
 }
 function handleAgreementChanges() {
     const termsCheckbox = document.getElementById("terms-service");
-    const privacyCheckbox = document.getElementById("privacy-policy");
+    const dataProcessingCheckbox = document.getElementById("data-processing");
 
-    // Function to send agreement status to the backend
+    if (!termsCheckbox || !dataProcessingCheckbox) {
+        console.error("Missing checkbox elements for agreement tracking.");
+        return;
+    }
+
     const sendAgreementData = async () => {
         const termsAccepted = termsCheckbox.checked;
-        const privacyAccepted = privacyCheckbox.checked;
+        const dataProcessingAccepted = dataProcessingCheckbox.checked;
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/auth/user/agreements`, {
-                method: 'POST',  // Ensure that the method is POST
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,  // Assuming token-based authentication
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 },
                 body: JSON.stringify({
                     termsAccepted: termsAccepted,
-                    privacyAccepted: privacyAccepted
+                    dataProcessingAccepted: dataProcessingAccepted,
                 }),
             });
 
             if (response.ok) {
                 const result = await response.json();
-                console.log("Agreement data sent successfully:", result);
+                console.log("✅ Agreement data sent successfully:", result);
             } else {
-                console.error("Failed to send agreement data");
+                console.error("❌ Failed to send agreement data");
             }
         } catch (error) {
-            console.error("Error sending agreement data:", error);
+            console.error("❌ Error sending agreement data:", error);
         }
-        }
+    };
 
-    // Event listeners for when the checkboxes change
     termsCheckbox.addEventListener('change', sendAgreementData);
-    privacyCheckbox.addEventListener('change', sendAgreementData);
+    dataProcessingCheckbox.addEventListener('change', sendAgreementData);
 }
+
 function loadTermsStatus() {
   const token = safeStorageGet('access_token'); // ✅ Match token fetch method
 
