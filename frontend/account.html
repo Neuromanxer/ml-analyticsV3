@@ -904,18 +904,18 @@
                                 <div class="account-row">
                                     <div class="account-col">
                                         <label for="firstName">First Name</label>
-                                        <input type="text" id="firstName" value="John" />
+                                        <input type="text" id="firstName" />
                                     </div>
                                     <div class="account-col">
                                         <label for="lastName">Last Name</label>
-                                        <input type="text" id="lastName" value="Doe" />
+                                        <input type="text" id="lastName" />
                                     </div>
                                 </div>
                                 
                                 <div class="account-row">
                                     <div class="account-col">
                                         <label for="email">Email</label>
-                                        <input type="email" id="email" value="john.doe@example.com" />
+                                        <input type="email" id="email" />
                                     </div>
                                     <div class="account-col">
                                         <label for="phone">Phone</label>
@@ -2178,6 +2178,52 @@ function showSuccess(message) {
     }, 3000);
 }
 
+async function requestDataExport() {
+  const token = safeStorageGet("access_token"); // Replace with your actual token getter
+  const exportBtn = document.querySelector("button[onclick='requestDataExport()']");
+  if (exportBtn) exportBtn.disabled = true;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/user/request-export`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Export request failed.");
+    }
+
+    const data = await response.json();
+
+    // Optional: Log or display the result
+    console.log("Export Data:", data);
+
+    // 🎉 Notify the user
+    alert("✅ Your data export is ready.\nCheck the console or save it manually.");
+
+    // Optionally let them download it as a file:
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "data_export.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    console.error("❌ Failed to export data:", err);
+    alert("❌ Could not generate export. Please try again later.");
+  } finally {
+    if (exportBtn) exportBtn.disabled = false;
+  }
+}
 function updateDashboard(data) {
     // Hide loading and show content
     const loadingEl = document.getElementById('loading');
