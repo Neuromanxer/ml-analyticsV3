@@ -2184,7 +2184,7 @@ async function requestDataExport() {
   if (exportBtn) exportBtn.disabled = true;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/user/request-export`, {
+    const response = await fetch(`${API_BASE_URL}/api/account/request-export`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
