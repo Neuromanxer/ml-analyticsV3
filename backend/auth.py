@@ -1085,8 +1085,42 @@ async def get_terms_status(current_user: User = Depends(get_current_active_user)
         "agreed_at": current_user.agreed_at,
         "policy_version": current_user.policy_version
     }
-from .storage import supabase
 
+from .storage import supabase
+class AgreementData(BaseModel):
+    termsAccepted: bool
+    privacyAccepted: bool
+
+@router.post("/user/agreements")
+async def update_user_agreements(
+    agreement_data: AgreementData,
+    current_user: User = Depends(get_current_active_user),  # Get the currently authenticated user
+    db: Session = Depends(get_master_db_session)  # Use the master DB session
+):
+    try:
+        # 1) Fetch the user from the master database
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 2) Update the user record in the per-user database using the user's specific session
+        with get_user_db(current_user) as user_db:
+            user_data = user_db.query(User).filter(User.id == user.id).first()
+            if not user_data:
+                raise HTTPException(status_code=404, detail=f"User data not found for {current_user.email}")
+
+            # Update the user's agreement status and timestamp
+            user_data.agreed_to_terms = agreement_data.termsAccepted
+            user_data.privacy_accepted = agreement_data.privacyAccepted
+            user_data.agreed_at = datetime.utcnow() if (agreement_data.termsAccepted or agreement_data.privacyAccepted) else None
+
+            # Commit the changes to the per-user database
+            user_db.commit()
+
+        return {"message": "✅ Agreement status updated successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update agreement status: {str(e)}")
 def get_admin_user(current_user: User = Depends(get_current_active_user)):
     if not current_user.is_admin:  # or use role == 'admin', is_dev, etc.
         raise HTTPException(
@@ -1094,43 +1128,6 @@ def get_admin_user(current_user: User = Depends(get_current_active_user)):
             detail="Only admins can perform this action.",
         )
     return current_user
-@router.delete("/metadata/cleanup")
-def delete_my_old_metadata(current_user: User = Depends(get_current_active_user)):
-    try:
-        user_id = str(current_user.id)
-        cutoff_date = (datetime.utcnow() - timedelta(days=180)).isoformat()
-
-        # Step 1: Fetch old records for this user
-        fetch_response = supabase.table("visualizations_metadata")\
-            .select("id, created_at")\
-            .eq("user_id", user_id)\
-            .lt("created_at", cutoff_date)\
-            .execute()
-
-        if fetch_response.error:
-            raise Exception(fetch_response.error.message)
-
-        records = fetch_response.data or []
-        record_ids = [record["id"] for record in records]
-
-        if not record_ids:
-            return {"message": "✅ You have no old metadata to delete."}
-
-        # Step 2: Delete them
-        delete_response = supabase.table("visualizations_metadata")\
-            .delete()\
-            .in_("id", record_ids)\
-            .execute()
-
-        if delete_response.error:
-            raise Exception(delete_response.error.message)
-
-        return {"message": f"✅ Deleted {len(record_ids)} old metadata records from your account."}
-
-    except Exception as e:
-        logging.exception(f"❌ Failed to delete old metadata for user {user_id}")
-        raise HTTPException(status_code=500, detail="Failed to delete your old metadata.")
-
 def get_dataset_by_id(
     user_email: str,
     dataset_id: int

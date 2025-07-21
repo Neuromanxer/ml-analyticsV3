@@ -4,7 +4,7 @@ from supabase import create_client, Client
 from fastapi import File, Form, UploadFile, HTTPException, Depends
 from pathlib import Path as PathL
 import aiofiles
-
+import logging
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
