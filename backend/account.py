@@ -731,3 +731,44 @@ def delete_all_user_data(current_user: User = Depends(get_current_active_user), 
         logging.exception(f"❌ Failed to delete all data for user {current_user.id}: {str(e)}")
         db.rollback()  # Rollback any partial changes
         raise HTTPException(status_code=500, detail="Failed to delete all user data.")
+from datetime import datetime, timedelta
+from fastapi import HTTPException, Depends
+from supabase import create_client, Client
+from storage import supabase, SUPABASE_BUCKET
+import os
+@router.delete("/metadata/cleanup")
+async def delete_my_old_metadata(current_user: User = Depends(get_current_active_user)):
+    try:
+        user_id = str(current_user.id)
+        cutoff_date = datetime.utcnow() - timedelta(days=180)  # Date 180 days ago
+
+        # Step 1: List all files for the user
+        list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
+        if "error" in list_response:
+            raise Exception(f"Failed to list files: {list_response['error']['message']}")
+
+        files_to_delete = []
+
+        # Step 2: Iterate through files and check the created_at date
+        for file in list_response['data']:
+            file_name = file['name']
+            created_at = file['created_at']  # Assuming 'created_at' is available in the response
+            created_date = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%S.%fZ")
+
+            # Check if the file is older than 180 days
+            if created_date < cutoff_date:
+                files_to_delete.append(file_name)
+
+        # Step 3: Delete the files that are older than 180 days
+        if files_to_delete:
+            delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove(files_to_delete)
+            if "error" in delete_response:
+                raise Exception(f"Failed to delete files: {delete_response['error']['message']}")
+
+            return {"message": f"✅ Successfully deleted {len(files_to_delete)} old files."}
+        else:
+            return {"message": "✅ No files older than 180 days found to delete."}
+
+    except Exception as e:
+        logging.exception(f"❌ Failed to delete old metadata for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete old metadata.")

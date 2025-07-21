@@ -1087,6 +1087,8 @@ async def get_terms_status(current_user: User = Depends(get_current_active_user)
     }
 
 from .storage import supabase
+from datetime import datetime, timezone
+
 class AgreementData(BaseModel):
     termsAccepted: bool
     privacyAccepted: bool
@@ -1112,7 +1114,7 @@ async def update_user_agreements(
             # Update the user's agreement status and timestamp
             user_data.agreed_to_terms = agreement_data.termsAccepted
             user_data.privacy_accepted = agreement_data.privacyAccepted
-            user_data.agreed_at = datetime.utcnow() if (agreement_data.termsAccepted or agreement_data.privacyAccepted) else None
+            user_data.agreed_at = datetime.now(timezone.utc) if (agreement_data.termsAccepted or agreement_data.privacyAccepted) else None
 
             # Commit the changes to the per-user database
             user_db.commit()
