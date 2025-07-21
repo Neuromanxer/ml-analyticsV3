@@ -1091,15 +1091,18 @@ def export_user_data(current_user: User = Depends(get_current_active_user)):
     try:
         user_id = str(current_user.id)
 
-        # Query Supabase for metadata (visualizations_metadata table)
-        response = supabase.table("visualizations_metadata").select("*").eq("user_id", user_id).execute()
+        response = supabase.table("visualizations_metadata")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .execute()
 
-        if response.error:
-            raise Exception(response.error.message)
+        # ✅ FIX: Safely handle missing `.error`
+        if not response or not hasattr(response, "data"):
+            raise Exception("Supabase returned an invalid response")
 
         return {
             "user": current_user.email,
-            "metadata": response.data  # List of metadata rows (dicts)
+            "metadata": response.data
         }
 
     except Exception as e:

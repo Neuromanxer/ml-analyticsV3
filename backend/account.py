@@ -661,12 +661,12 @@ def request_data_export(
             WHERE user_id = :user_id
             ORDER BY created_at DESC
         """), {"user_id": user_id})
-        
+
         visualizations = [
             {
                 "type": row[0],
                 "created_at": row[1],
-                "metadata": json.loads(row[2])
+                "metadata": row[2] if isinstance(row[2], dict) else json.loads(row[2])
             } for row in vis_result.fetchall()
         ]
 
