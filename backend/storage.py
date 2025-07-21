@@ -10,7 +10,6 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 import mimetypes
 import os
 def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
