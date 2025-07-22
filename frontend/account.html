@@ -2852,7 +2852,7 @@ function setupDeleteDataButton() {
         if (!confirm("⚠️ Are you sure? This will delete all your uploaded files, models, and insights permanently.")) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/account/delete-all-data`, {
+            const response = await fetch(`${API_BASE_URL}/api/account/delete-all-data`, {
                 method: "DELETE",
                 headers: {
                     Authorization: `Bearer ${safeStorageGet("access_token")}`,
@@ -2876,7 +2876,7 @@ function deleteOldData() {
 
     const sendDeleteRequest = async () => {
         try {
-            const response = await fetch('/api/metadata/cleanup', {
+           const response = await fetch(`${API_BASE_URL}/api/account/metadata/cleanup`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,  // Assuming token-based authentication
@@ -3014,10 +3014,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         try {
-            const response = await fetch('/api/user/delete', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`, // Change if using cookies
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                     'Content-Type': 'application/json'
                 }
             });
