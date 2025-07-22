@@ -1294,7 +1294,7 @@
                                     </div>
                                 </div>
                                 
-                                <button class="btn">Save Changes</button>
+                                <button class="btn" id="save-profile-btn">Save Changes</button>
                             </div>
                         </div>
                         
@@ -1564,10 +1564,6 @@
                             <p>You may export a full copy of your saved visualizations and metadata in JSON format.</p>
                             <button class="btn outline-btn" type="button" id="export-metadata-btn">Download All My Metadata</button>
                             <p id="export-status" class="status-msg">Status will appear here.</p>
-                        </div>
-
-                        <div style="margin-top: 2rem;">
-                            <button class="btn save-btn" type="button" onclick="savePreferences()">💾 Save Preferences</button>
                         </div>
                     </div>
 
@@ -2013,9 +2009,10 @@ function loadTermsStatus() {
     });
 }
 
-
-
 async function saveProfile() {
+    const saveBtn = document.getElementById("save-profile-btn");
+    if (!saveBtn) return;
+
     const token = safeStorageGet('access_token');
     if (!token || safeStorageGet('userLoggedIn') !== 'true') {
         showError('Authentication required. Please log in again.');
@@ -2024,32 +2021,40 @@ async function saveProfile() {
         return;
     }
 
-    // 1) Collect form values
+    // Collect profile form values
     const firstName = document.getElementById('firstName')?.value.trim();
     const lastName = document.getElementById('lastName')?.value.trim();
     const email = document.getElementById('email')?.value.trim();
     const phone = document.getElementById('phone')?.value.trim();
     const company = document.getElementById('company')?.value.trim();
     const role = document.getElementById('role')?.value.trim();
-    const password = document.getElementById('password')?.value;
-    const confirmPassword = document.getElementById('confirmPassword')?.value;
     const bio = document.getElementById('bio')?.value.trim();
     const notifications = document.getElementById('notifications')?.value;
     const timezone = document.getElementById('timezone')?.value;
 
-    // 2) Basic validation
+    // Password fields
+    const password = document.getElementById('password')?.value;
+    const confirmPassword = document.getElementById('confirmPassword')?.value;
+
+    // Validate passwords if entered
     if (password || confirmPassword) {
-        if (password !== confirmPassword) {
-            showError('Passwords do not match.');
+        if (!password || !confirmPassword) {
+            showError('Please fill out both password fields.');
             return;
         }
+
         if (password.length < 6) {
             showError('Password must be at least 6 characters long.');
             return;
         }
+
+        if (password !== confirmPassword) {
+            showError('Passwords do not match.');
+            return;
+        }
     }
 
-    // 3) Build payload
+    // Prepare payload for profile update
     const payload = {
         firstName,
         lastName,
@@ -2061,13 +2066,9 @@ async function saveProfile() {
         notifications,
         timezone
     };
-    // Only include password if the user entered one
-    if (password) {
-        payload.password = password;
-    }
 
+    // Attempt to update profile
     try {
-        // 4) Send to backend
         let response = await fetch(`${API_BASE_URL}/api/account/update-profile`, {
             method: 'PUT',
             headers: {
@@ -2078,49 +2079,54 @@ async function saveProfile() {
         });
 
         if (response.status === 401) {
-            // Try refreshing token once
-            try {
-                await refreshUserToken();
-                const newToken = safeStorageGet('access_token');
-                response = await fetch(`${API_BASE_URL}/api/account/update-profile`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${newToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    const msg = err.detail || 'Failed to update profile after token refresh.';
-                    showError(msg);
-                    return;
-                }
-            } catch (refreshErr) {
-                console.error('Token refresh failed:', refreshErr);
-                clearAuthStorage();
-                window.location.href = 'login.html';
-                return;
-            }
+            await refreshUserToken();
+            const newToken = safeStorageGet('access_token');
+            response = await fetch(`${API_BASE_URL}/api/account/update-profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${newToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
         }
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            const msg = err.detail || 'Failed to update profile.';
-            showError(msg);
+            showError(err.detail || 'Failed to update profile.');
             return;
         }
 
-        // 5) Success
+        // Optionally update password
+        if (password) {
+            const pwdResponse = await fetch(`${API_BASE_URL}/user/change-password`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ new_password: password })
+            });
+
+            if (!pwdResponse.ok) {
+                const pwdErr = await pwdResponse.json().catch(() => ({}));
+                showError(pwdErr.detail || 'Password update failed.');
+                return;
+            }
+        }
+
         showSuccess('Profile updated successfully!');
-        
-        // Optionally refresh account data to reflect changes immediately
         loadAccountData();
+
+        // Clear password fields after success
+        document.getElementById("password").value = '';
+        document.getElementById("confirmPassword").value = '';
     } catch (err) {
         console.error('Error in saveProfile():', err);
         showError('An unexpected error occurred. Please try again.');
     }
 }
+
 function showProfileCreationMode() {
     console.log('Entering profile creation mode');
     
@@ -2838,59 +2844,6 @@ function signOutUser() {
     window.location.href = "/index.html"; // Adjust the path if needed
 }
 
-function setupPasswordChangeForm() {
-    const passwordInput = document.getElementById("password");
-    const confirmInput = document.getElementById("confirmPassword");
-
-    const saveBtn = document.querySelector(".btn"); // Or create a separate button if needed
-    if (!saveBtn) return;
-
-    saveBtn.addEventListener("click", async function (e) {
-        e.preventDefault();
-
-        const password = passwordInput.value.trim();
-        const confirmPassword = confirmInput.value.trim();
-
-        if (!password || !confirmPassword) {
-            alert("Please fill out both password fields.");
-            return;
-        }
-
-        if (password.length < 6) {
-            alert("Password must be at least 6 characters.");
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            alert("Passwords do not match.");
-            return;
-        }
-
-        try {
-           const response = await fetch(`${API_BASE_URL}/user/change-password`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ new_password: password })
-            });
-
-
-            if (response.ok) {
-                alert("Password changed successfully.");
-                passwordInput.value = "";
-                confirmInput.value = "";
-            } else {
-                const error = await response.json();
-                alert("Error: " + (error.detail || response.statusText));
-            }
-        } catch (err) {
-            console.error(err);
-            alert("An error occurred while updating your password.");
-        }
-    });
-}
 function setupDeleteDataButton() {
     const btn = document.getElementById("deleteDataBtn");
     if (!btn) return;
@@ -2958,7 +2911,6 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTokenUsage();
     loadActivityFeed(); // ← add this to update activity UI
     loadTermsStatus();
-    setupPasswordChangeForm();
     setupDeleteDataButton();
     deleteOldData();
     handleCookieConsent();
@@ -2990,7 +2942,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (saveProfileBtn) {
         saveProfileBtn.addEventListener('click', saveProfile);
     }
-    
+
     // 4) Set up plan change buttons
     const planButtons = document.querySelectorAll('[data-plan]');
     planButtons.forEach(btn => {
