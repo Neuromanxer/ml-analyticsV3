@@ -2018,6 +2018,24 @@ function showProfileCreationMode() {
     // Focus on first empty required field
     focusFirstEmptyField();
 }
+function openPrivacyModal() {
+    const modal = document.getElementById("privacyModal");
+    modal.style.display = "block";  // Show the modal
+}
+
+// Function to close the Privacy Policy Modal
+function closePrivacyModal() {
+    const modal = document.getElementById("privacyModal");
+    modal.style.display = "none";  // Hide the modal
+}
+
+// When the user clicks anywhere outside of the modal, close it
+window.addEventListener("click", function (event) {
+    const modal = document.getElementById("privacyModal");
+    if (event.target === modal) {
+        closePrivacyModal();  // Close the modal if clicked outside
+    }
+});
 
 
 function populateFormFromStoredData() {
@@ -2703,29 +2721,6 @@ function deleteOldData() {
     // Event listener for the "Delete Old Data" button
     deleteOldDataBtn.addEventListener('click', sendDeleteRequest);
 }
-function handlePrivacyPolicyModal() {
-    // Get the modal and buttons
-    const modal = document.getElementById("privacyModal");
-    const openModalBtn = document.getElementById("open-privacy-policy");
-    const closeModalBtn = document.querySelector(".close-btn");
-
-    // When the user clicks the "View Privacy Policy" button, open the modal
-    openModalBtn.addEventListener("click", function () {
-        modal.style.display = "block";
-    });
-
-    // When the user clicks the close button (X), close the modal
-    closeModalBtn.addEventListener("click", function () {
-        modal.style.display = "none";
-    });
-
-    // When the user clicks anywhere outside the modal, close it
-    window.addEventListener("click", function (event) {
-        if (event.target === modal) {
-            modal.style.display = "none";
-        }
-    });
-}
 
 document.addEventListener("DOMContentLoaded", () => {
     // 1) Load account data on page load
@@ -2741,22 +2736,28 @@ document.addEventListener("DOMContentLoaded", () => {
     setupDeleteDataButton();
     deleteOldData();
     handleCookieConsent();
-    handlePrivacyPolicyModal();
     // 2) Set up tab click handlers using the existing openTab function
     const tabs = document.querySelectorAll(".account-tab");
     tabs.forEach((tab) => {
-        tab.addEventListener("click", (e) => {
-            // Get the tab name from data attribute or text content
-            const tabName = e.currentTarget.getAttribute('data-tab') || 
-                           e.currentTarget.textContent.toLowerCase().trim();
-            
-            // Use the existing openTab function
-            openTab(e, tabName);
-            if (tab.textContent.trim() === "Terms") {
-                loadTermsStatus(); // load terms when "Terms" tab is clicked
+    tab.addEventListener("click", (e) => {
+        // Get the tab name from data attribute or fallback to text content
+        const tabName = e.currentTarget.getAttribute('data-tab') || 
+                        e.currentTarget.textContent.toLowerCase().trim();
+
+        openTab(e, tabName);  // Show the correct tab
+
+        const tabText = tab.textContent.trim().toLowerCase();
+
+        if (tabText === "terms") {
+            loadTermsStatus();
+        }
+
+        if (tabText === "delete old data") {
+            deleteOldData();  // ✅ THIS is what you want!
         }
     });
-    });
+  });
+
     // 3) Set up save profile button
     const saveProfileBtn = document.getElementById('save-profile-btn');
     if (saveProfileBtn) {
@@ -2855,6 +2856,22 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("An unexpected error occurred.");
         }
     });
+    const openModalBtn = document.getElementById("open-privacy-policy");
+    const modal = document.getElementById("privacyModal");
+    const closeModalBtn = document.querySelector(".close");
+    // Add event listener to open the modal when the button is clicked
+    openModalBtn.addEventListener("click", openPrivacyModal);
+
+    // Close the modal when the close button is clicked
+    closeModalBtn.addEventListener("click", closePrivacyModal);
+
+    // Close the modal if clicked outside the modal
+    window.addEventListener("click", function (event) {
+        if (event.target === modal) {
+            closePrivacyModal();
+        }
+    });
+
 });
 
 </script>
