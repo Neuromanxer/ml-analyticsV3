@@ -1301,38 +1301,42 @@
                         </div>
 
                         <div id="terms" class="tab-content">
-                            <h3>Terms & Data Privacy</h3>
-                             <div style="margin-left: 1.5rem; font-size: 0.9rem;">
-                                    <p><strong>Agreed:</strong> <span id="agreed-to-terms">Loading...</span></p>
-                                    <p><strong>Agreed At:</strong> <span id="agreed-at">Loading...</span></p>
-                                    <p><strong>Policy Version:</strong> <span id="policy-version">Loading...</span></p>
-                                </div>
-                            <div class="terms-section">
-                                <h4>Marketing Communications</h4>
-                                <div class="terms-item">
-                                    <input type="checkbox" id="marketing-comms">
-                                    <label for="marketing-comms">
-                                        I would like to receive marketing communications and product updates via email.
-                                    </label>
-                                </div>
+                        <h3>Terms & Data Privacy</h3>
+
+                        <div class="info-block">
+                            <p><strong>Agreed:</strong> <span id="agreed-to-terms">Loading...</span></p>
+                            <p><strong>Agreed At:</strong> <span id="agreed-at">Loading...</span></p>
+                            <p><strong>Policy Version:</strong> <span id="policy-version">Loading...</span></p>
+                        </div>
+
+                        <div class="terms-section">
+                            <h4>Marketing Communications</h4>
+                            <div class="terms-item">
+                            <input type="checkbox" id="marketing-comms" />
+                            <label for="marketing-comms">
+                                I would like to receive marketing communications and product updates via email.
+                            </label>
                             </div>
-                            
-                            <div class="terms-section">
-                                <h4>Data Export</h4>
-                                <p>You can request an export of all your personal data at any time.</p>
-                                <button class="btn" onclick="requestDataExport()">Request Data Export</button>
-                                 
-                            </div>
-                            <div class="terms-section">
+                        </div>
+
+                        <div class="terms-section">
+                            <h4>Data Export</h4>
+                            <p>You can request an export of all your personal data at any time.</p>
+                            <button class="btn outline-btn" type="button" onclick="requestDataExport()">Request Data Export</button>
+                        </div>
+
+                        <div class="terms-section">
                             <h4>Export All Metadata</h4>
                             <p>You may export a full copy of your saved visualizations and metadata in JSON format.</p>
-                            <button class="btn" id="export-metadata-btn">Download All My Metadata</button>
-                            <p id="export-status" style="margin-top: 0.5rem; font-size: 0.9rem; color: #555;"></p>
-                            </div>
-
-                            
-                            <button class="btn">Save Preferences</button>
+                            <button class="btn outline-btn" type="button" id="export-metadata-btn">Download All My Metadata</button>
+                            <p id="export-status" class="status-msg">Status will appear here.</p>
                         </div>
+
+                        <div style="margin-top: 2rem;">
+                            <button class="btn save-btn" type="button" onclick="savePreferences()">💾 Save Preferences</button>
+                        </div>
+                        </div>
+
                         
                         <div id="delete" class="tab-content">
                         <h3>Delete Account</h3>
