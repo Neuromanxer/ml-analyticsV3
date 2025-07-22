@@ -1047,8 +1047,17 @@
                         </button>
                         <p id="delete-status" style="margin-top: 0.5rem; font-size: 0.9rem; color: #555;"></p>
                     </div>
-
-                        
+                    <div id="delete" class="tab-content">
+                      <h3>Delete Account</h3>
+                      <p style="color: #b30000;">
+                        <strong>This will permanently delete your account and all associated data. This action cannot be undone.</strong>
+                      </p>
+                      <button class="btn delete-btn" id="delete-account-btn">
+                        Delete My Account
+                      </button>
+                      <p id="delete-account-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></p>
+                    </div>
+                                            
                         <div id="profile" class="tab-content active">
                             <div class="account-form">
                                 <div class="account-row">
@@ -2028,7 +2037,21 @@ function closePrivacyModal() {
     const modal = document.getElementById("privacyModal");
     modal.style.display = "none";  // Hide the modal
 }
+  const openModalBtn = document.getElementById("open-privacy-policy");
+  const modal = document.getElementById("privacyModal");
+  const closeModalBtn = document.querySelector(".close");
+  // Add event listener to open the modal when the button is clicked
+  openModalBtn.addEventListener("click", openPrivacyModal);
 
+  // Close the modal when the close button is clicked
+  closeModalBtn.addEventListener("click", closePrivacyModal);
+
+  // Close the modal if clicked outside the modal
+  window.addEventListener("click", function (event) {
+      if (event.target === modal) {
+          closePrivacyModal();
+      }
+  });
 // When the user clicks anywhere outside of the modal, close it
 window.addEventListener("click", function (event) {
     const modal = document.getElementById("privacyModal");
@@ -2036,6 +2059,46 @@ window.addEventListener("click", function (event) {
         closePrivacyModal();  // Close the modal if clicked outside
     }
 });
+function setupDeleteAccount() {
+  const deleteBtn = document.getElementById("delete-account-btn");
+  const statusMsg = document.getElementById("delete-account-status");
+
+  if (!deleteBtn || !statusMsg) return;
+
+  const handleDelete = async () => {
+    const confirmed = confirm("Are you sure you want to permanently delete your account?");
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("access_token")}`
+        },
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        statusMsg.textContent = "✅ Account deleted successfully. Redirecting...";
+        statusMsg.style.color = "green";
+        localStorage.clear();
+        setTimeout(() => {
+          window.location.href = "/login.html"; // Or your homepage
+        }, 2000);
+      } else {
+        throw new Error(result.detail || "Failed to delete account.");
+      }
+    } catch (err) {
+      statusMsg.textContent = "❌ " + err.message;
+      statusMsg.style.color = "red";
+    }
+  };
+
+  // Prevent duplicate listeners
+  deleteBtn.removeEventListener("click", handleDelete);
+  deleteBtn.addEventListener("click", handleDelete);
+}
 
 
 function populateFormFromStoredData() {
@@ -2736,6 +2799,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupDeleteDataButton();
     deleteOldData();
     handleCookieConsent();
+    setupDeleteAccount();
     // 2) Set up tab click handlers using the existing openTab function
     const tabs = document.querySelectorAll(".account-tab");
     tabs.forEach((tab) => {
@@ -2856,21 +2920,7 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("An unexpected error occurred.");
         }
     });
-    const openModalBtn = document.getElementById("open-privacy-policy");
-    const modal = document.getElementById("privacyModal");
-    const closeModalBtn = document.querySelector(".close");
-    // Add event listener to open the modal when the button is clicked
-    openModalBtn.addEventListener("click", openPrivacyModal);
 
-    // Close the modal when the close button is clicked
-    closeModalBtn.addEventListener("click", closePrivacyModal);
-
-    // Close the modal if clicked outside the modal
-    window.addEventListener("click", function (event) {
-        if (event.target === modal) {
-            closePrivacyModal();
-        }
-    });
 
 });
 
