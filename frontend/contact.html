@@ -505,7 +505,32 @@
                 left: 0;
             }
         }
+         .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
         
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+
     </style>
 </head>
 <body>
@@ -580,6 +605,12 @@
                     </a>
                 </li>
             </ul>
+        <div class="sidebar-footer">
+        <div class="sidebar-footer-item" onclick="signOutUser()">
+            <i class="fas fa-sign-out-alt"></i>
+            Sign out
+        </div>
+    </div> 
         </div>
     </div>
 
@@ -684,6 +715,18 @@
     </div>
 
     <script>
+        function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/index.html"; // Adjust the path if needed
+}
         document.getElementById('contactForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
