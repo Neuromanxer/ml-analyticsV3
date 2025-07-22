@@ -23,98 +23,128 @@
       min-height: 100vh;
     }
 
-    .sidebar {
-      width: 280px;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-right: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 2rem 0;
-      position: fixed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-
-    .sidebar-logo {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0 2rem;
-      margin-bottom: 2rem;
-    }
-
-    .sidebar-logo i {
-      font-size: 1.5rem;
-      color: #667eea;
-    }
-
-    .sidebar-logo h1 {
-      font-size: 1.5rem;
-      color: #333;
-      font-weight: 700;
-    }
-
-    .sidebar-section {
-      margin-bottom: 1.5rem;
-    }
-
-    .sidebar-section-title {
-      color: #666;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      padding: 0 2rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .sidebar-menu {
-      list-style: none;
-    }
-
-    .sidebar-menu-item {
-      margin: 0.25rem 1rem;
-    }
-
-    .sidebar-menu-item a {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      text-decoration: none;
-      color: #555;
-      border-radius: 8px;
-      transition: all 0.3s ease;
-    }
-
-    .sidebar-menu-item.active a,
-    .sidebar-menu-item a:hover {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white;
-      transform: translateX(4px);
-    }
-
-    .sidebar-footer {
-      position: absolute;
-      bottom: 2rem;
-      left: 0;
-      right: 0;
-      padding: 0 2rem;
-    }
-
-    .sidebar-footer-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      color: #e74c3c;
-      cursor: pointer;
-      border-radius: 8px;
-      transition: all 0.3s ease;
-    }
-
-    .sidebar-footer-item:hover {
-      background: rgba(231, 76, 60, 0.1);
-    }
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            margin-bottom: 40px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 1.8rem;
+            color: #0099ff;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.6rem;
+            margin: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 0 25px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu-item {
+            margin: 0 15px 8px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+            transform: translateX(3px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+            transform: translateX(0);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
 
     .main-content {
       flex: 1;
@@ -285,19 +315,59 @@
       color: white;
     }
 
-    .tab-content {
-      display: none;
-      margin-top: 2rem;
-      padding: 2rem;
-      background: rgba(255, 255, 255, 0.9);
-      border-radius: 15px;
-      border: 1px solid rgba(102, 126, 234, 0.1);
-    }
+   /* Tab Content Styles */
+        .tab-content {
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(0, 153, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .tab-content:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12);
+        }
+
+        .tab-content h3 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .tab-content h3 i {
+            font-size: 1.3rem;
+        }
+
+        .tab-content p {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            color: #666;
+        }
 
     .tab-content.active {
       display: block;
     }
+/* Warning Text Styles */
+        .warning-text {
+            color: #e74c3c !important;
+            background: rgba(231, 76, 60, 0.08);
+            padding: 15px;
+            border-radius: 12px;
+            border-left: 4px solid #e74c3c;
+            font-weight: 500;
+        }
 
+        .warning-text strong {
+            color: #c0392b;
+        }
     .account-form {
       display: flex;
       flex-direction: column;
@@ -361,15 +431,58 @@
       box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
     }
 
-    .delete-btn {
-      background: linear-gradient(135deg, #e74c3c, #c0392b) !important;
-    }
+ /* Delete Button Styles */
+        .delete-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
 
-    .delete-btn:hover {
-      box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3) !important;
-    }
+        .delete-btn:hover {
+            background: linear-gradient(135deg, #c0392b, #a93226);
+            box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
+        }
 
-    .plans-container {
+        /* Warning Delete Button */
+        .warning-delete-btn {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .warning-delete-btn:hover {
+            background: linear-gradient(135deg, #e67e22, #d35400);
+            box-shadow: 0 8px 25px rgba(243, 156, 18, 0.4);
+        }
+
+        /* Status Text */
+        .status-text {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            padding: 10px 15px;
+            border-radius: 8px;
+            background: rgba(0, 153, 255, 0.08);
+            border-left: 4px solid #0099ff;
+            color: #0066cc;
+            font-weight: 500;
+        }
+
+        /* Icon Styles */
+        .delete-all-icon::before {
+            content: '\f2ed';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+        }
+
+        .delete-old-icon::before {
+            content: '\f1da';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+        }
+
+        .delete-account-icon::before {
+            content: '\f2bd';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+        }ns-container {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 2rem;
@@ -714,16 +827,18 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    background-color: #222;
-    color: white;
-    padding: 15px;
+    background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+    color: #333;
+    padding: 20px 25px;
     font-size: 14px;
+    font-family: 'Poppins', sans-serif;
     display: flex;
     justify-content: space-between;
     align-items: center;
     z-index: 9999;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.08);
     transition: transform 0.3s ease;
+    border-top: 1px solid rgba(0, 153, 255, 0.1);
 }
 
 /* Text content styling */
@@ -732,48 +847,95 @@
     padding: 0;
     font-size: 14px;
     flex-grow: 1;
+    color: #333;
+    font-weight: 400;
+    line-height: 1.5;
 }
 
 /* Links styling */
 #cookie-consent-banner a {
-    color: #FFD700;
+    color: #0099ff;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+#cookie-consent-banner a:hover {
+    color: #0066cc;
     text-decoration: underline;
 }
 
 /* Container for buttons */
 #cookie-consent-banner div {
     display: flex;
-    gap: 10px;
+    gap: 12px;
+    align-items: center;
 }
 
 /* Button styles */
 #cookie-consent-banner button {
-    padding: 10px 20px;
+    padding: 12px 24px;
     border: none;
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: 12px;
     font-size: 14px;
-    transition: background-color 0.3s ease;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    min-width: 100px;
 }
 
 /* Accept button styles */
 #accept-cookies {
-    background-color: #4CAF50;
+    background-color: #0099ff;
     color: white;
 }
 
 #accept-cookies:hover {
-    background-color: #45a049;
+    background-color: #0066cc;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
 }
 
 /* Reject button styles */
 #reject-cookies {
-    background-color: #f44336;
-    color: white;
+    background: transparent;
+    color: #666;
+    border: 2px solid rgba(0, 153, 255, 0.2);
+    box-shadow: none;
 }
 
 #reject-cookies:hover {
-    background-color: #e53935;
+    background-color: rgba(0, 153, 255, 0.05);
+    border-color: rgba(0, 153, 255, 0.4);
+    color: #333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #cookie-consent-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 20px;
+        gap: 15px;
+    }
+    
+    #cookie-consent-banner p {
+        margin-bottom: 15px;
+    }
+    
+    #cookie-consent-banner div {
+        justify-content: center;
+        width: 100%;
+    }
+    
+    #cookie-consent-banner button {
+        flex: 1;
+        max-width: 150px;
+    }
 }
 /* Style for the modal */
 .modal {
@@ -1040,6 +1202,7 @@
 
                     <!-- Delete Old Data Tab Content -->
                     <div id="delete-old-data" class="tab-content">
+                        <p style="color: #b30000;"></p>
                         <h3>Delete Old Data (Older than 180 Days)</h3>
                         <p>This will remove all your metadata that is older than 180 days.</p>
                         <button class="btn" id="delete-old-data-btn" style="background-color: #f39c12; color: white;">

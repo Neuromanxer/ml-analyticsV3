@@ -21,125 +21,129 @@
       min-height: 100vh;
     }
     
- /* Sidebar Styles */
- .sidebar {
-      width: 280px;
-      background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
-      box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
-      padding: 25px 0;
-      display: flex;
-      flex-direction: column;
-      z-index: 100;
-      min-height: 100vh;
-    }
-    
-    .sidebar-logo {
-      display: flex;
-      align-items: center;
-      padding: 0 25px;
-      margin-bottom: 40px;
-    }
-    
-    .sidebar-logo i {
-      font-size: 1.8rem;
-      color: #0099ff;
-      margin-right: 12px;
-    }
-    
-    .sidebar-logo h1 {
-      color: #0099ff;
-      font-weight: 700;
-      font-size: 1.6rem;
-      margin: 0;
-    }
-    
-    .sidebar-section {
-      margin-bottom: 30px;
-    }
-    
-    .sidebar-section-title {
-      font-size: 0.75rem;
-      color: #999;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 0 25px;
-      margin-bottom: 15px;
-      font-weight: 600;
-    }
-    
-    .sidebar-menu {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    
-    .sidebar-menu-item {
-      margin: 0 15px 8px 15px;
-      border-radius: 12px;
-      transition: all 0.3s ease;
-      overflow: hidden;
-    }
-    
-    .sidebar-menu-item a,
-    .sidebar-menu-item > div {
-      padding: 14px 15px;
-      display: flex;
-      align-items: center;
-      color: #666;
-      cursor: pointer;
-      font-weight: 500;
-      text-decoration: none;
-      transition: all 0.3s ease;
-      border-radius: 12px;
-    }
-    
-    .sidebar-menu-item:hover a,
-    .sidebar-menu-item:hover > div {
-      background-color: rgba(0, 153, 255, 0.08);
-      color: #0099ff;
-      transform: translateX(3px);
-    }
-    
-    .sidebar-menu-item.active a,
-    .sidebar-menu-item.active > div {
-      background: linear-gradient(135deg, #0099ff, #0066cc);
-      color: white;
-      box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
-      transform: translateX(0);
-    }
-    
-    .sidebar-menu-item i {
-      margin-right: 12px;
-      width: 20px;
-      text-align: center;
-      font-size: 1.1rem;
-    }
-    
-    .sidebar-footer {
-      margin-top: auto;
-      padding: 0 15px;
-    }
-    
-    .sidebar-footer-item {
-      display: flex;
-      align-items: center;
-      color: #666;
-      cursor: pointer;
-      font-weight: 500;
-      padding: 12px 15px;
-      border-radius: 12px;
-      transition: all 0.3s ease;
-    }
-    
-    .sidebar-footer-item:hover {
-      background-color: rgba(0, 153, 255, 0.08);
-      color: #0099ff;
-    }
-    
-    .sidebar-footer-item i {
-      margin-right: 12px;
-      font-size: 1.1rem;
-    }
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+            box-shadow: 2px 0 15px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+        }
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            margin-bottom: 40px;
+        }
+        
+        .sidebar-logo i {
+            font-size: 1.8rem;
+            color: #0099ff;
+            margin-right: 12px;
+        }
+        
+        .sidebar-logo h1 {
+            color: #0099ff;
+            font-weight: 700;
+            font-size: 1.6rem;
+            margin: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 0 25px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu-item {
+            margin: 0 15px 8px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-menu-item a,
+        .sidebar-menu-item > div {
+            padding: 14px 15px;
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        
+        .sidebar-menu-item:hover a,
+        .sidebar-menu-item:hover > div {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+            transform: translateX(3px);
+        }
+        
+        .sidebar-menu-item.active a,
+        .sidebar-menu-item.active > div {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+            transform: translateX(0);
+        }
+        
+        .sidebar-menu-item i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 0 15px;
+        }
+        
+        .sidebar-footer-item {
+            display: flex;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 12px 15px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-footer-item:hover {
+            background-color: rgba(0, 153, 255, 0.08);
+            color: #0099ff;
+        }
+        
+        .sidebar-footer-item i {
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+
     .how-to-use-container {
   padding: 10px 0;
 }
@@ -704,6 +708,122 @@
     .mobile-toggle {
         display: none;
     }
+    /* Container for the cookie consent banner */
+#cookie-consent-banner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+    color: #333;
+    padding: 20px 25px;
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+    box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s ease;
+    border-top: 1px solid rgba(0, 153, 255, 0.1);
+}
+
+/* Text content styling */
+#cookie-consent-banner p {
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+    flex-grow: 1;
+    color: #333;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+/* Links styling */
+#cookie-consent-banner a {
+    color: #0099ff;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+#cookie-consent-banner a:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+/* Container for buttons */
+#cookie-consent-banner div {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* Button styles */
+#cookie-consent-banner button {
+    padding: 12px 24px;
+    border: none;
+    cursor: pointer;
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    min-width: 100px;
+}
+
+/* Accept button styles */
+#accept-cookies {
+    background-color: #0099ff;
+    color: white;
+}
+
+#accept-cookies:hover {
+    background-color: #0066cc;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 153, 255, 0.3);
+}
+
+/* Reject button styles */
+#reject-cookies {
+    background: transparent;
+    color: #666;
+    border: 2px solid rgba(0, 153, 255, 0.2);
+    box-shadow: none;
+}
+
+#reject-cookies:hover {
+    background-color: rgba(0, 153, 255, 0.05);
+    border-color: rgba(0, 153, 255, 0.4);
+    color: #333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #cookie-consent-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 20px;
+        gap: 15px;
+    }
+    
+    #cookie-consent-banner p {
+        margin-bottom: 15px;
+    }
+    
+    #cookie-consent-banner div {
+        justify-content: center;
+        width: 100%;
+    }
+    
+    #cookie-consent-banner button {
+        flex: 1;
+        max-width: 150px;
+    }
+}
   </style>
 </head>
 <body>
@@ -1133,6 +1253,15 @@
       </div>
     </div>
   </div>
+  <div id="cookie-consent-banner" style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #222; color: white; padding: 15px; font-size: 14px; display: none; justify-content: space-between; align-items: center; z-index: 9999;">
+        <p style="margin: 0; padding: 0;">
+            We use cookies to improve your experience on our website. By using our site, you consent to our <a href="/privacy-policy" style="color: #FFD700; text-decoration: underline;">Privacy Policy</a> and <a href="/terms-of-service" style="color: #FFD700; text-decoration: underline;">Terms of Service</a>.
+        </p>
+        <div>
+            <button id="accept-cookies" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px;">Accept</button>
+            <button id="reject-cookies" style="background-color: #f44336; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px;">Reject</button>
+        </div>
+    </div>
 
   <script>
 
@@ -1333,7 +1462,7 @@ function signOutUser() {
 }
 
   document.addEventListener('DOMContentLoaded', function() {
-
+  handleCookieConsent()
 
     if (!token || isTokenExpired(token)) {
       // redirect back to login, preserving this page in `next`
@@ -2522,7 +2651,30 @@ function callRealAPI(endpoint, params) {
             sidebar.classList.remove('open');
         }
     });
+function handleCookieConsent() {
+    const cookieConsentBanner = document.getElementById("cookie-consent-banner");
+    const acceptButton = document.getElementById("accept-cookies");
+    const rejectButton = document.getElementById("reject-cookies");
 
+    // Check if the user has already made a choice (store in localStorage)
+    if (!localStorage.getItem("cookies-accepted")) {
+        cookieConsentBanner.style.display = "flex";  // Show the banner if no choice is made
+    }
+
+    // When user clicks 'Accept' button
+    acceptButton.addEventListener("click", () => {
+        localStorage.setItem("cookies-accepted", "true");  // Store the choice in localStorage
+        cookieConsentBanner.style.display = "none";  // Hide the banner
+        // You can also add logic here to enable cookies (e.g., analytics or marketing cookies)
+    });
+
+    // When user clicks 'Reject' button
+    rejectButton.addEventListener("click", () => {
+        localStorage.setItem("cookies-accepted", "false");  // Store the rejection in localStorage
+        cookieConsentBanner.style.display = "none";  // Hide the banner
+        // Add logic to disable non-essential cookies if needed (e.g., analytics cookies)
+    });
+}
 
   </script>
 </body>
