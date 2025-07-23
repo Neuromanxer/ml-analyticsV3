@@ -1,4 +1,4 @@
-from .auth import Base
+
 
 from datetime import datetime, date
 from typing import Optional, List, Literal
@@ -23,12 +23,20 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
-from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+  # <-- assumes your User is defined in auth.py
 import os
 import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
+
+# from .auth import get_current_active_user, get_master_db_session, User, Base
+# from .preprocessing import preprocess_data
+
+from auth import get_current_active_user, get_master_db_session, User, Base
+from preprocessing import preprocess_data
+
+
 router = APIRouter(prefix="/api", tags=["api"])
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
@@ -62,7 +70,7 @@ def get_activity(current_user: User = Depends(get_current_active_user), db: Sess
         .limit(10)
         .all()
     )
-from .preprocessing import preprocess_data
+
 def suggest_model_from_df(df, target_column: str):
     import numpy as np
 

@@ -2,7 +2,7 @@
 
 from datetime import datetime, date
 from typing import Optional, List, Literal
-from .activity import ActivityLog
+
 import secrets
 from fastapi import (
     APIRouter,
@@ -16,11 +16,24 @@ from passlib.context import CryptContext
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
-
-from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
 import os
 import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
+
+# from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+# from .activity import ActivityLog
+# from .storage import list_user_files, get_file_url
+# from .storage import delete_file_from_supabase
+# from .storage import supabase, SUPABASE_BUCKET
+
+
+
+from auth import get_current_active_user, get_master_db_session, User, Base  
+from activity import ActivityLog
+from storage import list_user_files, get_file_url
+from storage import delete_file_from_supabase
+from storage import supabase, SUPABASE_BUCKET
+
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "")
 
@@ -609,7 +622,7 @@ async def update_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update profile."
         )
-from .storage import list_user_files, get_file_url
+
 import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
@@ -682,7 +695,7 @@ def request_data_export(
     except Exception as e:
         logging.error(f"❌ Failed to generate export for {current_user.id}: {str(e)}")
         raise HTTPException(500, "Failed to generate export")
-from .storage import delete_file_from_supabase
+
 @router.delete("/delete-all-data")
 def delete_all_user_data(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_master_db_session)):
     try:
@@ -734,7 +747,7 @@ def delete_all_user_data(current_user: User = Depends(get_current_active_user), 
 from datetime import datetime, timedelta
 from fastapi import HTTPException, Depends
 from supabase import create_client, Client
-from .storage import supabase, SUPABASE_BUCKET
+
 import os
 @router.delete("/metadata/cleanup")
 async def delete_my_old_metadata(current_user: User = Depends(get_current_active_user)):

@@ -18,12 +18,10 @@ import shap
 from typing import Union, List, Any, Dict
 import tempfile
 # -- replace these imports with your actual module paths --
-from .preprocessing import preprocess_data
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .feature_importance import safe_generate_feature_importance
+
 import subprocess
-from .clustering import run_kmeans, find_optimal_k, label_clusters_general
-from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+
+
 import joblib
 from datetime import datetime
 from pathlib import Path as PathL
@@ -31,9 +29,7 @@ from celery import Celery
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 # -- replace these imports with your actual module paths --
-from .preprocessing import preprocess_data
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .auth import master_db_cm
+
 from queue import Queue
 from threading import Thread
 
@@ -42,12 +38,40 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from .anomaly_detection import train_best_anomaly_detection
+
 import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
-from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-from .target import generate_customer_summary
+
+# from .anomaly_detection import train_best_anomaly_detection
+# from .preprocessing import preprocess_data
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .auth import master_db_cm
+# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from .target import generate_customer_summary
+# from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+# from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+# from .preprocessing import preprocess_data
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .feature_importance import safe_generate_feature_importance
+# from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+
+
+
+
+
+from anomaly_detection import train_best_anomaly_detection
+from preprocessing import preprocess_data
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from auth import master_db_cm
+from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from target import generate_customer_summary
+from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+from preprocessing import preprocess_data
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from feature_importance import safe_generate_feature_importance
+from clustering import run_kmeans, find_optimal_k, label_clusters_general
 # OAuth2 scheme
 # Configure logging
 logging.basicConfig(
@@ -103,7 +127,6 @@ from fastapi.responses import FileResponse, StreamingResponse
 # Assuming you have these imports for your auth system
 # from your_auth_module import get_current_active_user, User
 
-from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
 def do_classification(
     user_id: str,
     file_path: str = None,

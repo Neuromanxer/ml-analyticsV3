@@ -15,13 +15,21 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
-from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
 import os
 import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
 import logging
+
+# from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+
+
+from auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+
+
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 

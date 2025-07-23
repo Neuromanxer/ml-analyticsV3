@@ -7,29 +7,15 @@ import os
 import jwt
 import uvicorn
 import shutil
-import numpy as np
-from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
-from fastapi.responses import FileResponse, JSONResponse
-from pathlib import Path as PathL
-import json
-import aiofiles
-from .ai import generate_insights
-from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
-from .ecs_launcher import launch_job_on_ecs
-from .worker import make_json_safe
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from sklearn.model_selection import train_test_split
-from .auth import Base, master_engine, decode_user_from_request
-from .tokens import TokenUsageLogResponse, TokenUsageLog
-from sklearn.model_selection import train_test_split, KFold
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .preprocessing import preprocess_data
-from .survival import calculate_business_metrics
-from sqlalchemy import Column
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+import numpy as np
+from sqlalchemy import MetaData, Table, text
+import tempfile
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path, APIRouter, HTTPException, Depends, status, Query
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -44,23 +30,116 @@ import shap
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from .anomaly_detection import train_best_anomaly_detection
+from pathlib import Path as PathL
+import json
+import aiofiles
 import uuid
 from pydantic import EmailStr
 from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData, Boolean, DateTime, ForeignKey, Text, text
-from .datasets import (
+from sqlalchemy import Column
+from sqlalchemy.ext.declarative import declarative_base
+from fastapi.staticfiles import StaticFiles
+import uuid, os, io
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima.model import ARIMA
+from jwt import ExpiredSignatureError, PyJWTError
+from pydantic import BaseModel
+from sqlalchemy import Table, MetaData, Column, String, Integer, Float, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
+import json
+from io import StringIO
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
+# from .ai import generate_insights
+# from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+# from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+# from .ecs_launcher import launch_job_on_ecs
+# from .worker import make_json_safe
+# from .auth import Base, master_engine, decode_user_from_request
+# from .tokens import TokenUsageLogResponse, TokenUsageLog
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .preprocessing import preprocess_data
+# from .survival import calculate_business_metrics
+# from .anomaly_detection import train_best_anomaly_detection
+# from .datasets import (
+#     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
+#     get_user_db,
+
+# )
+# from .datasets import init_db as init_dataset_master_db
+# from .activity import router as activity_router
+# from .account import router as a_router
+# from .target import router as t_router
+# from .auth import _load_metadata, _save_metadata
+# from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+# # These names should match exactly what you export from auth.py
+# from .auth import (
+#     # Authentication & token utilities
+#     get_current_active_user,
+#     get_current_user,
+#     create_access_token,
+#     authenticate_user,
+#     Dataset,
+#     # Pydantic schemas for auth
+#     UserCreate,
+#     UserResponse,
+#     Token,
+#     AuthTokenResponse,
+#     RegisterResponse,
+    
+#     # Database/session helpers
+#     DatasetResponse,
+#     DatasetCreate,
+#     register_dataset,
+#     create_user_database,
+#     get_dataset_by_id,
+#     get_dataset_data,
+#     delete_dataset_crud,
+#     query_dataset,
+#     get_user_session,
+#     get_user_session_direct,
+#     get_user_engine,
+#     get_master_db_session,
+#     get_user_by_email,
+#     master_db_cm,
+#     Base,
+#     User
+
+# )
+# from .auth import get_master_db_session
+# from .auth import router as auth_router
+# from .tokens import router as token_router
+# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+
+
+
+
+from ai import generate_insights
+from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+from ecs_launcher import launch_job_on_ecs
+from worker import make_json_safe
+from auth import Base, master_engine, decode_user_from_request
+from tokens import TokenUsageLogResponse, TokenUsageLog
+
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from preprocessing import preprocess_data
+from survival import calculate_business_metrics
+from anomaly_detection import train_best_anomaly_detection
+from datasets import (
     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
     get_user_db,
 
 )
-from .datasets import init_db as init_dataset_master_db
-from starlette.concurrency import run_in_threadpool
-from .activity import router as activity_router
-from .account import router as a_router
-from .target import router as t_router
-from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+from datasets import init_db as init_dataset_master_db
+from activity import router as activity_router
+from account import router as a_router
+from target import router as t_router
+from auth import _load_metadata, _save_metadata
+from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
 # These names should match exactly what you export from auth.py
-from .auth import (
+from auth import (
     # Authentication & token utilities
     get_current_active_user,
     get_current_user,
@@ -93,20 +172,14 @@ from .auth import (
     User
 
 )
-from .auth import router as auth_router
-from .tokens import router as token_router
-from sqlalchemy.ext.declarative import declarative_base
-from fastapi.staticfiles import StaticFiles
-import uuid, os, io
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from statsmodels.tsa.arima.model import ARIMA
-from jwt import ExpiredSignatureError, PyJWTError
-from pydantic import BaseModel
-from sqlalchemy import Table, MetaData, Column, String, Integer, Float, Boolean
-from sqlalchemy.dialects.postgresql import JSONB
-import json
-from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from auth import get_master_db_session
+from auth import router as auth_router
+from tokens import router as token_router
+from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+
+
+
+
 # Create a directory for storing uploaded CSV files if it doesn't exist
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -179,7 +252,6 @@ print("POSTGRES_PORT:", os.getenv("POSTGRES_PORT"))
 def read_root():
     print("✅ Root endpoint accessed")
     return {"status": "ok"}
-from io import StringIO
 
 @app.post("/dataset/profile")
 async def dataset_profile(file: UploadFile = File(...)):
@@ -347,7 +419,6 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
 from fastapi import Request, HTTPException
 import time
 import openai
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException
 import time
 
@@ -508,9 +579,6 @@ def infer_sqlalchemy_column(name, dtype):
     else:
         return Column(name, String)
 
-from sqlalchemy import MetaData, Table, text
-from backend.storage import upload_file_to_supabase  # assumes your upload function is here
-import tempfile
 @app.post("/datasets/", status_code=status.HTTP_201_CREATED)
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -1340,7 +1408,7 @@ class VisualizationResponse(BaseModel):
 class VisualizationListResponse(BaseModel):
     visualizations: List[VisualizationResponse]
     total: int
-from .auth import _load_metadata, _save_metadata
+
 
 
 # Additional utility functions you might need
@@ -1391,7 +1459,6 @@ async def get_visualization(
 
     return json.loads(result[0])
 
-from .auth import get_master_db_session
 @app.get("/visualizations")
 def list_visualizations(
     current_user: User = Depends(get_current_active_user),
@@ -1793,7 +1860,7 @@ async def what_if_analysis(
 # Add this to your database functions
 async def store_counterfactual_result(user_id, sample_id, original_features, modified_features, 
                                      original_prediction, modified_prediction):
-    conn = get_db_connection()
+    conn = get_master_db_session()
     cursor = conn.cursor()
     
     cursor.execute('''

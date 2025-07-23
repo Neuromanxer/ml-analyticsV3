@@ -62,7 +62,27 @@ from sqlalchemy.orm import (
 # ────────────────────────────────────────────────────────────────
 
 # These names should match exactly what you export from auth.py
-from .auth import (
+# from .auth import (
+#     # Authentication & token utilities
+#     get_current_active_user,
+#     create_access_token,
+#     authenticate_user,
+#     User,
+#     # Pydantic schemas for auth
+#     UserCreate,
+#     UserResponse,
+#     Token,
+#     AuthTokenResponse,
+#     RegisterResponse,
+#     Session,
+#     # Database/session helpers
+#     get_user_session,
+#     get_user_session_direct,
+#     get_user_engine,
+#     get_user_by_email,
+
+# )
+from auth import (
     # Authentication & token utilities
     get_current_active_user,
     create_access_token,
@@ -79,11 +99,10 @@ from .auth import (
     get_user_session,
     get_user_session_direct,
     get_user_engine,
-
-
     get_user_by_email,
 
 )
+
 # Base configuration
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")

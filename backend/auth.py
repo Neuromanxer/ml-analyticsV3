@@ -31,6 +31,14 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Float
 from pydantic import BaseModel, Field, EmailStr
 from dotenv import load_dotenv
+
+
+# from .storage import supabase
+
+from storage import supabase
+
+
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -1086,7 +1094,6 @@ async def get_terms_status(current_user: User = Depends(get_current_active_user)
         "policy_version": current_user.policy_version
     }
 
-from .storage import supabase
 from datetime import datetime, timezone
 
 class AgreementData(BaseModel):
