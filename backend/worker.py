@@ -84,14 +84,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-celery_app = Celery(
-    "tasks",
-    broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
-    backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
-)
+# celery_app = Celery(
+#     "tasks",
+#     broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
+#     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
+# )
 
 
-# celery_app = Celery("worker", broker="redis://redis:6379/0")
+celery_app = Celery("worker", broker="redis://localhost:6379/0")
+
 import numpy as np
 
 def ensure_json_serializable(obj):

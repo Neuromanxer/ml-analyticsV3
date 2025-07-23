@@ -5,6 +5,9 @@ from fastapi import File, Form, UploadFile, HTTPException, Depends
 from pathlib import Path as PathL
 import aiofiles
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
@@ -56,10 +59,22 @@ async def handle_file_upload(user_id: str, file: UploadFile) -> str:
         os.unlink(temp_path)
 
 
+# def download_file_from_supabase(file_path: str) -> bytes:
+#     response = supabase.storage.from_(SUPABASE_BUCKET).download(file_path)
+#     if getattr(response, "error", None):
+#         raise Exception(f"Download failed: {response.error.message}")
+#     return response  # already bytes
 def download_file_from_supabase(file_path: str) -> bytes:
-    response = supabase.storage.from_(SUPABASE_BUCKET).download(file_path)
+    # Normalize Windows backslashes to forward slashes for Supabase
+    clean_path = file_path.replace("\\", "/")
+
+    # Perform the download
+    response = supabase.storage.from_(SUPABASE_BUCKET).download(clean_path)
+
+    # Raise error if download failed
     if getattr(response, "error", None):
         raise Exception(f"Download failed: {response.error.message}")
+
     return response  # already bytes
 
 
