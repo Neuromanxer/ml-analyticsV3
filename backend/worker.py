@@ -14,6 +14,7 @@ import traceback
 import json
 import numpy as np
 import io
+import sys
 import shap
 from typing import Union, List, Any, Dict
 import tempfile
@@ -55,11 +56,12 @@ from sklearn.metrics import confusion_matrix, classification_report
 # from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
 # from .feature_importance import safe_generate_feature_importance
 # from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+# from .timeSeries import ScenarioManager, ARIMAModel ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
 
 
 
 
-
+from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
 from anomaly_detection import train_best_anomaly_detection
 from preprocessing import preprocess_data
 from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
@@ -90,8 +92,15 @@ logger = logging.getLogger(__name__)
 #     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 # )
 
+BROKER_URL = "redis://localhost:6379/0"
+RESULT_BACKEND = "redis://localhost:6379/1"
 
-celery_app = Celery("worker", broker="redis://localhost:6379/0")
+# Create the Celery app
+celery_app = Celery(
+    "worker",
+    broker=BROKER_URL,
+    backend=RESULT_BACKEND
+)
 
 import numpy as np
 
@@ -207,11 +216,19 @@ def do_classification(
                 df = df.dropna(subset=[target_column])
                 y = df[target_column]
                 X = df.drop(columns=['ID', target_column], errors='ignore')
-
+                # Encode categorical target if needed
+                if y.dtype == 'object' or y.dtype.name == 'category':
+                    y, _ = y.astype(str).factorize()
+                    y = pd.Series(y, name=target_column).astype("int32")  # keep name for later
                 X, _, _ = preprocess_data(X)
+                X = X.select_dtypes(include=["int", "float", "bool"])
+
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
+                X_train = X_train.select_dtypes(include=["int", "float", "bool"])
+                X_test = X_test.select_dtypes(include=["int", "float", "bool"])
+
                 train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
                 test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
                 dataset_name = os.path.basename(file_path)
@@ -234,6 +251,15 @@ def do_classification(
                 # Extract targets
                 y_train = train_df[target_column]
                 y_test = test_df[target_column]
+                # Encode target if object type
+                for y_var, name in [(y_train, "y_train"), (y_test, "y_test")]:
+                    if y_var.dtype == 'object' or y_var.dtype.name == 'category':
+                        encoded, _ = y_var.astype(str).factorize()
+                        if name == "y_train":
+                            y_train = pd.Series(encoded, name=target_column).astype("int32")
+                        else:
+                            y_test = pd.Series(encoded, name=target_column).astype("int32")
+
 
                 # Drop ID and target from features
                 X_train = train_df.drop(columns=[target_column], errors='ignore')
@@ -2144,8 +2170,21 @@ def do_regression(
                     raise ValueError(f"Target column '{target_column}' not found in dataset.")
 
                 from sklearn.model_selection import train_test_split
-                train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+                X = df.drop(columns=[target_column])
+                y = df[target_column]
 
+                # Train/test split
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42
+                )
+
+                # Filter to numerical and boolean dtypes
+                X_train = X_train.select_dtypes(include=["int", "float", "bool"])
+                X_test = X_test.select_dtypes(include=["int", "float", "bool"])
+
+                # Reconstruct train/test DataFrames for downstream use
+                train_df = pd.concat([X_train, y_train.reset_index(drop=True)], axis=1)
+                test_df = pd.concat([X_test, y_test.reset_index(drop=True)], axis=1)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
@@ -2509,7 +2548,7 @@ def do_regression(
                         "target_column": target_column,
                         "drop_columns": drop_columns
                     },
-                    "metrics": results.get("metrics", {}),
+                    "metrics": results.get("test_scores", {}),
                     "message": "Regression model training completed",
                     "pred_stats": pred_stats,
                     "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
@@ -3253,17 +3292,28 @@ def do_counterfactual(
                 if target_column not in df.columns:
                     raise ValueError(f"Target column '{target_column}' not found in dataset.")
 
+                # Separate target
                 y = df[target_column]
                 X = df.drop(columns=['ID', target_column], errors='ignore')
+
+                # Preprocess input features only (returns new df with same shape)
                 X, _, _ = preprocess_data(X)
 
-                # Split to simulate train/test consistency
+                # Ensure only valid types remain
+                X = X.select_dtypes(include=["int", "float", "bool"])
+
+                # Split into train and test
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
-                train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
-                test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
+
+                # Reattach target column
+                train_df = pd.concat([X_train, y_train.rename(target_column).reset_index(drop=True)], axis=1)
+                test_df = pd.concat([X_test, y_test.rename(target_column).reset_index(drop=True)], axis=1)
+
+                # Optional: Reconstruct full dataset (if needed for export or model-wide stats)
                 full_df = pd.concat([train_df, test_df], ignore_index=True)
+
 
             else:
                 train_df = pd.read_csv(local_train_path)
@@ -5024,6 +5074,7 @@ def do_decision_paths(
                 X = df.drop(columns=['ID', target_column], errors='ignore')
 
                 X, _, _ = preprocess_data(X)
+                X = X.select_dtypes(include=["int", "float", "bool"])
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
@@ -5189,73 +5240,71 @@ def do_decision_paths(
     except Exception as e:
         print(f"[⚠️] Error in do_decision_paths: {e}")
         raise e
-
-from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tsa.stattools import adfuller
-
-# Fix: Use proper Path import
-from pathlib import Path as PathL
-def do_forecast(user_id: str, current_user: dict, file_path: str, target_column: str, drop_columns: str = "", periods: int = 24, compare_models: bool = False, time_column: str = None):
+def do_forecast(
+    user_id: str,
+    current_user: dict,
+    file_path: str = None,
+    train_path: str = None,
+    test_path: str = None,
+    target_column: str = "value",
+    drop_columns: str = "",
+    periods: int = 24,
+    scenarios: List[str] = None,
+    time_column: str = None,
+    enable_backtesting: bool = False
+) -> Dict[str, Any]:
     """
-    Perform ARIMA forecasting on time series data with Supabase integration
+    Main forecast function - supports single or train/test input, handles Supabase, multiple models, and optional time column.
     """
-    import numpy as np
-    import os
-    import uuid
-    import tempfile
-    import json
-    from pathlib import Path as PathL
-    from datetime import datetime
-    
-    # Handle file downloads from Supabase
-    # Note: file_path is now a Supabase storage path (e.g., "user123/dataset.csv")
     local_file_path = None
-    
-    try:
-        # Create temporary directory for processing
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Download file from Supabase to temporary location
-            file_bytes = download_file_from_supabase(file_path)
-            local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
-            with open(local_file_path, 'wb') as f:
-                f.write(file_bytes)
-            
-            # Create temporary directories for models and outputs
-            model_dir = os.path.join(temp_dir, "models")
-            os.makedirs(model_dir, exist_ok=True)
-            
-            user_dir = PathL(temp_dir) / "user_outputs"
-            user_dir.mkdir(exist_ok=True)
 
-            # Read the CSV file
-            try:
+    try:
+        # Create temp dir
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Determine file input type
+            if file_path:
+                file_bytes = download_file_from_supabase(file_path)
+                local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
+                with open(local_file_path, 'wb') as f:
+                    f.write(file_bytes)
                 df = pd.read_csv(local_file_path, sep=None, engine="python")
-                dataset_name = os.path.basename(file_path)
-            except Exception as e:
-                raise ValueError(f"Error reading file: {e}")
-            
-            # Drop specified columns
+            elif train_path and test_path:
+                train_bytes = download_file_from_supabase(train_path)
+                test_bytes = download_file_from_supabase(test_path)
+                train_file = os.path.join(temp_dir, "train.csv")
+                test_file = os.path.join(temp_dir, "test.csv")
+                with open(train_file, 'wb') as f:
+                    f.write(train_bytes)
+                with open(test_file, 'wb') as f:
+                    f.write(test_bytes)
+                df_train = pd.read_csv(train_file, sep=None, engine="python")
+                df_test = pd.read_csv(test_file, sep=None, engine="python")
+                df = pd.concat([df_train, df_test], ignore_index=True)
+            else:
+                raise ValueError("No valid input file provided (file_path or train/test).")
+
+            # Drop columns
             if drop_columns:
-                drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c.strip() in df.columns]
-                if drops:
-                    df.drop(columns=drops, inplace=True)
-            
-            # Check if target column exists
+                drop_cols = [c.strip() for c in drop_columns.split(",") if c.strip() in df.columns]
+                df.drop(columns=drop_cols, inplace=True, errors="ignore")
+
+            # Validate target column
             if target_column not in df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
-               # ───────────── Time Column Handling ─────────────
+
+            # Time column handling
             if time_column and time_column in df.columns:
                 try:
                     df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
-                    df = df.dropna(subset=[time_column])  # Remove rows with invalid/missing dates
-                    df = df.sort_values(by=time_column)
+                    df.dropna(subset=[time_column], inplace=True)
+                    df.sort_values(by=time_column, inplace=True)
                     df.set_index(time_column, inplace=True)
                 except Exception as e:
                     raise ValueError(f"Time column '{time_column}' could not be parsed as datetime: {str(e)}")
             else:
-                df = df.reset_index(drop=True)  # Use default index if no time column
+                df = df.reset_index(drop=True)
 
-           # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
+            # Optional: Customer summary stats
             try:
                 required_cols = {"clv", "recency", "total_spent", "upsell_score"}
                 if required_cols.issubset(df.columns):
@@ -5271,287 +5320,63 @@ def do_forecast(user_id: str, current_user: dict, file_path: str, target_column:
                     "tip": "Ensure customer-level metrics are available before forecasting."
                 }
 
-            # Extract the time series
+            # Extract time series
             series = df[target_column].dropna()
-            
-            if len(series) < 10:
-                raise ValueError("Time series too short for ARIMA modeling (minimum 10 observations required)")
-            
-            # Determine differencing order (d) using ADF test
-            d = 0
-            adf_stat = None
-            p_value = None
-            
-            for i in range(3):  # Try d = 0, 1, 2
-                test_series = series.copy()
-                for _ in range(i):
-                    test_series = test_series.diff().dropna()
-                
-                if len(test_series) < 5:  # Need minimum data for ADF test
-                    continue
-                    
-                try:
-                    adf_stat, p_value, *_ = adfuller(test_series)
-                    if p_value < 0.05:
-                        d = i
-                        break
-                except Exception:
-                    continue
-            
-            # If ADF test failed, default to d=1
-            if adf_stat is None or p_value is None:
-                d = 1
-                adf_stat = 0
-                p_value = 1.0
-            
-            # ARIMA model selection using AIC
-            best_aic = float("inf")
-            best_order = None
-            best_model = None
-            
-            # Grid search for best ARIMA parameters
-            for p in range(3):
-                for q in range(3):
-                    try:
-                        model = ARIMA(series, order=(p, d, q))
-                        model_fit = model.fit()
-                        
-                        if model_fit.aic < best_aic:
-                            best_aic = model_fit.aic
-                            best_order = (p, d, q)
-                            best_model = model_fit
-                            
-                    except Exception as e:
-                        continue
-            
-            if not best_model:
-                # Fallback to simple ARIMA(1,1,1) if grid search fails
-                try:
-                    model = ARIMA(series, order=(1, 1, 1))
-                    best_model = model.fit()
-                    best_order = (1, 1, 1)
-                except Exception:
-                    raise RuntimeError("Could not fit any ARIMA model. Please check your data.")
-            
-            stationary = p_value < 0.05
-            
-            # Generate forecast
-            try:
-                forecast_result = best_model.get_forecast(steps=periods)
-                forecast_mean = forecast_result.predicted_mean
-                conf_int = forecast_result.conf_int()
-            except Exception as e:
-                raise RuntimeError(f"Error generating forecast: {e}")
-            
-            # Generate visualization (if matplotlib/seaborn available)
-            forecast_plot_b64 = None
-            try:
-                import matplotlib.pyplot as plt
-                
-                # Create forecast plot
-                fig, ax = plt.subplots(figsize=(12, 6))
-                
-                # Plot historical data
-                ax.plot(range(len(series)), series, label='Historical Data', color='blue')
-                
-                # Plot forecast
-                forecast_start = len(series)
-                forecast_range = range(forecast_start, forecast_start + periods)
-                ax.plot(forecast_range, forecast_mean, label='Forecast', color='red', linestyle='--')
-                
-                # Plot confidence intervals
-                ax.fill_between(forecast_range, conf_int.iloc[:, 0], conf_int.iloc[:, 1], 
-                               color='red', alpha=0.2, label='Confidence Interval')
-                
-                ax.set_title(f'ARIMA({best_order[0]},{best_order[1]},{best_order[2]}) Forecast')
-                ax.set_xlabel('Time Period')
-                ax.set_ylabel(target_column)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-                
-                # Convert to base64
-                forecast_plot_b64 = plot_to_base64(fig)
-                plt.close(fig)
-                
-            except Exception as viz_error:
-                print(f"[⚠️] Visualization generation failed: {viz_error}")
-                forecast_plot_b64 = None
-            
-            # Prepare main response data
-            response_data = {
-                "status": "success",
-                "user_id": user_id,
-                "id": str(uuid.uuid4()),
-                "created_at": datetime.utcnow().isoformat(),
-                "type": "forecast",
-                "dataset": dataset_name,
-                "dataset_name": dataset_name,
-                "series": series.tolist(),
-                "model_order": {"p": best_order[0], "d": best_order[1], "q": best_order[2]},
-                "model_aic": best_aic,
-                "adf_test": {
-                    "statistic": float(adf_stat),
-                    "p_value": float(p_value),
-                    "d_used": d,
-                    "is_stationary": str(stationary)
-                },
-                "parameters": {
-                    "target_column": target_column,
-                    "drop_columns": drop_columns,
-                    "periods": periods,
-                    "compare_models": compare_models
-                },
-                "forecast_periods": periods,
-                "forecast_values": forecast_mean.tolist(),
-                "confidence_intervals": {
-                    "lower": conf_int.iloc[:, 0].tolist(),
-                    "upper": conf_int.iloc[:, 1].tolist()
-                },
-                "visualizations": {},
-                "insights": {}
-            }
-            
-            # Add visualization data
-            if forecast_plot_b64:
-                response_data["visualizations"]["forecast_plot"] = f"data:image/png;base64,{forecast_plot_b64}"
-                response_data["thumbnailData"] = f"data:image/png;base64,{forecast_plot_b64}"
-                response_data["imageData"] = f"data:image/png;base64,{forecast_plot_b64}"
-            
-            # Add model_results for visualization compatibility
-            model_name = f"ARIMA({best_order[0]},{best_order[1]},{best_order[2]})"
-            response_data["model_results"] = {
-                model_name: {
-                    "forecast": forecast_mean.tolist(),
-                    "conf_int": {
-                        "lower": conf_int.iloc[:, 0].tolist(),
-                        "upper": conf_int.iloc[:, 1].tolist()
-                    },
-                    "aic": best_aic,
-                    "order": f"({best_order[0]},{best_order[1]},{best_order[2]})"
-                }
-            }
-            
-            # If compare_models is True, add additional models for comparison
-            if compare_models:
-                additional_models = [(0, d, 1), (2, d, 0), (1, d, 2)]
-                for p, d_val, q in additional_models:
-                    if (p, d_val, q) != best_order:
-                        try:
-                            model = ARIMA(series, order=(p, d_val, q))
-                            model_fit = model.fit()
-                            forecast_result = model_fit.get_forecast(steps=periods)
-                            fc_mean = forecast_result.predicted_mean
-                            fc_conf_int = forecast_result.conf_int()
-                            
-                            model_name = f"ARIMA({p},{d_val},{q})"
-                            response_data["model_results"][model_name] = {
-                                "forecast": fc_mean.tolist(),
-                                "conf_int": {
-                                    "lower": fc_conf_int.iloc[:, 0].tolist(),
-                                    "upper": fc_conf_int.iloc[:, 1].tolist()
-                                },
-                                "aic": model_fit.aic,
-                                "order": f"({p},{d_val},{q})"
-                            }
-                        except Exception:
-                            continue
 
-            # Save metadata to Supabase (similar to visualization)
-            try:
-                # Create entry for metadata
-                entry = {
-                    "id": response_data["id"],
-                    "created_at": response_data["created_at"],
-                    "type": "forecast",
-                    "dataset": dataset_name,
-                    "parameters": response_data["parameters"],
-                    "thumbnailData": response_data.get("thumbnailData", ""),
-                    "imageData": response_data.get("imageData", ""),
-                    "visualizations": response_data["visualizations"],
-                    "model_results": response_data["model_results"],
-                    "forecast_summary": {
-                        "model_order": response_data["model_order"],
-                        "model_aic": response_data["model_aic"],
-                        "forecast_periods": response_data["forecast_periods"],
-                        "adf_test": response_data["adf_test"]
-                    },
+            # Scenario manager setup
+            scenario_manager = ScenarioManager()
+            scenarios = scenarios or ["comprehensive"]
+
+            if "traditional" in scenarios:
+                scenario_manager.add_scenario(
+                    "traditional",
+                    "Traditional statistical models",
+                    [ARIMAModel(auto_arima=True), SARIMAModel()]
+                )
+
+            if "machine_learning" in scenarios:
+                scenario_manager.add_scenario(
+                    "machine_learning",
+                    "Machine learning models",
+                    [RandomForestModel()]
+                )
+
+            if "comprehensive" in scenarios:
+                scenario_manager.add_scenario(
+                    "comprehensive",
+                    "All available models",
+                    [ARIMAModel(auto_arima=True), SARIMAModel(), RandomForestModel()]
+                )
+
+            # Run scenarios
+            scenario_results = {}
+            for scenario_name in scenarios:
+                if scenario_name in scenario_manager.scenarios:
+                    scenario_results[scenario_name] = scenario_manager.run_scenario(
+                        scenario_name, series, periods
+                    )
+
+            return {
+                "series": series.tolist(),
+                "parameters": {
+                    "periods": periods,
+                    "target_column": target_column,
+                    "scenarios": scenarios,
+                    "time_column": time_column
+                },
+                "scenarios": scenario_results,
+                "metadata": {
+                    "data_points": len(series),
+                    "user_id": user_id,
                     "summary_stats": summary_stats
                 }
-                entry = ensure_json_serializable(entry)
-                with master_db_cm() as db:
-                    _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-            except Exception as meta_error:
-                print(f"[⚠️] Metadata save error: {meta_error}")
+            }
 
-            
-            return response_data
-            
     except Exception as e:
-        print(f"[⚠️] Error in do_forecast: {e}")
-        raise e
-def create_training_test_forecast(df, target_column="value", train_ratio=0.7, order=(1,1,1)):
-    """
-    Create training/test split and forecast (following your reference implementation)
-    """
-    series = df[target_column].dropna()
-    
-    # Create training and test sets
-    train_size = int(len(series) * train_ratio)
-    train = series[:train_size]
-    test = series[train_size:]
-    
-    # Build model
-    model = ARIMA(train, order=order)
-    fitted = model.fit()
-    
-    # Forecast
-    forecast_steps = len(test)
-    forecast_result = fitted.get_forecast(steps=forecast_steps)
-    
-    fc = forecast_result.predicted_mean
-    conf_int = forecast_result.conf_int()
-    
-    # Create forecast series with proper index
-    fc_series = pd.Series(fc.values, index=test.index)
-    lower_series = pd.Series(conf_int.iloc[:, 0].values, index=test.index)
-    upper_series = pd.Series(conf_int.iloc[:, 1].values, index=test.index)
-    
-    # Create plot
-    plt.figure(figsize=(12, 5), dpi=100)
-    plt.plot(train, label='Training', color='blue')
-    plt.plot(test, label='Actual', color='green')
-    plt.plot(fc_series, label='Forecast', color='red', linestyle='--')
-    plt.fill_between(lower_series.index, lower_series, upper_series, 
-                     color='red', alpha=0.15)
-    plt.title('Forecast vs Actuals')
-    plt.legend(loc='upper left', fontsize=8)
-    plt.grid(True, alpha=0.3)
-    plt.show()
-    
-    return {
-        'model': fitted,
-        'forecast': fc_series,
-        'confidence_intervals': (lower_series, upper_series),
-        'train': train,
-        'test': test
-    }
+        print(f"Error in do_forecast: {e}")
+        traceback.print_exc()
+        raise
 
-def plot_model_diagnostics(model_fit):
-    """
-    Plot model diagnostics (residuals analysis)
-    """
-    residuals = pd.DataFrame(model_fit.resid)
-    
-    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-    residuals.plot(title="Residuals", ax=ax[0])
-    residuals.plot(kind='kde', title='Density', ax=ax[1])
-    plt.tight_layout()
-    plt.show()
-    
-    # Plot predictions
-    model_fit.plot_predict(dynamic=False)
-    plt.show()
-import sys
 def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
     """
     Run forecast visualization subprocess.
@@ -5559,28 +5384,28 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
     """
     output_dir = PathL(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    
     request_data = {
         "user_id": str(user_id),
         "file_path": str(file_path),
         "forecast_result": forecast_result,
         "output_dir": str(output_dir)
     }
-
+    
     try:
         # Save request.json into the output directory
         request_path = output_dir / "request.json"
         with request_path.open("w", encoding="utf-8") as f:
-            json.dump(request_data, f, indent=2)
-
+            json.dump(request_data, f, indent=2, default=str)  # Added default=str for serialization
+        
         # Locate forecast_runner.py
         current_dir = PathL(__file__).parent
         runner_script = current_dir / "forecast_runner.py"
-
+        
         if not runner_script.exists():
             print(f"[⚠️] Forecast runner not found at: {runner_script}")
             raise FileNotFoundError(f"Forecast runner script not found: {runner_script}")
-
+        
         # Run the subprocess using the Python interpreter currently running the script
         result = subprocess.run(
             [sys.executable, str(runner_script.resolve()), str(request_path.resolve())],
@@ -5589,126 +5414,36 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
             text=True,
             timeout=300  # 5 minute timeout
         )
-
-        # Optional: Always log output for debugging
-        print(f"[FORECAST STDOUT]:\n{result.stdout}")
-        print(f"[FORECAST STDERR]:\n{result.stderr}")
-
-
+        
+        # Log output for debugging
+        if result.stdout:
+            print(f"[FORECAST STDOUT]:\n{result.stdout}")
+        if result.stderr:
+            print(f"[FORECAST STDERR]:\n{result.stderr}")
+        
         if result.returncode != 0:
             print(f"[⚠️] Forecast subprocess failed with return code {result.returncode}")
             print(f"[⚠️] STDERR: {result.stderr}")
             print(f"[⚠️] STDOUT: {result.stdout}")
             raise subprocess.CalledProcessError(result.returncode, result.args)
-
+        
         print(f"[✅] Forecast subprocess ran successfully for user {user_id}")
         return True
-
+    
     except subprocess.TimeoutExpired:
         print(f"[⚠️] Forecast subprocess timed out after 5 minutes for user {user_id}")
         return False
-
+    
     except subprocess.CalledProcessError as e:
         print(f"[⚠️] Forecast subprocess failed: {e}")
         return False
-
+    
     except Exception as e:
         print(f"[⚠️] Forecast subprocess error: {e}")
-        import traceback
         traceback.print_exc()
         return False
 
 
-
-@celery_app.task(bind=True, max_retries=3)
-def run_forecast(self, user_id: str, current_user: dict, file_path: str, 
-                target_column: str = "value", drop_columns: str = "", periods: int = 24, compare_models: bool = False):
-    """
-    Celery task for running ARIMA forecasting
-    """
-    try:
-        # Validate inputs
-        if not user_id:
-            raise ValueError("user_id is required")
-        if not file_path:
-            raise ValueError("file_path is required")
-        if not PathL(file_path).exists():
-            raise ValueError(f"File does not exist: {file_path}")
-        
-        # Resolve output dir first
-        user_dir = PathL("user_uploads") / str(user_id)
-        user_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Normalize current_user to dict format
-        if hasattr(current_user, '__dict__'):
-            current_user_dict = {
-                "id": getattr(current_user, 'id', 'unknown'),
-                "email": getattr(current_user, 'email', 'unknown'),
-                "subscription": getattr(current_user, 'subscription', 'unknown')
-            }
-        else:
-            current_user_dict = current_user
-        
-        # Run main forecast logic (model fitting)
-        results = do_forecast(
-            user_id=user_id,
-            current_user=current_user_dict,
-            file_path=file_path,
-            target_column=target_column,
-            drop_columns=drop_columns,
-            periods=periods,
-            compare_models=compare_models
-        )
-        
-        # Pass results + output_dir to subprocess
-        subprocess_success = run_forecast_subprocess(
-            user_id=user_id,
-            file_path=file_path,
-            forecast_result=results,
-            output_dir=user_dir
-        )
-        
-        if not subprocess_success:
-            print(f"⚠️ Warning: Visualization subprocess failed for user {user_id}")
-        
-        # Load back visualizations JSON if available
-        viz_file = PathL("data/visualizations") / f"{user_id}.json"
-        if viz_file.exists():
-            try:
-                with viz_file.open("r", encoding="utf-8") as f:
-                    visualization_data = json.load(f)
-                
-                # Get the latest forecast entry
-                forecast_entries = [v for v in visualization_data if v.get("type") == "forecast"]
-                if forecast_entries:
-                    results["visualizations"] = forecast_entries[-1].get("visualizations", {})
-                    results["thumbnailData"] = forecast_entries[-1].get("thumbnailData", "")
-                    results["imageData"] = forecast_entries[-1].get("imageData", "")
-            except Exception as e:
-                print(f"Warning: Could not load visualization data: {e}")
-        
-        return {
-            "status": "success",
-            "result": results
-        }
-    
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Error in forecast task: {error_msg}")
-        traceback.print_exc()
-        
-        # Retry logic for transient errors
-        if "timeout" in error_msg.lower() or "connection" in error_msg.lower():
-            try:
-                self.retry(countdown=60, max_retries=3)
-            except Exception:
-                pass
-        
-        return {
-            "status": "error",
-            "error": error_msg,
-            "user_id": user_id
-        }
 @celery_app.task
 def run_classification(
     user_id: str,
@@ -6054,43 +5789,69 @@ def run_decision_paths(
         drop_columns=drop_columns
     )
 # forecast_tasks.py
-@celery_app.task
-def run_forecast(user_id: str, current_user: dict, file_path: str, target_column: str = "value", drop_columns: str = "", periods: int = 24):
+# Assuming you have celery_app defined elsewhere
+# from your_celery_app import celery_app
+@celery_app.task(bind=True, max_retries=3)
+def run_forecast(
+    self,
+    user_id: str,
+    current_user: dict,
+    file_path: str = None,
+    train_path: str = None,
+    test_path: str = None,
+    target_column: str = "value",
+    drop_columns: str = "",
+    periods: int = 24,
+    scenarios: List[str] = None,
+    time_column: str = None,
+    enable_backtesting: bool = False
+):
     try:
-        # Resolve output dir first
+
+        # Resolve user dir
         user_dir = PathL("user_uploads") / str(user_id)
         user_dir.mkdir(parents=True, exist_ok=True)
 
-        # Run main forecast logic (model fitting)
+
+
+        # 🔁 Updated: Forward both file_path or train/test to your internal logic
         results = do_forecast(
             user_id=user_id,
             current_user=current_user,
             file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
             target_column=target_column,
             drop_columns=drop_columns,
-            periods=periods
+            periods=periods,
+            scenarios=scenarios or ["comprehensive"],
+            time_column=time_column,
+            enable_backtesting=enable_backtesting
         )
 
-        # Pass results + output_dir to subprocess
-        run_forecast_subprocess(
+        # Handle visualizations if needed
+        subprocess_success = run_forecast_subprocess(
             user_id=user_id,
-            file_path=file_path,
+            file_path=file_path or train_path,  # fallback for output naming
             forecast_result=results,
-            output_dir=user_dir  # ← add output dir here
+            output_dir=user_dir
         )
 
-        # Load back visualizations JSON if available
+        if not subprocess_success:
+            print(f"⚠️ Warning: Visualization subprocess failed for user {user_id}")
+
+        # Load visualizations
         viz_file = PathL("data/visualizations") / f"{user_id}.json"
         if viz_file.exists():
             with viz_file.open("r", encoding="utf-8") as f:
                 visualization_data = json.load(f)
 
-            # Get the latest forecast entry
-            forecast_entries = [v for v in visualization_data if v.get("type") == "forecast"]
+            forecast_entries = [v for v in visualization_data if v.get("type") == "enhanced_forecast"]
             if forecast_entries:
-                results["visualizations"] = forecast_entries[-1].get("visualizations", {})
-                results["thumbnailData"] = forecast_entries[-1].get("thumbnailData", "")
-                results["imageData"] = forecast_entries[-1].get("imageData", "")
+                latest_entry = forecast_entries[-1]
+                results["visualizations"] = latest_entry.get("visualizations", {})
+                results["thumbnailData"] = latest_entry.get("thumbnailData", "")
+                results["imageData"] = latest_entry.get("imageData", "")
 
         return {
             "status": "success",
@@ -6098,18 +5859,19 @@ def run_forecast(user_id: str, current_user: dict, file_path: str, target_column
         }
 
     except Exception as e:
-        import traceback
+        error_msg = str(e)
+        print(f"❌ Error in forecast task: {error_msg}")
         traceback.print_exc()
+
+        # Retry for transient issues
+        if any(keyword in error_msg.lower() for keyword in ["timeout", "connection", "network"]):
+            try:
+                self.retry(countdown=60, max_retries=3)
+            except Exception:
+                pass
+
         return {
             "status": "error",
-            "error": str(e)
+            "error": error_msg,
+            "user_id": user_id
         }
-
-# from celery.schedules import crontab
-
-# CELERY_BEAT_SCHEDULE = {
-#     "cleanup-every-180-days": {
-#         "task": "tasks.cleanup.cleanup_old_metadata",
-#         "schedule": crontab(day_of_year="*/180", hour=0, minute=0),  # Every 180th day at midnight
-#     },
-# }

@@ -14,7 +14,7 @@ import numpy as np
 from sqlalchemy import MetaData, Table, text
 import tempfile
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path, APIRouter, HTTPException, Depends, status, Query
+from fastapi import FastAPI, UploadFile, File, Form, Request, Path, Depends, APIRouter, HTTPException, Depends, status, Query
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -1979,32 +1979,47 @@ async def decision_paths(
     )
     response_data = await run_in_threadpool(task.get)
     return response_data
-
 @app.post("/forecast/")
 async def forecast_time_series(
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),
+    train_file: UploadFile = File(None),
+    test_file: UploadFile = File(None),
     target_column: str = Form("value"),
     drop_columns: str = Form(""),
     periods: int = Form(24),
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        # ─── Validate `periods` ───
         if periods is None or isinstance(periods, str):
-            raise HTTPException(status_code=422, detail="Invalid value for periods")
-        
-        # ─── Token check ───
+            raise HTTPException(status_code=422, detail="Invalid value for forecast periods.")
+
+        # ─── Token Check ───
         MINIMUM_TOKENS = 0.1
         if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
             raise HTTPException(403, "Insufficient token balance to begin processing.")
 
         user_id = current_user.id
-        
-        # Upload file to Supabase
-        file_path = await handle_file_upload(user_id, file)
 
-        results = run_forecast(
+        # ─── Handle File Uploads ───
+        file_path = None
+        train_path = None
+        test_path = None
+
+        if file:
+            file_path = await handle_file_upload(user_id, file)
+        elif train_file and test_file:
+            train_path = await handle_file_upload(user_id, train_file)
+            test_path = await handle_file_upload(user_id, test_file)
+        else:
+            raise HTTPException(400, "Upload either a single `file` or both `train_file` + `test_file`.")
+
+        # ─── Celery Task Execution ───
+        task = run_forecast.delay(
             user_id=user_id,
             file_path=file_path,
+            train_path=train_path,
+            test_path=test_path,
             current_user={
                 "id": current_user.id,
                 "email": current_user.email,
@@ -2015,6 +2030,7 @@ async def forecast_time_series(
             periods=periods
         )
 
+        results = await run_in_threadpool(task.get)
         return results
 
     except HTTPException:
@@ -2022,7 +2038,6 @@ async def forecast_time_series(
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Time series forecast failed: {str(e)}")
-
 class DownloadRequest(BaseModel):
     file_path: str
     file_name: str

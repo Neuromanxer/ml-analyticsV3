@@ -2198,6 +2198,9 @@ function displayResults(endpoint, data) {
         if (result.visualizations.acf_pacf) {
           addVisualization('📊 ACF/PACF Plot', result.visualizations.acf_pacf);
         }
+          if (result.visualizations.performance) {
+          addVisualization('📉 Model Performance Comparison', result.visualizations.performance);
+        }
       } else {
         console.log('No visualizations found in result');
       }
