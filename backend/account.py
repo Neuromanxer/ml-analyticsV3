@@ -20,19 +20,19 @@ import os
 import stripe
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 
-# from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
-# from .activity import ActivityLog
-# from .storage import list_user_files, get_file_url
-# from .storage import delete_file_from_supabase
-# from .storage import supabase, SUPABASE_BUCKET
+from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+from .activity import ActivityLog
+from .storage import list_user_files, get_file_url
+from .storage import delete_file_from_supabase
+from .storage import supabase, SUPABASE_BUCKET
 
 
 
-from auth import get_current_active_user, get_master_db_session, User, Base  
-from activity import ActivityLog
-from storage import list_user_files, get_file_url
-from storage import delete_file_from_supabase
-from storage import supabase, SUPABASE_BUCKET
+# from auth import get_current_active_user, get_master_db_session, User, Base  
+# from activity import ActivityLog
+# from storage import list_user_files, get_file_url
+# from storage import delete_file_from_supabase
+# from storage import supabase, SUPABASE_BUCKET
 
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "")

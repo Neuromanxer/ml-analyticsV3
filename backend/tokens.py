@@ -22,10 +22,10 @@ from pydantic import BaseModel
 from datetime import datetime
 import logging
 
-# from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+from .auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
 
 
-from auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
+# from auth import get_current_active_user, get_master_db_session, User, Base  # <-- assumes your User is defined in auth.py
 
 
 
