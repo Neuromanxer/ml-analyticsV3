@@ -1,6 +1,7 @@
 # Virtual Environments
 venv/
 .venv/
+backend/.env
 
 # Python cache
 __pycache__/
@@ -12,3 +13,5 @@ data/
 models/
 uploads/
 user_uploads/
+".env" 
+backend/

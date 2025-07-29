@@ -570,7 +570,30 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 #         "storage_region": current_user.storage_region,
 #         "file_storage_path": f"{SUPABASE_BUCKET}/{current_user.id}/"
 #     }
+@router.delete("/admin/delete-user/{user_id}", tags=["admin"])
+async def admin_delete_user(
+    user_id: str,
+    db: Session = Depends(get_master_db_session),
+    current_user: User = Depends(require_role(["admin"]))
+):
+    # Do not allow deleting yourself via admin route
+    if current_user.id == user_id:
+        raise HTTPException(status_code=403, detail="Admins cannot delete themselves using this route.")
+    
+    user_to_delete = db.query(User).filter(User.id == user_id).first()
 
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user_to_delete.role == "admin":
+        raise HTTPException(status_code=403, detail="Cannot delete other admins via API")
+
+    db.delete(user_to_delete)
+    db.commit()
+    logger.info(f"[ADMIN ACTION] {current_user.email} deleted user {user_to_delete.email} at {datetime.utcnow()}")
+
+    
+    return {"message": f"User '{user_to_delete.email}' deleted successfully by admin."}
 @router.delete("/me")
 async def delete_user_account(current_user = Depends(get_current_active_user)):
     """
