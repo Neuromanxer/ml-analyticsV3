@@ -1761,39 +1761,44 @@ function renderFlatTable(headers, rows) {
   return html;
 }
   function buildMetricsHtml(data) {
-    return `
-      <div class="gallery-metrics">
-        ${data.metrics ? `<div>📈 Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
-        ${data.parameters ? `<div>⚙️ Parameters: ${formatKeyValObject(data.parameters)}</div>` : ""}
-        ${data.summary_stats ? `<div>📊 Summary Stats: ${renderFlatTable(data.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"], data.summary_stats)}</div>` : ""}
-        ${data.decision_rules ? `
-          <div>📜 Decision Rules:
-            <pre class="decision-rules">${Array.isArray(data.decision_rules) ? data.decision_rules.join('\n') : data.decision_rules}</pre>
-          </div>` : ""}
-          
-        ${data.test_scores ? `<div>🧪 Test Scores: ${formatKeyValObject(data.test_scores)}</div>` : ""}
-        ${data.pred_stats ? `<div>📊 Prediction Stats: ${formatKeyValObject(data.pred_stats)}</div>` : ""}
-        ${data.cv_scores ? `<div>🔁 CV Scores: ${formatKeyValObject(data.cv_scores)}</div>` : ""}
-        ${data.cluster_stats ? `<div>📦 Cluster Stats: ${formatKeyValObject(data.cluster_stats)}</div>` : ""}
-        ${data.cluster_feature_differences ? `<div>🧠 Feature Differences: ${formatKeyValObject(data.cluster_feature_differences)}</div>` : ""}
-        ${data.cluster_counts ? `<div>🔢 Cluster Counts: ${formatKeyValObject(data.cluster_counts)}</div>` : ""}
-        ${data.segments_summary ? `<div>👥 Segment Summary: ${formatRecords(data.segments_summary)}</div>` : ""}
-        ${data.model_order ? `<div>🔧 ARIMA Order: ${formatKeyValObject(data.model_order)}</div>` : ""}
-        ${data.adf_test ? `<div>🧪 ADF Test: ${formatKeyValObject(data.adf_test)}</div>` : ""}
-        ${data.forecast_periods ? `<div>📆 Forecast Periods: ${data.forecast_periods}</div>` : ""}
-        ${data.forecast_values ? `<div>📉 Forecast Values: ${formatArray(data.forecast_values)}</div>` : ""}
-        ${data.confidence_intervals ? `
-          <div>🔒 Confidence Intervals:
-            <div><strong>Lower:</strong> ${formatArray(data.confidence_intervals.lower)}</div>
-            <div><strong>Upper:</strong> ${formatArray(data.confidence_intervals.upper)}</div>
-          </div>` : ""}
-        
-        ${data.optimal_k ? `<div>🔍 Optimal K: ${data.optimal_k}</div>` : ""}
-        ${data.features_used ? `<div>🧬 Features Used: ${formatArray(data.features_used)}</div>` : ""}
-        ${data.total_records ? `<div>📊 Total Records: ${data.total_records}</div>` : ""}
-      </div>
-    `;
-  }
+  return `
+    <div class="gallery-metrics">
+      ${data.metrics ? `<div>📈 Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
+      ${typeof data.parameters === "object" && data.parameters !== null ? `<div>⚙️ Parameters: ${formatKeyValObject(data.parameters)}</div>` : ""}
+      ${data.summary_stats ? `<div>📊 Summary Stats: ${renderFlatTable(data.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"], data.summary_stats)}</div>` : ""}
+      
+      ${data.decision_rules ? `
+        <div>📜 Decision Rules:
+          <pre class="decision-rules">${Array.isArray(data.decision_rules) ? data.decision_rules.join('\n') : data.decision_rules}</pre>
+        </div>` : ""}
+
+      ${typeof data.test_scores === "object" && data.test_scores !== null ? `<div>🧪 Test Scores: ${formatKeyValObject(data.test_scores)}</div>` : ""}
+      ${typeof data.pred_stats === "object" && data.pred_stats !== null ? `<div>📊 Prediction Stats: ${formatKeyValObject(data.pred_stats)}</div>` : ""}
+      ${typeof data.cv_scores === "object" && data.cv_scores !== null ? `<div>🔁 CV Scores: ${formatKeyValObject(data.cv_scores)}</div>` : ""}
+      ${typeof data.cluster_stats === "object" && data.cluster_stats !== null ? `<div>📦 Cluster Stats: ${formatKeyValObject(data.cluster_stats)}</div>` : ""}
+      ${typeof data.cluster_feature_differences === "object" && data.cluster_feature_differences !== null ? `<div>🧠 Feature Differences: ${formatKeyValObject(data.cluster_feature_differences)}</div>` : ""}
+      ${typeof data.cluster_counts === "object" && data.cluster_counts !== null ? `<div>🔢 Cluster Counts: ${formatKeyValObject(data.cluster_counts)}</div>` : ""}
+      
+      ${Array.isArray(data.segments_summary) ? `<div>👥 Segment Summary: ${formatRecords(data.segments_summary)}</div>` : ""}
+      ${typeof data.model_order === "object" && data.model_order !== null ? `<div>🔧 ARIMA Order: ${formatKeyValObject(data.model_order)}</div>` : ""}
+      ${typeof data.adf_test === "object" && data.adf_test !== null ? `<div>🧪 ADF Test: ${formatKeyValObject(data.adf_test)}</div>` : ""}
+
+      ${data.forecast_periods ? `<div>📆 Forecast Periods: ${data.forecast_periods}</div>` : ""}
+      ${data.forecast_values ? `<div>📉 Forecast Values: ${formatArray(data.forecast_values)}</div>` : ""}
+      
+      ${data.confidence_intervals ? `
+        <div>🔒 Confidence Intervals:
+          <div><strong>Lower:</strong> ${formatArray(data.confidence_intervals.lower)}</div>
+          <div><strong>Upper:</strong> ${formatArray(data.confidence_intervals.upper)}</div>
+        </div>` : ""}
+
+      ${data.optimal_k ? `<div>🔍 Optimal K: ${data.optimal_k}</div>` : ""}
+      ${data.features_used ? `<div>🧬 Features Used: ${formatArray(data.features_used)}</div>` : ""}
+      ${data.total_records ? `<div>📊 Total Records: ${data.total_records}</div>` : ""}
+    </div>
+  `;
+}
+
 
 
 // Function for displaying results from any analysis endpoint
