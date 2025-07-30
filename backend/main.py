@@ -247,7 +247,6 @@ print("POSTGRES_PASSWORD:", os.getenv("POSTGRES_PASSWORD"))
 print("POSTGRES_HOST:", os.getenv("POSTGRES_HOST"))
 print("POSTGRES_PORT:", os.getenv("POSTGRES_PORT"))
 
-@app.get("/", include_in_schema=False)
 @app.head("/", include_in_schema=False)
 def read_root():
     print("✅ Root endpoint accessed")
