@@ -1384,6 +1384,32 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('close-modal').addEventListener('click', function() {
       hideForgotPasswordModal();
   });
+  document.getElementById('forgot-password-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+
+  const email = document.getElementById('reset-email').value;
+  const messageDiv = document.getElementById('forgot-password-message');
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/request-password-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    });
+
+    if (!response.ok) {
+      throw new Error("Request failed");
+    }
+
+    const data = await response.json();
+    console.log("Backend said:", data);
+
+    messageDiv.innerHTML = "📧 If this email exists, reset instructions have been sent.";
+  } catch (err) {
+    console.error(err);
+    messageDiv.innerHTML = "❌ An error occurred. Please try again later.";
+  }
+});
 
   window.addEventListener('click', function(event) {
       if (event.target == document.getElementById('forgot-password-modal')) {
