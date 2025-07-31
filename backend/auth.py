@@ -468,6 +468,20 @@ from pydantic import BaseModel, EmailStr
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+import smtplib
+from email.message import EmailMessage
+import os
+async def send_email(to_email: str, subject: str, body: str):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = os.getenv("SMTP_FROM_EMAIL")
+    msg["To"] = to_email
+    msg.set_content(body)
+
+    with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
+        server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
+        server.send_message(msg)
+
 
 @router.post("/request-password-reset")
 async def request_password_reset(
@@ -475,15 +489,30 @@ async def request_password_reset(
     db: Session = Depends(get_master_db_session)
 ):
     user = get_user_by_email(db, req.email)
+    
+    # Do not reveal whether email exists
     if not user:
-        # Do not reveal if email exists
         return {"message": "If this email exists, you will receive reset instructions."}
 
     reset_token = create_password_reset_token(user.email)
+    reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
 
-    # You would normally email this token to user
-    # For now we just return it directly
-    return {"reset_token": reset_token}
+    subject = "Reset Your Password"
+    body = f"""
+    Hello,
+
+    You (or someone else) requested to reset your password. If it was you, click the link below:
+
+    {reset_url}
+
+    If you didn’t request this, you can safely ignore this email.
+
+    – MLInsights
+    """
+
+    await send_email(to_email=user.email, subject=subject, body=body)
+
+    return {"message": "If this email exists, you will receive reset instructions."}
 class PasswordResetSubmit(BaseModel):
     reset_token: str
     new_password: str
