@@ -555,7 +555,7 @@ class UpdateProfileRequest(BaseModel):
 class PasswordChangeRequest(BaseModel):
     new_password: str
 
-@router.put("/user/change-password")
+@router.put("/change-password")
 def change_password(
     payload: PasswordChangeRequest,
     db: Session = Depends(get_master_db_session),

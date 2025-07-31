@@ -2100,7 +2100,7 @@ async function saveProfile() {
 
         // Optionally update password
         if (password) {
-            const pwdResponse = await fetch(`${API_BASE_URL}/user/change-password`, {
+            const pwdResponse = await fetch(`${API_BASE_URL}/api/account/change-password`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
