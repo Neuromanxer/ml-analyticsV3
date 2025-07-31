@@ -994,6 +994,48 @@ function showForgotPasswordModal() {
     modal.style.display = 'block';
     console.log("Modal display set to block");
 }
+  function setupResetPasswordHandler() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const messageDiv = document.getElementById('reset-password-message');
+    const form = document.getElementById('reset-password-form');
+
+    if (!token) {
+      if (messageDiv) messageDiv.innerHTML = "❌ Invalid or missing reset token.";
+      if (form) form.style.display = "none";
+      return;
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const newPassword = document.getElementById('new-password').value;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reset_token: token,
+            new_password: newPassword
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Password reset failed.");
+        }
+
+        messageDiv.innerHTML = "✅ Your password has been reset. You may now log in.";
+        form.style.display = "none";
+
+      } catch (err) {
+        console.error(err);
+        messageDiv.innerHTML = `❌ ${err.message}`;
+      }
+    });
+  }
 
 function hideForgotPasswordModal() {
     console.log("Closing modal");
@@ -1338,6 +1380,7 @@ function socialSignUp(provider) {
 document.addEventListener('DOMContentLoaded', () => {
       // Open modal when clicking the link
   handleCookieConsent()
+  setupResetPasswordHandler()
   document.getElementById('close-modal').addEventListener('click', function() {
       hideForgotPasswordModal();
   });
@@ -1347,32 +1390,7 @@ document.addEventListener('DOMContentLoaded', () => {
           hideForgotPasswordModal();
       }
   });
-  document.getElementById('forgot-password-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
-    
-    const email = document.getElementById('reset-email').value;
-    const messageDiv = document.getElementById('forgot-password-message');
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/request-password-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email })
-        });
-
-        if (!response.ok) {
-            throw new Error("Request failed");
-        }
-
-        const data = await response.json();
-
-        messageDiv.innerHTML = "If this email exists, reset instructions have been sent.";
-    } catch (err) {
-        console.error(err);
-        messageDiv.innerHTML = "An error occurred. Please try again later.";
-    }
-});
-
+ 
     if (urlParams.has('token')) {
         const token = urlParams.get('token');
         const refreshToken = urlParams.get('refresh_token');
