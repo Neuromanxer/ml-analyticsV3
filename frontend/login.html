@@ -1366,8 +1366,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = await response.json();
 
-        // In production, you'd email the token; for now, just display it for testing
-        console.log("Reset token:", data.reset_token);
         messageDiv.innerHTML = "If this email exists, reset instructions have been sent.";
     } catch (err) {
         console.error(err);
