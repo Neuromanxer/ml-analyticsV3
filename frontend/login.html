@@ -1012,15 +1012,14 @@ function showForgotPasswordModal() {
       const newPassword = document.getElementById('new-password').value;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
+        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            username: email,
-            password: password
+            reset_token: token,
+            new_password: newPassword
           })
         });
-
 
         const data = await response.json();
 
