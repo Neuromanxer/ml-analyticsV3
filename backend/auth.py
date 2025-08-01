@@ -639,14 +639,18 @@ async def delete_user_account(current_user = Depends(get_current_active_user)):
         logger.error(f"Error deleting user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
 
-# First, let's fix the token endpoint to properly return both tokens
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 @router.post("/token", response_model=AuthTokenResponse)
 async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    data: LoginRequest,
     db: Session = Depends(get_master_db_session)
 ):
-    """Get access token and refresh token for authentication."""
-    user = authenticate_user(form_data.username, form_data.password, db)
+    user = authenticate_user(data.username, data.password, db)
     if not user:
         logger.warning(f"Failed login attempt for email: {form_data.username}")
         raise HTTPException(
