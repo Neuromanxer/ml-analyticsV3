@@ -490,9 +490,6 @@ async def request_password_reset(
 ):
     user = get_user_by_email(db, req.email)
     
-    # Do not reveal whether email exists
-    if not user:
-        return {"message": "If this email exists, you will receive reset instructions."}
 
     reset_token = create_password_reset_token(user.email)
     reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
