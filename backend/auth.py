@@ -481,8 +481,22 @@ async def send_email(to_email: str, subject: str, body: str):
     with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
         server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
         server.send_message(msg)
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+async def sendgrid_email(to_email: str, subject: str, body: str):
+    message = Mail(
+        from_email=os.getenv("SENDGRID_FROM_EMAIL"),
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=body
+    )
 
-
+    try:
+        sg = SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
+        response = sg.send(message)
+        print(f"Email sent to {to_email} - Status Code: {response.status_code}")
+    except Exception as e:
+        print(f"SendGrid Error: {str(e)}")
 @router.post("/request-password-reset")
 async def request_password_reset(
     req: PasswordResetRequest,
@@ -490,7 +504,11 @@ async def request_password_reset(
 ):
     sanitized_email = str(req.email).lower().strip()
     user = get_user_by_email(db, sanitized_email)
-
+    print(f"DB Session: {db}")
+    print(f"Sanitized Email: {sanitized_email}")
+    if not user:
+        # Return the same generic response to avoid revealing valid emails
+        return {"message": "If this email exists, you will receive reset instructions."}
 
     reset_token = create_password_reset_token(user.email)
     reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
@@ -505,10 +523,18 @@ async def request_password_reset(
 
     If you didn’t request this, you can safely ignore this email.
 
-    – MLInsights
+    – MLAnalytics
     """
 
-    await send_email(to_email=user.email, subject=subject, body=body)
+    try:
+        await send_email(to_email=user.email, subject=subject, body=body)
+    except Exception as smtp_error:
+        print(f"SMTP failed, falling back to SendGrid: {smtp_error}")
+        try:
+            await sendgrid_email(to_email=user.email, subject=subject, body=body)
+        except Exception as sendgrid_error:
+            print(f"SendGrid also failed: {sendgrid_error}")
+            raise HTTPException(status_code=500, detail="Email service failed. Try again later.")
 
     return {"message": "If this email exists, you will receive reset instructions."}
 class PasswordResetSubmit(BaseModel):

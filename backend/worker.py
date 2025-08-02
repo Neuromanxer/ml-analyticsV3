@@ -44,36 +44,36 @@ import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
 
-# from .anomaly_detection import train_best_anomaly_detection
-# from .preprocessing import preprocess_data
-# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from .auth import master_db_cm
-# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-# from .target import generate_customer_summary
-# from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-# from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-# from .preprocessing import preprocess_data
-# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from .feature_importance import safe_generate_feature_importance
-# from .clustering import run_kmeans, find_optimal_k, label_clusters_general
-# from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
+from .anomaly_detection import train_best_anomaly_detection
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .auth import master_db_cm
+from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from .target import generate_customer_summary
+from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .feature_importance import safe_generate_feature_importance
+from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
 
 
 
 
-from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
-from anomaly_detection import train_best_anomaly_detection
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from auth import master_db_cm
-from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-from target import generate_customer_summary
-from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from feature_importance import safe_generate_feature_importance
-from clustering import run_kmeans, find_optimal_k, label_clusters_general
+# from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
+# from anomaly_detection import train_best_anomaly_detection
+# from preprocessing import preprocess_data
+# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from auth import master_db_cm
+# from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from target import generate_customer_summary
+# from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+# from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+# from preprocessing import preprocess_data
+# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from feature_importance import safe_generate_feature_importance
+# from clustering import run_kmeans, find_optimal_k, label_clusters_general
 
 # OAuth2 scheme
 # Configure logging
@@ -87,20 +87,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# celery_app = Celery(
-#     "tasks",
-#     broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
-#     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
-# )
-
-BROKER_URL = "redis://localhost:6379/0"
-RESULT_BACKEND = "redis://localhost:6379/1"
-
 celery_app = Celery(
-    "worker",
-    broker=BROKER_URL,
-    backend=RESULT_BACKEND
+    "tasks",
+    broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
+    backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 )
+
+# BROKER_URL = "redis://localhost:6379/0"
+# RESULT_BACKEND = "redis://localhost:6379/1"
+
+# celery_app = Celery(
+#     "worker",
+#     broker=BROKER_URL,
+#     backend=RESULT_BACKEND
+# )
 
 import numpy as np
 

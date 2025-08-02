@@ -5,9 +5,9 @@ from sklearn.metrics import silhouette_score
 import joblib
 
 
-# from .preprocessing import preprocess_data
+from .preprocessing import preprocess_data
 
-from preprocessing import preprocess_data
+# from preprocessing import preprocess_data
 
 # Find optimal k using both elbow method and silhouette score
 def find_optimal_k(data, max_k=10):
