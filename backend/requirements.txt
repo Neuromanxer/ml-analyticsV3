@@ -11,11 +11,13 @@ sqlalchemy
 databases[postgresql]
 alembic
 psycopg2-binary
-scipy==1.11.4 --only-binary=:all:
+scipy==1.11.4; platform_system != "Windows"
 supabase
+
 # Authentication
 pyjwt
 dice-ml
+
 # Machine Learning libraries
 pandas
 numpy
@@ -29,27 +31,35 @@ matplotlib
 statsmodels
 seaborn
 stripe
-# Clustering
-scipy
-openai
-# Anomaly detection (you might be using it for your train_best_anomaly_detection function)
+
+# Clustering & anomaly detection
 pyod
 tabulate
+openai
+scipy  # just keep the main version (this is a duplicate)
+
 # Task queue
 celery
 redis
+
+# Time series / survival
 lifelines
+statsmodels
+
 # AWS ECS launcher
 boto3
-passlib==1.7.4
+
+# Password hashing
 bcrypt==4.1.2
-# Time series forecasting
-statsmodels
+passlib==1.7.4
+
 # Optional utilities
 python-multipart
 pydantic[email]
 python-jose
+
+# Emailing - version pinned to avoid starkbank-ecdsa issue
 sendgrid==6.9.7
 
-# Ensure latest pip installer used
-pip
+# Build helper
+wheel
