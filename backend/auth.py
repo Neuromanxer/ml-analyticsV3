@@ -492,6 +492,8 @@ async def request_password_reset(
     db: Session = Depends(get_master_db_session)
 ):
     user = get_user_by_email(db, req.email)
+    print("🔍 Email received:", req.email)
+    print("🧠 User found:", user)
 
     if not user:
         return {"message": "If this email exists, you will receive reset instructions."}
