@@ -472,15 +472,22 @@ import smtplib
 from email.message import EmailMessage
 import os
 async def send_email(to_email: str, subject: str, body: str):
+    print("🚀 Attempting to send email via SMTP...")
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = os.getenv("SMTP_FROM_EMAIL")
     msg["To"] = to_email
     msg.set_content(body)
 
-    with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
-        server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
+            server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
+            server.send_message(msg)
+        print("✅ SMTP email sent.")
+    except Exception as e:
+        print(f"❌ SMTP Error: {e}")
+        raise
+
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 async def sendgrid_email(to_email: str, subject: str, body: str):
@@ -493,8 +500,16 @@ async def sendgrid_email(to_email: str, subject: str, body: str):
 
     try:
         sg = SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
+
+        # Set EU region if applicable
+        if os.getenv("SENDGRID_REGION", "").lower() == "eu":
+            sg.set_sendgrid_data_residency("eu")
+
         response = sg.send(message)
         print(f"Email sent to {to_email} - Status Code: {response.status_code}")
+        print(response.body)
+        print(response.headers)
+
     except Exception as e:
         print(f"SendGrid Error: {str(e)}")
 @router.post("/request-password-reset")
