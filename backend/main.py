@@ -241,12 +241,6 @@ app.add_middleware(
 # Load environment variables
 load_dotenv()
 
-print("Loaded environment:")
-print("POSTGRES_USER:", os.getenv("POSTGRES_USER"))
-print("POSTGRES_PASSWORD:", os.getenv("POSTGRES_PASSWORD"))
-print("POSTGRES_HOST:", os.getenv("POSTGRES_HOST"))
-print("POSTGRES_PORT:", os.getenv("POSTGRES_PORT"))
-
 @app.head("/", include_in_schema=False)
 def read_root():
     print("✅ Root endpoint accessed")

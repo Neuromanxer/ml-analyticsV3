@@ -347,7 +347,7 @@ def authenticate_user(email: str, password: str, db: Session):
     print("📋 All users in database:")
     for u in all_users:
         print(f"- ID: {u.id}, Email: {u.email}, Hashed: {u.hashed_password}")
-
+    print("💾 DB in use:", db.bind.url)
     # Now attempt to find the user
     user = get_user_by_email(db, email)
     
@@ -545,6 +545,7 @@ async def request_password_reset(
     user = get_user_by_email(db, sanitized_email)
     print(f"DB Session: {db}")
     print(f"Sanitized Email: {sanitized_email}")
+    print("💾 DB in use:", db.bind.url)
     if not user:
         # Return the same generic response to avoid revealing valid emails
         return {"message": "If this email exists, you will receive reset instructions."}
@@ -711,6 +712,10 @@ async def login_for_access_token(
     db: Session = Depends(get_master_db_session)
 ):
     """Get access token and refresh token for authentication."""
+    users = db.query(User).all()
+    print("📋 All users in database:")
+    for u in users:
+        print(f"Email: {u.email}")
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         logger.warning(f"Failed login attempt for email: {form_data.username}")
