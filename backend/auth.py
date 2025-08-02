@@ -343,9 +343,27 @@ def decode_user_from_request(request: Request):
 def authenticate_user(email: str, password: str, db: Session):
     user = get_user_by_email(db, email)
     if not user:
+        print("❌ User not found.")
         return False
-    if not verify_password(password, user.hashed_password):
+
+    print("🔐 Verifying login for:", email)
+    print("Plain:", password)
+
+    # Show what the hashed version of the plain password would look like *right now*
+    hashed_input = get_password_hash(password)
+    print("Live Hashed Input (new hash):", hashed_input)
+
+    # Show what's stored in DB
+    print("Stored Hash:", user.hashed_password)
+
+    match = verify_password(password, user.hashed_password)
+    print("Match:", match)
+
+    if not match:
+        print("❌ Password did not match.")
         return False
+
+    print("✅ Password verified.")
     return user
 
 
@@ -540,17 +558,19 @@ async def request_password_reset(
 
     – MLAnalytics
     """
-
     try:
+        print("📧 Sending email via SMTP...")
         await send_email(to_email=user.email, subject=subject, body=body)
     except Exception as smtp_error:
-        print(f"SMTP failed, falling back to SendGrid: {smtp_error}")
-        try:
-            await sendgrid_email(to_email=user.email, subject=subject, body=body)
-        except Exception as sendgrid_error:
-            print(f"SendGrid also failed: {sendgrid_error}")
-            raise HTTPException(status_code=500, detail="Email service failed. Try again later.")
+        print(f"❌ SMTP failed: {smtp_error}")
 
+    try:
+        print("📧 Sending email via SendGrid...")
+        await sendgrid_email(to_email=user.email, subject=subject, body=body)
+    except Exception as sendgrid_error:
+        print(f"❌ SendGrid failed: {sendgrid_error}")
+
+    # Return success regardless of email result
     return {"message": "If this email exists, you will receive reset instructions."}
 class PasswordResetSubmit(BaseModel):
     reset_token: str
