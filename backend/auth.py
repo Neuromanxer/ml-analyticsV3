@@ -237,7 +237,7 @@ class User(Base):
 # OAuth2 scheme - Update tokenUrl to include the full path
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 # Single unified function to get master DB session
-
+from sqlalchemy import func
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
     sanitized = email.lower().strip()
