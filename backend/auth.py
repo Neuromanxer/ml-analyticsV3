@@ -347,6 +347,9 @@ def authenticate_user(email: str, password: str, db: Session):
     user = get_user_by_email(db, email)
     if not user:
         return False
+    print("🔒 Email:", email)
+    print("🔒 Password entered:", password)
+    print("🔒 Hash from DB:", user.hashed_password)
     if not verify_password(password, user.hashed_password):
         return False
     return user
