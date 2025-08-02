@@ -468,19 +468,23 @@ from pydantic import BaseModel, EmailStr
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
-import smtplib
-from email.message import EmailMessage
 import os
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 async def send_email(to_email: str, subject: str, body: str):
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = os.getenv("SMTP_FROM_EMAIL")
-    msg["To"] = to_email
-    msg.set_content(body)
+    message = Mail(
+        from_email=os.getenv("SENDGRID_FROM_EMAIL"),
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=body
+    )
 
-    with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
-        server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
-        server.send_message(msg)
+    try:
+        sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
+        response = sg.send(message)
+        print(f"✅ Email sent to {to_email} (status {response.status_code})")
+    except Exception as e:
+        print(f"❌ Failed to send email: {str(e)}")
 
 
 @router.post("/request-password-reset")
