@@ -1,4 +1,6 @@
 import datetime
+from pydantic import BaseModel
+from typing import Dict
 class VisualizationOut(BaseModel):
     caption: str
     image_src: str  # URL that your frontend can fetch
