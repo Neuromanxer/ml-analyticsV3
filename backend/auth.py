@@ -239,6 +239,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 # Single unified function to get master DB session
 
 
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    sanitized = email.lower().strip()
+    return db.query(User).filter(func.lower(User.email) == sanitized).first()
 def require_role(allowed_roles: list[str]):
     def role_checker(current_user: User = Depends(get_current_active_user)):
         if current_user.role not in allowed_roles:
@@ -748,9 +751,6 @@ async def refresh_token_endpoint(
 
 
 
-
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    return db.query(User).filter(User.email == email).first()
 @router.post("/reinit-user", status_code=status.HTTP_200_OK)
 async def reinitialize_user(
     email: str = Form(...),
