@@ -49,6 +49,6 @@ statsmodels
 python-multipart
 pydantic[email]
 python-jose
-
+pip install sendgrid
 # Ensure latest pip installer used
 pip
