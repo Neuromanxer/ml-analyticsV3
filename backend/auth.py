@@ -339,21 +339,19 @@ def decode_user_from_request(request: Request):
         return payload
     except JWTError:
         return None
-
 def authenticate_user(email: str, password: str, db: Session):
+    email = email.strip().lower()  # ← sanitize here too
+
     user = get_user_by_email(db, email)
     if not user:
-        print("❌ User not found.")
+        print(f"❌ User not found for: {email}")
         return False
 
     print("🔐 Verifying login for:", email)
     print("Plain:", password)
 
-    # Show what the hashed version of the plain password would look like *right now*
     hashed_input = get_password_hash(password)
     print("Live Hashed Input (new hash):", hashed_input)
-
-    # Show what's stored in DB
     print("Stored Hash:", user.hashed_password)
 
     match = verify_password(password, user.hashed_password)
