@@ -491,39 +491,19 @@ async def send_email(to_email: str, subject: str, body: str):
         print(f"✅ Email sent to {to_email} (status {response.status_code})")
     except Exception as e:
         print(f"❌ Failed to send email: {str(e)}")
-
 @router.post("/request-password-reset")
 async def request_password_reset(
     req: PasswordResetRequest,
     db: Session = Depends(get_master_db_session)
 ):
-    user = get_user_by_email(db, req.email)
-    print("🔍 Email received:", req.email)
+    sanitized_email = str(req.email).lower().strip()  # 🔧 Force string + sanitize
+    print("🔍 Email received:", sanitized_email)
+
+    user = get_user_by_email(db, sanitized_email)
     print("🧠 User found:", user)
 
     if not user:
         return {"message": "If this email exists, you will receive reset instructions."}
-
-    reset_token = create_password_reset_token(user.email)
-    reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
-
-    subject = "Reset Your Password"
-    body = f"""
-    Hello,
-
-    You (or someone else) requested to reset your password. If it was you, click the link below:
-
-    {reset_url}
-
-    If you didn’t request this, you can safely ignore this email.
-
-    – MLInsights
-    """
-
-    await send_email(to_email=user.email, subject=subject, body=body)
-
-    return {"message": "If this email exists, you will receive reset instructions."}
-
 class PasswordResetSubmit(BaseModel):
     reset_token: str
     new_password: str
@@ -533,7 +513,7 @@ async def reset_password(
     req: PasswordResetSubmit,
     db: Session = Depends(get_master_db_session)
 ):
-    email = verify_password_reset_token(req.reset_token)
+    email = str(verify_password_reset_token(req.reset_token)).lower().strip()
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid user")
