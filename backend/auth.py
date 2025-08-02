@@ -33,9 +33,9 @@ from pydantic import BaseModel, Field, EmailStr
 from dotenv import load_dotenv
 
 
-from .storage import supabase
+# from .storage import supabase
 
-# from storage import supabase
+from storage import supabase
 
 
 
@@ -237,11 +237,8 @@ class User(Base):
 # OAuth2 scheme - Update tokenUrl to include the full path
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 # Single unified function to get master DB session
-from sqlalchemy import func
 
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    sanitized = email.lower().strip()
-    return db.query(User).filter(func.lower(User.email) == sanitized).first()
+
 def require_role(allowed_roles: list[str]):
     def role_checker(current_user: User = Depends(get_current_active_user)):
         if current_user.role not in allowed_roles:
@@ -347,9 +344,6 @@ def authenticate_user(email: str, password: str, db: Session):
     user = get_user_by_email(db, email)
     if not user:
         return False
-    print("🔒 Email:", email)
-    print("🔒 Password entered:", password)
-    print("🔒 Hash from DB:", user.hashed_password)
     if not verify_password(password, user.hashed_password):
         return False
     return user
@@ -474,36 +468,49 @@ from pydantic import BaseModel, EmailStr
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+import smtplib
+from email.message import EmailMessage
 import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 async def send_email(to_email: str, subject: str, body: str):
-    message = Mail(
-        from_email=os.getenv("SENDGRID_FROM_EMAIL"),
-        to_emails=to_email,
-        subject=subject,
-        plain_text_content=body
-    )
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = os.getenv("SMTP_FROM_EMAIL")
+    msg["To"] = to_email
+    msg.set_content(body)
 
-    try:
-        sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
-        response = sg.send(message)
-        print(f"✅ Email sent to {to_email} (status {response.status_code})")
-    except Exception as e:
-        print(f"❌ Failed to send email: {str(e)}")
+    with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
+        server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
+        server.send_message(msg)
+
+
 @router.post("/request-password-reset")
 async def request_password_reset(
     req: PasswordResetRequest,
     db: Session = Depends(get_master_db_session)
 ):
-    sanitized_email = str(req.email).lower().strip()  # 🔧 Force string + sanitize
-    print("🔍 Email received:", sanitized_email)
-
+    sanitized_email = str(req.email).lower().strip()
     user = get_user_by_email(db, sanitized_email)
-    print("🧠 User found:", user)
 
-    if not user:
-        return {"message": "If this email exists, you will receive reset instructions."}
+
+    reset_token = create_password_reset_token(user.email)
+    reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
+
+    subject = "Reset Your Password"
+    body = f"""
+    Hello,
+
+    You (or someone else) requested to reset your password. If it was you, click the link below:
+
+    {reset_url}
+
+    If you didn’t request this, you can safely ignore this email.
+
+    – MLInsights
+    """
+
+    await send_email(to_email=user.email, subject=subject, body=body)
+
+    return {"message": "If this email exists, you will receive reset instructions."}
 class PasswordResetSubmit(BaseModel):
     reset_token: str
     new_password: str
@@ -513,7 +520,7 @@ async def reset_password(
     req: PasswordResetSubmit,
     db: Session = Depends(get_master_db_session)
 ):
-    email = str(verify_password_reset_token(req.reset_token)).lower().strip()
+    email = verify_password_reset_token(req.reset_token)
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid user")
@@ -734,6 +741,9 @@ async def refresh_token_endpoint(
 
 
 
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    return db.query(User).filter(User.email == email).first()
 @router.post("/reinit-user", status_code=status.HTTP_200_OK)
 async def reinitialize_user(
     email: str = Form(...),

@@ -12,7 +12,6 @@ from typing import Optional
 import pandas as pd
 import json
 
-router = APIRouter()
 @router.post("/analyze/define-target")
 async def define_target_variable(
     file: UploadFile,

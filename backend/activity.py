@@ -30,11 +30,11 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
 
-from .auth import get_current_active_user, get_master_db_session, User, Base
-from .preprocessing import preprocess_data
+# from .auth import get_current_active_user, get_master_db_session, User, Base
+# from .preprocessing import preprocess_data
 
-# from auth import get_current_active_user, get_master_db_session, User, Base
-# from preprocessing import preprocess_data
+from auth import get_current_active_user, get_master_db_session, User, Base
+from preprocessing import preprocess_data
 
 
 router = APIRouter(prefix="/api", tags=["api"])
