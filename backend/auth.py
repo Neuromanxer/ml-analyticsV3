@@ -486,14 +486,15 @@ async def send_email(to_email: str, subject: str, body: str):
     except Exception as e:
         print(f"❌ Failed to send email: {str(e)}")
 
-
 @router.post("/request-password-reset")
 async def request_password_reset(
     req: PasswordResetRequest,
     db: Session = Depends(get_master_db_session)
 ):
     user = get_user_by_email(db, req.email)
-    
+
+    if not user:
+        return {"message": "If this email exists, you will receive reset instructions."}
 
     reset_token = create_password_reset_token(user.email)
     reset_url = f"{os.getenv('FRONTEND_BASE_URL')}/reset-password?token={reset_token}"
@@ -514,6 +515,7 @@ async def request_password_reset(
     await send_email(to_email=user.email, subject=subject, body=body)
 
     return {"message": "If this email exists, you will receive reset instructions."}
+
 class PasswordResetSubmit(BaseModel):
     reset_token: str
     new_password: str
