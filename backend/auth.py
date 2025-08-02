@@ -340,13 +340,22 @@ def decode_user_from_request(request: Request):
     except JWTError:
         return None
 def authenticate_user(email: str, password: str, db: Session):
-    email = email.strip().lower()  # ← sanitize here too
+    email = email.strip().lower()  # sanitize
 
+    # Print all users in the DB (for debugging)
+    all_users = db.query(User).all()
+    print("📋 All users in database:")
+    for u in all_users:
+        print(f"- ID: {u.id}, Email: {u.email}, Hashed: {u.hashed_password}")
+
+    # Now attempt to find the user
     user = get_user_by_email(db, email)
+    
     if not user:
-        print(f"❌ User not found for: {email}")
+        print(f"❌ User NOT found for: {email}")
         return False
 
+    print(f"✅ User found: {user.email}")
     print("🔐 Verifying login for:", email)
     print("Plain:", password)
 
@@ -363,7 +372,6 @@ def authenticate_user(email: str, password: str, db: Session):
 
     print("✅ Password verified.")
     return user
-
 
 
 # def create_user_database(user_email: str) -> str:
