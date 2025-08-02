@@ -12,7 +12,6 @@ databases[postgresql]
 alembic
 psycopg2-binary
 scipy==1.11.4 --only-binary=:all:
-
 supabase
 # Authentication
 pyjwt
@@ -42,10 +41,8 @@ redis
 lifelines
 # AWS ECS launcher
 boto3
-
-bcrypt==4.0.1
-passlib>=1.7.4
-
+passlib==1.7.4
+bcrypt==4.1.2
 # Time series forecasting
 statsmodels
 # Optional utilities
@@ -54,5 +51,5 @@ pydantic[email]
 python-jose
 sendgrid==6.9.7
 
-
+# Ensure latest pip installer used
 pip
