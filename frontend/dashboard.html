@@ -1658,7 +1658,7 @@ function signOutUser() {
 function parseAndPreview(file, nameEl, previewEl, tableEl) {
   nameEl.textContent = file.name;
   nameEl.style.color = '#0066cc';
-  const selectedAnalysis = runButton.dataset.analysisType;
+  
   const reader = new FileReader();
   const API_BASE_URL = "/api";  // Use your actual deployed URL if needed
   
@@ -1667,7 +1667,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     const editableContainer = document.getElementById('counterfactual-config');
     const editableArea = document.getElementById('editable-features');
-
+    const selectedAnalysis = runButton.dataset.analysisType;
     if (!lines.length) {
       nameEl.textContent = 'File is empty';
       nameEl.style.color = 'red';
