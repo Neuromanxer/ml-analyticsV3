@@ -1152,7 +1152,7 @@
             </div>
           </div>
 
-          <div id="counterfactual-config" class="config-section mt-4">
+          <div id="what_if-config" class="config-section mt-4">
             <h3>✏️ Editable Features</h3>
             <div id="editable-features"></div>
           </div>
@@ -1665,7 +1665,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
   reader.onload = async function (e) {
     const text = e.target.result;
     const lines = text.split(/\r?\n/).filter(l => l.trim());
-    const editableContainer = document.getElementById('counterfactual-config');
+    const editableContainer = document.getElementById('what_if-config');
     const editableArea = document.getElementById('editable-features');
     const selectedAnalysis = runButton.dataset.analysisType;
     if (!lines.length) {
@@ -1766,7 +1766,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     nameEl.textContent = 'Error reading file';
     nameEl.style.color = 'red';
     previewEl.style.display = 'none';
-    const editableContainer = document.getElementById('counterfactual-config');
+    const editableContainer = document.getElementById('what_if-config');
     if (editableContainer) editableContainer.style.display = 'none';
   };
 
