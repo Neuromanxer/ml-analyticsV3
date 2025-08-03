@@ -1806,9 +1806,27 @@ async def what_if_analysis(
     target_column: str = Form(...),
     feature_changes: str = Form(...),  # JSON string of bulk feature edits
     drop_columns: str = Form(""),
+    sample_id: int = Form(None),  # Optional: specific sample ID to analyze
     current_user: User = Depends(get_current_active_user),
 ):
+    """
+    What-If Analysis endpoint for mass scenario simulation.
+    
+    Args:
+        file: Single dataset file (CSV)
+        train_file: Training dataset (if using separate train/test)
+        test_file: Test dataset (if using separate train/test)
+        target_column: Name of the target variable column
+        feature_changes: JSON string of bulk feature changes to apply
+        drop_columns: Comma-separated list of columns to drop
+        sample_id: Optional specific sample ID to focus analysis on
+        current_user: Authenticated user making the request
+    
+    Returns:
+        dict: Analysis results with metrics, visualizations, and insights
+    """
     user_id = current_user.id
+    
     # ──────────── Token check ─────────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
@@ -1819,6 +1837,7 @@ async def what_if_analysis(
     file_path = None
     train_path = None
     test_path = None
+    
     # ──────────── Handle file uploads to Supabase ─────────────
     try:
         if file:
@@ -1832,7 +1851,15 @@ async def what_if_analysis(
     except Exception as e:
         raise HTTPException(500, f"File upload failed: {str(e)}")
 
-    # Free users -> Celery worker
+    # ──────────── Validate feature_changes JSON ─────────────
+    try:
+        import json
+        # Validate that feature_changes is valid JSON
+        json.loads(feature_changes)
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, f"Invalid JSON in feature_changes: {str(e)}")
+
+    # ──────────── Run analysis via Celery worker ─────────────
     task = run_what_if.delay(
         user_id=user_id,
         current_user={
@@ -1844,8 +1871,11 @@ async def what_if_analysis(
         train_path=train_path,
         test_path=test_path,
         target_column=target_column,
-        feature_changes=feature_changes
+        feature_changes=feature_changes,
+        drop_columns=drop_columns,
+        sample_id=sample_id  # Pass sample_id to the Celery task
     )
+    
     response_data = await run_in_threadpool(task.get)
     return response_data
 # Add this to your database functions

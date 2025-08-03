@@ -4470,14 +4470,18 @@ def do_what_if(
     file_path: str = None,
     train_path: str = None,
     test_path: str = None,
-    sample_id: int = None,
-    target_column: str = None,
+    target_column: str = "target",
+    drop_columns: str = "",
     feature_changes: str = "",
+    sample_id: int = None,
     bulk_changes: dict = None,
     analysis_config: dict = None
 ) -> dict:
     """
-    Enhanced what-if analysis with improved error handling, validation, and insights.
+    Enhanced what-if analysis for mass scenario simulation.
+    
+    Purpose: Allow users to simulate mass changes across all records,
+    e.g., "What if mntMeatProducts for all orders went up by 20%?"
     
     Args:
         user_id: User identifier
@@ -4485,9 +4489,10 @@ def do_what_if(
         file_path: Path to single dataset file
         train_path: Path to training dataset
         test_path: Path to test dataset
-        sample_id: ID of specific sample to analyze
         target_column: Target variable column name
+        drop_columns: Comma-separated columns to drop
         feature_changes: Individual feature changes (JSON string)
+        sample_id: ID of specific sample to analyze (optional)
         bulk_changes: Bulk changes dictionary
         analysis_config: Configuration for analysis parameters
     
@@ -4542,13 +4547,13 @@ def do_what_if(
         if not user_id or not isinstance(user_id, str):
             errors.append("Invalid user_id provided")
             
-        # Validate file paths
+        # Validate file paths - match risk_analysis pattern
         if file_path and (train_path or test_path):
             errors.append("Provide either file_path or both train_path+test_path, not both")
         elif (train_path and not test_path) or (test_path and not train_path):
             errors.append("Both train_path and test_path must be provided together")
         elif not file_path and not (train_path and test_path):
-            errors.append("Must provide either a full dataset (file_path) or both train_path+test_path")
+            errors.append("Provide either a full dataset (file_path) or both train_path+test_path")
             
         # Validate target column
         if not target_column or not isinstance(target_column, str):
@@ -4563,11 +4568,8 @@ def do_what_if(
     def safe_download_and_load_data() -> Tuple[pd.DataFrame, str]:
         """Safely download and load data with proper error handling"""
         try:
-            local_file_path = None
-            local_train_path = None
-            local_test_path = None
-            
             if file_path:
+                # Download single file from Supabase
                 file_bytes = download_file_from_supabase(file_path)
                 local_file_path = os.path.join(temp_dir, f"data_{uuid.uuid4().hex[:8]}.csv")
                 with open(local_file_path, 'wb') as f:
@@ -4577,6 +4579,7 @@ def do_what_if(
                 dataset_name = os.path.basename(file_path)
                 
             else:
+                # Download train and test files from Supabase
                 train_bytes = download_file_from_supabase(train_path)
                 test_bytes = download_file_from_supabase(test_path)
                 
@@ -4593,13 +4596,6 @@ def do_what_if(
                 df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
             
-            # Validate data quality
-            if df.empty:
-                raise ValueError("Dataset is empty")
-                
-            if target_column not in df.columns:
-                raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
-            
             # Remove rows with missing target values
             initial_rows = len(df)
             df = df.dropna(subset=[target_column])
@@ -4610,6 +4606,20 @@ def do_what_if(
             
             if initial_rows != final_rows:
                 logging.warning(f"Removed {initial_rows - final_rows} rows with missing target values")
+            
+            # Drop specified columns
+            if drop_columns:
+                drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
+                if drops:
+                    df.drop(columns=drops, inplace=True)
+                    logging.info(f"Dropped columns: {drops}")
+            
+            # Validate data quality
+            if df.empty:
+                raise ValueError("Dataset is empty after processing")
+                
+            if target_column not in df.columns:
+                raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
             
             # Limit dataset size for performance
             if len(df) > config.sample_size_limit:
@@ -4626,6 +4636,7 @@ def do_what_if(
         model_dir = os.path.join(temp_dir, "models")
         os.makedirs(model_dir, exist_ok=True)
         
+        # Try both classifier and regressor models
         model_paths = [
             (PathL(model_dir) / f"{user_id}_best_classifier.pkl", f"models/{user_id}_best_classifier.pkl"),
             (PathL(model_dir) / f"{user_id}_best_regressor.pkl", f"models/{user_id}_best_regressor.pkl")
@@ -4648,8 +4659,8 @@ def do_what_if(
         
         raise ValueError("No valid model found for user. Please train a model first.")
     
-    def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> pd.DataFrame:
-        """Apply feature changes with comprehensive validation"""
+    def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """Apply feature changes with comprehensive validation for mass scenario simulation"""
         modified_df = df.copy()
         applied_changes = {}
         
@@ -4667,42 +4678,65 @@ def do_what_if(
                         pct = float(value)
                         if pct < -100:
                             raise ValueError(f"Percent increase cannot be less than -100% for {feature}")
+                        # Apply to ALL rows - mass scenario simulation
                         modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 + pct / 100.0)
+                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Increased {feature} by {pct}% across all records"}
                         
                     elif op_type == 'percent_decrease':
                         pct = float(value)
                         if pct < 0 or pct > 100:
                             raise ValueError(f"Percent decrease must be between 0-100% for {feature}")
+                        # Apply to ALL rows
                         modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 - pct / 100.0)
+                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Decreased {feature} by {pct}% across all records"}
                         
                     elif op_type == 'additive':
                         delta = float(value)
+                        # Apply to ALL rows
                         modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') + delta
+                        applied_changes[feature] = {'type': op_type, 'value': delta, 'description': f"Added {delta} to {feature} across all records"}
                         
                     elif op_type == 'multiplicative':
                         multiplier = float(value)
+                        # Apply to ALL rows
                         modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * multiplier
+                        applied_changes[feature] = {'type': op_type, 'value': multiplier, 'description': f"Multiplied {feature} by {multiplier} across all records"}
                         
                     elif op_type == 'set_value':
+                        # Set ALL rows to this value
                         modified_df[feature] = value
+                        applied_changes[feature] = {'type': op_type, 'value': value, 'description': f"Set {feature} to {value} across all records"}
                         
                     elif op_type == 'categorical_replace':
-                        modified_df[feature] = value
+                        # Replace ALL occurrences
+                        old_value = operation.get('old_value', 'all')
+                        new_value = value
+                        if old_value == 'all':
+                            modified_df[feature] = new_value
+                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value, 
+                                                      'description': f"Replaced all {feature} values with {new_value}"}
+                        else:
+                            modified_df.loc[modified_df[feature] == old_value, feature] = new_value
+                            affected_count = (df[feature] == old_value).sum()
+                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
+                                                      'description': f"Replaced {feature} '{old_value}' with '{new_value}' ({affected_count} records)"}
                         
                     elif op_type == 'categorical_boost':
+                        # Boost proportion of records to target value
                         target_value = operation.get('value')
                         proportion = min(max(operation.get('proportion', 0.1), 0), 1)  # Clamp between 0-1
                         n_samples = int(len(modified_df) * proportion)
                         if n_samples > 0:
                             idx = modified_df.sample(n=n_samples, random_state=42).index
                             modified_df.loc[idx, feature] = target_value
-                    
-                    applied_changes[feature] = operation
+                            applied_changes[feature] = {'type': op_type, 'value': target_value, 'proportion': proportion,
+                                                      'description': f"Set {proportion*100:.1f}% of records ({n_samples}) to have {feature} = {target_value}"}
                     
                 else:
-                    # Handle simple value assignments
+                    # Handle simple value assignments - apply to ALL rows
                     modified_df[feature] = operation
-                    applied_changes[feature] = {'type': 'set_value', 'value': operation}
+                    applied_changes[feature] = {'type': 'set_value', 'value': operation, 
+                                              'description': f"Set {feature} to {operation} across all records"}
                     
             except Exception as e:
                 logging.error(f"Failed to apply change to {feature}: {e}")
@@ -4824,56 +4858,27 @@ def do_what_if(
         visualizations["distribution_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
         plt.close(fig)
         
-        # 2. Feature importance and correlation analysis
-        top_features = df[feature_cols].nunique().sort_values(ascending=False).head(config.top_features_count).index.tolist()
-        
-        if len(top_features) > 1:
-            fig_corr, axes = plt.subplots(1, 3, figsize=(18, 6))
-            
-            # Original correlation
-            original_corr = df[top_features].corr()
-            sns.heatmap(original_corr, ax=axes[0], cmap="RdBu_r", center=0, annot=True, fmt='.2f')
-            axes[0].set_title("Original Feature Correlations")
-            
-            # Modified correlation
-            modified_corr = modified_df[top_features].corr()
-            sns.heatmap(modified_corr, ax=axes[1], cmap="RdBu_r", center=0, annot=True, fmt='.2f')
-            axes[1].set_title("Modified Feature Correlations")
-            
-            # Correlation difference
-            corr_diff = modified_corr - original_corr
-            sns.heatmap(corr_diff, ax=axes[2], cmap="RdYlBu_r", center=0, annot=True, fmt='.3f')
-            axes[2].set_title("Correlation Changes")
-            
-            plt.tight_layout()
-            buf2 = io.BytesIO()
-            plt.savefig(buf2, format='png', dpi=300, bbox_inches="tight")
-            buf2.seek(0)
-            visualizations["correlation_analysis"] = f"data:image/png;base64,{base64.b64encode(buf2.read()).decode()}"
-            plt.close(fig_corr)
-        
         return visualizations
     
-    def generate_insights(metrics: Dict[str, Any], applied_changes: Dict[str, Any], 
-                         cluster_summary: Dict[str, Any]) -> List[str]:
-        """Generate actionable business insights"""
+    def generate_insights(metrics: Dict[str, Any], applied_changes: Dict[str, Any]) -> List[str]:
+        """Generate actionable business insights for mass scenario simulation"""
         insights = []
         
         # Statistical significance insight
         if metrics.get("is_significant"):
-            insights.append(f"📊 **Statistically Significant**: Changes show significant impact (p-value: {metrics['p_value']:.4f})")
+            insights.append(f"📊 **Statistically Significant Impact**: The mass changes show significant effect (p-value: {metrics['p_value']:.4f})")
         elif metrics.get("is_significant") is False:
-            insights.append(f"⚠️ **Not Statistically Significant**: Changes may be due to random variation (p-value: {metrics['p_value']:.4f})")
+            insights.append(f"⚠️ **Not Statistically Significant**: Mass changes may not have meaningful impact (p-value: {metrics['p_value']:.4f})")
         
         # Effect size interpretation
         effect_size = metrics.get("effect_size", 0)
         if effect_size:
             if abs(effect_size) < 0.2:
-                insights.append("📏 **Small Effect**: Changes have minimal practical impact")
+                insights.append("📏 **Small Effect**: Mass changes have minimal practical impact")
             elif abs(effect_size) < 0.5:
-                insights.append("📈 **Medium Effect**: Changes show moderate practical significance")
+                insights.append("📈 **Medium Effect**: Mass changes show moderate practical significance")
             else:
-                insights.append("🚀 **Large Effect**: Changes demonstrate substantial practical impact")
+                insights.append("🚀 **Large Effect**: Mass changes demonstrate substantial practical impact")
         
         # Direction and magnitude insights
         direction = metrics["direction"]
@@ -4881,46 +4886,24 @@ def do_what_if(
         
         if direction == "increase" and percent_change:
             if percent_change > 10:
-                insights.append(f"📈 **Strong Positive Impact**: {percent_change:.1f}% increase in predictions")
+                insights.append(f"📈 **Strong Positive Impact**: {percent_change:.1f}% increase in predictions across all records")
             else:
                 insights.append(f"🔼 **Modest Improvement**: {percent_change:.1f}% increase observed")
         elif direction == "decrease" and percent_change:
             if abs(percent_change) > 10:
-                insights.append(f"📉 **Significant Decline**: {abs(percent_change):.1f}% decrease in predictions")
+                insights.append(f"📉 **Significant Decline**: {abs(percent_change):.1f}% decrease in predictions across all records")
             else:
                 insights.append(f"🔽 **Minor Decrease**: {abs(percent_change):.1f}% reduction observed")
         
-        # Risk assessment
-        risk = metrics.get("risk_assessment")
-        if risk == "higher_risk":
-            insights.append("⚠️ **Increased Variability**: Changes introduce higher prediction uncertainty")
-        elif risk == "lower_risk":
-            insights.append("✅ **Reduced Variability**: Changes lead to more consistent predictions")
-        
-        # Feature-specific insights
+        # Feature-specific insights for mass changes
         for feature, change in applied_changes.items():
-            change_type = change.get("type", "unknown")
-            value = change.get("value", "N/A")
-            
-            if change_type in ["percent_increase", "additive", "multiplicative"]:
-                insights.append(f"🔧 **{feature.title()}**: Increasing this feature contributed to the {direction}")
-            elif change_type == "percent_decrease":
-                insights.append(f"📉 **{feature.title()}**: Decreasing this feature led to {direction}")
-            elif change_type in ["categorical_replace", "set_value"]:
-                insights.append(f"🔄 **{feature.title()}**: Changed to '{value}' across dataset")
-        
-        # Cluster-specific insights
-        if cluster_summary:
-            best_cluster = max(cluster_summary.items(), key=lambda x: x[1]["change"])
-            worst_cluster = min(cluster_summary.items(), key=lambda x: x[1]["change"])
-            
-            insights.append(f"🎯 **Best Performing Segment**: {best_cluster[0]} showed {best_cluster[1]['change']:.3f} improvement")
-            insights.append(f"📊 **Underperforming Segment**: {worst_cluster[0]} had {worst_cluster[1]['change']:.3f} change")
+            description = change.get("description", "")
+            insights.append(f"🔧 **{feature.title()}**: {description}")
         
         # Revenue impact insight
         revenue_impact = metrics.get("estimated_revenue_impact", 0)
         if abs(revenue_impact) > 1000:
-            insights.append(f"💰 **Revenue Impact**: Estimated ${revenue_impact:,.2f} {'gain' if revenue_impact > 0 else 'loss'}")
+            insights.append(f"💰 **Mass Revenue Impact**: Estimated ${revenue_impact:,.2f} {'gain' if revenue_impact > 0 else 'loss'} from scenario changes")
         
         return insights
     
@@ -4938,29 +4921,31 @@ def do_what_if(
                 "warnings": validation.warnings
             }
         
-        # Process changes
-        if isinstance(bulk_changes, str):
+        # Process changes - prioritize feature_changes from the UI
+        if isinstance(feature_changes, str) and feature_changes.strip():
+            try:
+                changes = json.loads(feature_changes)
+            except json.JSONDecodeError as e:
+                return {"status": "error", "errors": [f"Invalid JSON in feature_changes: {e}"]}
+        elif isinstance(bulk_changes, dict):
+            changes = bulk_changes
+        elif isinstance(bulk_changes, str):
             try:
                 changes = json.loads(bulk_changes)
             except json.JSONDecodeError as e:
                 return {"status": "error", "errors": [f"Invalid JSON in bulk_changes: {e}"]}
         else:
-            changes = bulk_changes or {}
+            changes = {}
         
-        # Add individual feature changes if provided
-        if feature_changes:
-            try:
-                individual_changes = json.loads(feature_changes)
-                changes.update(individual_changes)
-            except json.JSONDecodeError as e:
-                logging.warning(f"Invalid feature_changes JSON: {e}")
+        if not changes:
+            return {"status": "error", "errors": ["No feature changes specified for what-if analysis"]}
         
         with tempfile.TemporaryDirectory() as temp_dir:
             # Load data and model
             df, dataset_name = safe_download_and_load_data()
             model = load_model()
             
-            # Validate sample selection
+            # Validate sample selection (optional)
             if sample_id is not None:
                 if 'ID' in df.columns:
                     original_sample = df[df['ID'] == sample_id]
@@ -4969,12 +4954,11 @@ def do_what_if(
                 else:
                     if sample_id >= len(df) or sample_id < 0:
                         return {"status": "error", "errors": [f"Sample index {sample_id} out of range"]}
-                    original_sample = df.iloc[sample_id:sample_id+1]
             
-            # Apply changes
+            # Apply mass changes to simulate scenario
             modified_df, applied_changes = apply_feature_changes(df, changes)
             
-            # Get feature columns
+            # Get feature columns (exclude target and ID columns)
             feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
             
             if not feature_cols:
@@ -4999,38 +4983,13 @@ def do_what_if(
             # Calculate metrics
             metrics = calculate_advanced_metrics(original_preds, modified_preds)
             
-            # Cluster analysis (if applicable)
-            cluster_summary = {}
-            if {'clv', 'recency', 'total_spent'}.issubset(df.columns):
-                try:
-                    from sklearn.cluster import KMeans
-                    kmeans = KMeans(n_clusters=config.n_clusters, random_state=42, n_init=10)
-                    df['cluster'] = kmeans.fit_predict(df[['clv', 'recency', 'total_spent']])
-                    modified_df['cluster'] = df['cluster']
-                    
-                    for c in df['cluster'].unique():
-                        cluster_mask = df['cluster'] == c
-                        orig_mean = float(np.mean(original_preds[cluster_mask]))
-                        mod_mean = float(np.mean(modified_preds[cluster_mask]))
-                        change = mod_mean - orig_mean
-                        
-                        cluster_summary[f"cluster_{c}"] = {
-                            "original_mean": orig_mean,
-                            "modified_mean": mod_mean,
-                            "change": round(change, 4),
-                            "percent_change": round((change / orig_mean) * 100, 2) if orig_mean != 0 else 0,
-                            "sample_count": int(np.sum(cluster_mask))
-                        }
-                except Exception as e:
-                    logging.warning(f"Cluster analysis failed: {e}")
-            
             # Create visualizations
             visualizations = create_enhanced_visualizations(
                 original_preds, modified_preds, df, modified_df, feature_cols
             )
             
             # Generate insights
-            insights = generate_insights(metrics, applied_changes, cluster_summary)
+            insights = generate_insights(metrics, applied_changes)
             
             # Prepare response
             response_data = {
@@ -5038,16 +4997,18 @@ def do_what_if(
                 "user_id": user_id,
                 "analysis_id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
-                "type": "enhanced_what_if_analysis",
+                "type": "mass_scenario_what_if_analysis",
                 "dataset": {
                     "name": dataset_name,
                     "rows": len(df),
-                    "features": len(feature_cols)
+                    "features": len(feature_cols),
+                    "target_column": target_column
                 },
                 "parameters": {
                     "target_column": target_column,
                     "applied_changes": applied_changes,
                     "sample_id": sample_id,
+                    "dropped_columns": drop_columns.split(",") if drop_columns else [],
                     "configuration": {
                         "revenue_per_conversion": config.revenue_per_conversion,
                         "confidence_level": config.confidence_level,
@@ -5056,13 +5017,11 @@ def do_what_if(
                 },
                 "metrics": metrics,
                 "visualizations": visualizations,
-                "cluster_summary": cluster_summary,
                 "insights": insights,
                 "validation": {
                     "warnings": validation.warnings,
-                    "data_quality": {
-                        "missing_target_rows_removed": len(df) < len(pd.read_csv(local_file_path if file_path else local_train_path)) if 'local_file_path' in locals() or 'local_train_path' in locals() else False
-                    }
+                    "changes_applied": len(applied_changes),
+                    "records_affected": len(df)
                 }
             }
             
@@ -6139,7 +6098,6 @@ def run_what_if(
     file_path: str = None,
     train_path: str = None,
     test_path: str = None,
-    sample_id: int = None,
     target_column: str = None,
     feature_changes: str = ""
 ):
@@ -6152,7 +6110,6 @@ def run_what_if(
         file_path=file_path,
         train_path=train_path,
         test_path=test_path,
-        sample_id=sample_id,
         target_column=target_column,
         feature_changes=feature_changes
     )
