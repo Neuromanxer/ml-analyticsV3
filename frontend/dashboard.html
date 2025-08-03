@@ -1151,10 +1151,19 @@
               </div>
             </div>
           </div>
-
+          <div id="counterfactual-config" class="config-section" style="display: none;">
+            <h3>🧠 Counterfactual Constraints</h3>
+            <div class="input-group">
+              <label for="editable-features-input"><strong>Features User Will Allow to Be Changed</strong></label>
+              <input type="text" id="editable-features-input" placeholder="e.g. age,income,gender" style="width: 100%;">
+              <small class="help-text">List the columns the algorithm is allowed to edit when generating counterfactuals. Leave blank to allow all.</small>
+            </div>
+          </div>
+          
           <div id="what_if-config" class="config-section mt-4">
-            <h3>✏️ Editable Features</h3>
+            <h3>✏️ Interactive What-If Controls</h3>
             <div id="editable-features"></div>
+            <small class="help-text">These are AI-suggested inputs you can tweak to simulate how predictions change.</small>
           </div>
 
         <div class="config-actions">
@@ -1519,21 +1528,27 @@ function signOutUser() {
       return;
     }
     // Analysis method selection buttons
-  analysisButtons.forEach(button => {
-    button.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
+    analysisButtons.forEach(button => {
+      button.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-      analysisButtons.forEach(btn => btn.classList.remove('active'));
-      this.classList.add('active');
+        // ✅ Ensure only one is highlighted
+        analysisButtons.forEach(btn => btn.classList.remove('active'));
+        this.classList.add('active');
 
-      const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
-      showAnalysisSpecificConfig(analysisType);
+        // ✅ Extract actual analysis type
+        const analysisType = this.id.replace('btn-', '').replace('-analysis', '');
 
-      runButton.disabled = false;
-      runButton.dataset.analysisType = this.id;
+        // ✅ Show corresponding config section
+        showAnalysisSpecificConfig(analysisType);
+
+        // ✅ Enable run and store clean type
+        runButton.disabled = false;
+        runButton.dataset.analysisType = analysisType;
+      });
     });
-  });
+
    // Helpers to show/hide previews
     function hideFull()   { fullPreview.style.display = 'none'; fullName.textContent = ''; }
     function hideTrain()  { trainPreview.style.display = 'none'; trainName.textContent = ''; }
@@ -1843,6 +1858,7 @@ function prepareAndRunAnalysis() {
   const dropCols = document.getElementById('drop-columns').value;
   const featureCol = document.getElementById('feature-column').value;
   const timeCol = document.getElementById('time-column').value;
+  const editableFeatures = document.getElementById('editable-features-input').value;
   const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
     // Inputs & preview elements
   const fullInput  = document.getElementById('full-input');
@@ -1905,6 +1921,7 @@ function prepareAndRunAnalysis() {
       callRealAPI('counterfactual', {
         target_column: targetCol,
         drop_columns: dropCols,
+        editable_features: editableFeatures
       });
       break;
       
