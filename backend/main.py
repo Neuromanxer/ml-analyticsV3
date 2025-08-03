@@ -1798,7 +1798,7 @@ async def survival(
     response_data = await run_in_threadpool(task.get)
     return response_data
 
-@app.post("/what_if_analysis/")
+@app.post("/what_if/")
 async def what_if_analysis(
     file: UploadFile = File(None),
     train_file: UploadFile = File(None),

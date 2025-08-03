@@ -1676,7 +1676,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     }
 
     // Only allow editable panel for these analysis modes
-    const allowedModes = ["counterfactual", "classification-predict", "regression-predict", "feature-impact"];
+    const allowedModes = ["what_if"];
     if (editableContainer) {
       if (!allowedModes.includes(selectedAnalysisMethod)) {
         editableContainer.style.display = 'none';
