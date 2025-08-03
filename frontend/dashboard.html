@@ -2001,6 +2001,15 @@ function prepareAndRunAnalysis() {
       showError(`Unknown analysis type: ${selectedAnalysis}`);
   }
 }
+function cleanStats(stats) {
+  const cleaned = {};
+  for (const key in stats) {
+    cleaned[key] = stats[key].filter(
+      v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null
+    );
+  }
+  return cleaned;
+}
 function selectAnalysisMethod(analysisType) {
   const runButton = document.getElementById('run-analysis-btn');
   runButton.dataset.analysisType = analysisType;
@@ -2020,14 +2029,23 @@ function selectAnalysisMethod(analysisType) {
     lastValidRows?.length
   ) {
     const colStats = computeColumnStats(lastHeaders, lastValidRows);
+    const cleanColStats = cleanStats(colStats);
     const editableContainer = document.getElementById('what_if-config');
     const editableArea = document.getElementById('editable-features');
 
-    fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ column_stats: colStats })
-    })
+    const sampleRow = {};
+      lastHeaders.forEach((h, idx) => {
+        sampleRow[h] = lastValidRows[0]?.[idx] ?? null;
+      });
+
+      fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sample_row: sampleRow,
+          column_stats: cleanColStats
+        })
+      })
       .then(resp => {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return resp.json();
