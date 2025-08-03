@@ -4542,11 +4542,7 @@ def do_what_if(
         """Comprehensive input validation"""
         errors = []
         warnings = []
-        
-        # Validate user authentication
-        if not user_id or not isinstance(user_id, str):
-            errors.append("Invalid user_id provided")
-            
+
         # Validate file paths - match risk_analysis pattern
         if file_path and (train_path or test_path):
             errors.append("Provide either file_path or both train_path+test_path, not both")
@@ -4636,10 +4632,10 @@ def do_what_if(
         model_dir = os.path.join(temp_dir, "models")
         os.makedirs(model_dir, exist_ok=True)
         
-        # Try both classifier and regressor models
+        # Use correct Supabase paths (user-specific directory)
         model_paths = [
-            (PathL(model_dir) / f"{user_id}_best_classifier.pkl", f"models/{user_id}_best_classifier.pkl"),
-            (PathL(model_dir) / f"{user_id}_best_regressor.pkl", f"models/{user_id}_best_regressor.pkl")
+            (PathL(model_dir) / f"{user_id}_best_classifier.pkl", f"{user_id}/{user_id}_best_classifier.pkl"),
+            (PathL(model_dir) / f"{user_id}_best_regressor.pkl", f"{user_id}/{user_id}_best_regressor.pkl")
         ]
         
         for local_path, remote_path in model_paths:
@@ -4648,17 +4644,17 @@ def do_what_if(
                     model_bytes = download_file_from_supabase(remote_path)
                     with open(local_path, 'wb') as f:
                         f.write(model_bytes)
-                
+
                 model = joblib.load(local_path)
-                logging.info(f"Successfully loaded model from {remote_path}")
+                logging.info(f"✅ Successfully loaded model from Supabase: {remote_path}")
                 return model
-                
+
             except Exception as e:
-                logging.warning(f"Failed to load model from {remote_path}: {e}")
+                logging.warning(f"⚠️ Failed to load model from {remote_path}: {e}")
                 continue
-        
-        raise ValueError("No valid model found for user. Please train a model first.")
-    
+
+        raise ValueError("❌ No valid model found for user. Please train a model first.")
+
     def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """Apply feature changes with comprehensive validation for mass scenario simulation"""
         modified_df = df.copy()
@@ -4679,7 +4675,7 @@ def do_what_if(
                         if pct < -100:
                             raise ValueError(f"Percent increase cannot be less than -100% for {feature}")
                         # Apply to ALL rows - mass scenario simulation
-                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 + pct / 100.0)
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 + pct / 100.0)
                         applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Increased {feature} by {pct}% across all records"}
                         
                     elif op_type == 'percent_decrease':
@@ -4687,24 +4683,24 @@ def do_what_if(
                         if pct < 0 or pct > 100:
                             raise ValueError(f"Percent decrease must be between 0-100% for {feature}")
                         # Apply to ALL rows
-                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 - pct / 100.0)
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 - pct / 100.0)
                         applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Decreased {feature} by {pct}% across all records"}
                         
                     elif op_type == 'additive':
                         delta = float(value)
                         # Apply to ALL rows
-                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') + delta
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') + delta
                         applied_changes[feature] = {'type': op_type, 'value': delta, 'description': f"Added {delta} to {feature} across all records"}
                         
                     elif op_type == 'multiplicative':
                         multiplier = float(value)
                         # Apply to ALL rows
-                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * multiplier
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * multiplier
                         applied_changes[feature] = {'type': op_type, 'value': multiplier, 'description': f"Multiplied {feature} by {multiplier} across all records"}
                         
                     elif op_type == 'set_value':
                         # Set ALL rows to this value
-                        modified_df[feature] = value
+                        modified_df.loc[:, feature] = value
                         applied_changes[feature] = {'type': op_type, 'value': value, 'description': f"Set {feature} to {value} across all records"}
                         
                     elif op_type == 'categorical_replace':
@@ -4712,11 +4708,11 @@ def do_what_if(
                         old_value = operation.get('old_value', 'all')
                         new_value = value
                         if old_value == 'all':
-                            modified_df[feature] = new_value
+                            modified_df.loc[:, feature] = new_value
                             applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value, 
                                                       'description': f"Replaced all {feature} values with {new_value}"}
                         else:
-                            modified_df.loc[modified_df[feature] == old_value, feature] = new_value
+                            modified_df.loc[modified_df.loc[:, feature] == old_value, feature] = new_value
                             affected_count = (df[feature] == old_value).sum()
                             applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
                                                       'description': f"Replaced {feature} '{old_value}' with '{new_value}' ({affected_count} records)"}
@@ -4734,7 +4730,7 @@ def do_what_if(
                     
                 else:
                     # Handle simple value assignments - apply to ALL rows
-                    modified_df[feature] = operation
+                    modified_df.loc[:, feature] = operation
                     applied_changes[feature] = {'type': 'set_value', 'value': operation, 
                                               'description': f"Set {feature} to {operation} across all records"}
                     
@@ -4944,7 +4940,15 @@ def do_what_if(
             # Load data and model
             df, dataset_name = safe_download_and_load_data()
             model = load_model()
-            
+            training_columns_supabase_path = f"{user_id}/training_columns.json"
+
+            # ───── Download training columns ─────
+            try:
+                training_columns_data = download_file_from_supabase(training_columns_supabase_path)
+                training_columns = json.loads(training_columns_data.decode('utf-8'))
+            except Exception as e:
+                raise FileNotFoundError(f"Training columns metadata not found in Supabase: {str(e)}")
+
             # Validate sample selection (optional)
             if sample_id is not None:
                 if 'ID' in df.columns:
@@ -4955,28 +4959,46 @@ def do_what_if(
                     if sample_id >= len(df) or sample_id < 0:
                         return {"status": "error", "errors": [f"Sample index {sample_id} out of range"]}
             
-            # Apply mass changes to simulate scenario
+            # ───────── Apply mass changes ─────────
             modified_df, applied_changes = apply_feature_changes(df, changes)
-            
-            # Get feature columns (exclude target and ID columns)
+
+            # ───────── Extract feature columns ─────────
             feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
-            
             if not feature_cols:
                 return {"status": "error", "errors": ["No feature columns found for prediction"]}
-            
-            # Generate predictions
+
+            # ───────── Preprocess both original and modified dataframes ─────────
             try:
-                # Handle different model formats (pipeline vs direct model)
+                X_original, _, _ = preprocess_data(df[feature_cols])
+                X_modified, _, _ = preprocess_data(modified_df[feature_cols])
+            except Exception as e:
+                return {"status": "error", "errors": [f"Preprocessing failed: {str(e)}"]}
+
+            # ───────── Align features to training columns if needed ─────────
+            missing_cols = set(training_columns) - set(X_original.columns)
+            extra_cols = set(X_original.columns) - set(training_columns)
+
+            for col in missing_cols:
+                X_original[col] = 0
+                X_modified[col] = 0
+
+            X_original.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+            X_modified.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+
+            X_original = X_original.reindex(columns=training_columns, fill_value=0)
+            X_modified = X_modified.reindex(columns=training_columns, fill_value=0)
+
+            # ───────── Run predictions ─────────
+            try:
                 if hasattr(model, 'predict'):
                     predictor = model
                 elif isinstance(model, (list, tuple)) and len(model) > 0:
                     predictor = model[0]
                 else:
                     return {"status": "error", "errors": ["Invalid model format"]}
-                
-                original_preds = predictor.predict(df[feature_cols])
-                modified_preds = predictor.predict(modified_df[feature_cols])
-                
+
+                original_preds = predictor.predict(X_original)
+                modified_preds = predictor.predict(X_modified)
             except Exception as e:
                 return {"status": "error", "errors": [f"Prediction failed: {str(e)}"]}
             
@@ -5024,9 +5046,20 @@ def do_what_if(
                     "records_affected": len(df)
                 }
             }
-            
-            return response_data
-            
+
+            def sanitize_for_json(obj):
+                """Convert numpy types to native Python types recursively for JSON serialization."""
+                if isinstance(obj, dict):
+                    return {k: sanitize_for_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [sanitize_for_json(v) for v in obj]
+                elif isinstance(obj, tuple):
+                    return tuple(sanitize_for_json(v) for v in obj)
+                elif isinstance(obj, np.generic):
+                    return obj.item()  # convert np.bool_, np.int64, etc. to native types
+                else:
+                    return obj
+            return sanitize_for_json(response_data)
     except Exception as e:
         logging.error(f"What-if analysis failed: {str(e)}", exc_info=True)
         return {
@@ -6098,8 +6131,10 @@ def run_what_if(
     file_path: str = None,
     train_path: str = None,
     test_path: str = None,
+    sample_id: int = None,
     target_column: str = None,
-    feature_changes: str = ""
+    feature_changes: str = "",
+    drop_columns: str = ""
 ):
     import time
     time.sleep(1)  # Optional throttle
@@ -6110,8 +6145,10 @@ def run_what_if(
         file_path=file_path,
         train_path=train_path,
         test_path=test_path,
+        sample_id=sample_id,
         target_column=target_column,
-        feature_changes=feature_changes
+        feature_changes=feature_changes,
+        drop_columns=drop_columns
     )
 
 @celery_app.task
