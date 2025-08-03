@@ -1661,35 +1661,22 @@ function signOutUser() {
 }
 
 function parseAndPreview(file, nameEl, previewEl, tableEl) {
+  const reader = new FileReader();
+
   nameEl.textContent = file.name;
   nameEl.style.color = '#0066cc';
-  
-  const reader = new FileReader();
-  const API_BASE_URL = "/api";  // Use your actual deployed URL if needed
-  
-  reader.onload = async function (e) {
+
+  reader.onload = function(e) {
     const text = e.target.result;
     const lines = text.split(/\r?\n/).filter(l => l.trim());
-    const editableContainer = document.getElementById('what_if-config');
-    const editableArea = document.getElementById('editable-features');
-    const selectedAnalysis = runButton.dataset.analysisType;
     if (!lines.length) {
       nameEl.textContent = 'File is empty';
       nameEl.style.color = 'red';
       previewEl.style.display = 'none';
-      if (editableContainer) editableContainer.style.display = 'none';
       return;
     }
 
-    // Only allow editable panel for these analysis modes
-    const allowedModes = ["what_if"];
-    if (editableContainer) {
-      if (!allowedModes.includes(selectedAnalysis)) {
-        editableContainer.style.display = 'none';
-      }
-    }
-
-    // Determine delimiter
+    // choose delimiter
     let delim = ',';
     if (file.name.toLowerCase().endsWith('.txt')) {
       delim = lines[0].includes('\t') ? '\t' : /\s+/;
@@ -1697,89 +1684,41 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
 
     const headers = lines[0].split(delim).map(h => h.trim());
     const dataRows = lines.slice(1).map(line => line.split(delim).map(c => c.trim()));
-
-    // Skip invalid rows
     const validRows = dataRows.filter(row => row.length === headers.length);
+
     if (!validRows.length) {
       nameEl.textContent = 'No valid data rows found';
       nameEl.style.color = 'red';
       previewEl.style.display = 'none';
-      if (editableContainer) editableContainer.style.display = 'none';
       return;
     }
 
-    // Show preview table FIRST - this was missing before async operations
+    // Store for later API use
+    lastUploadedFile = file;
+    lastHeaders = headers;
+    lastValidRows = validRows;
+
+    // build table
     let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
     for (let i = 0; i < Math.min(validRows.length, 5); i++) {
       const cells = validRows[i];
       html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
     }
     html += '</tbody>';
+
     tableEl.innerHTML = html;
     previewEl.style.display = 'block';
-
-    // Only proceed with editable features if the container exists and mode is allowed
-    if (!editableContainer || !editableArea || !allowedModes.includes(selectedAnalysis)) {
-      return;
-    }
-
-    // Compute column stats (based on first 100 rows)
-    const colStats = {};
-    const maxStatsRows = 100;
-    headers.forEach((h, idx) => {
-      colStats[h] = validRows.slice(0, maxStatsRows).map(row => {
-        const val = row[idx];
-        if (!isNaN(val) && val.trim() !== "") return parseFloat(val);
-        if (val.toLowerCase() === 'true') return true;
-        if (val.toLowerCase() === 'false') return false;
-        return val;
-      });
-    });
-    lastUploadedFile = file;
-    lastHeaders = headers;
-    lastValidRows = validRows;
-
-    // Request editable feature suggestions (bulk) - this is async and optional
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          column_stats: colStats
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (!result.features || !result.features.length) {
-        editableContainer.style.display = 'none';
-        return;
-      }
-
-      editableArea.innerHTML = '';
-      editableContainer.style.display = 'block';
-      buildEditableUI(result.features); // This function renders sliders/toggles/etc.
-
-    } catch (err) {
-      console.error("Failed to fetch editable config", err);
-      // Don't hide the container completely, just show a message or hide gracefully
-      if (editableContainer) editableContainer.style.display = 'none';
-    }
   };
 
-  reader.onerror = function () {
+  reader.onerror = function() {
     nameEl.textContent = 'Error reading file';
     nameEl.style.color = 'red';
     previewEl.style.display = 'none';
-    const editableContainer = document.getElementById('what_if-config');
-    if (editableContainer) editableContainer.style.display = 'none';
   };
 
   reader.readAsText(file);
 }
+
 function computeColumnStats(headers, rows) {
   const maxStatsRows = 100;
   const colStats = {};
@@ -2062,53 +2001,51 @@ function prepareAndRunAnalysis() {
       showError(`Unknown analysis type: ${selectedAnalysis}`);
   }
 }
-
-// Optional: Add click handlers to analysis method buttons that just select them (don't run analysis)
-// These would update the UI to show which analysis is selected and enable the Run Analysis button
 function selectAnalysisMethod(analysisType) {
   const runButton = document.getElementById('run-analysis-btn');
   runButton.dataset.analysisType = analysisType;
   runButton.disabled = false;
-  
-  // Optional: Update UI to show which analysis is selected
-  // Remove 'selected' class from all analysis buttons
+
   document.querySelectorAll('.analysis-method-btn').forEach(btn => {
     btn.classList.remove('selected');
   });
-  
-  // Add 'selected' class to the clicked button
   document.getElementById(`btn-${analysisType}`).classList.add('selected');
-  
+
   console.log('Selected analysis method:', analysisType);
-  if (analysisType === 'what_if' && lastHeaders && lastValidRows?.length) {
-  const colStats = computeColumnStats(lastHeaders, lastValidRows);
-  const editableContainer = document.getElementById('what_if-config');
-  const editableArea = document.getElementById('editable-features');
 
-  fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ column_stats: colStats })
-  })
-    .then(resp => {
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    })
-    .then(result => {
-      if (!result.features || !result.features.length) {
-        editableContainer.style.display = 'none';
-        return;
-      }
-      editableArea.innerHTML = '';
-      editableContainer.style.display = 'block';
-      buildEditableUI(result.features);
-    })
-    .catch(err => {
-      console.error("Failed to fetch editable config on what_if click", err);
-      if (editableContainer) editableContainer.style.display = 'none';
-    });
-}
+  if (
+    analysisType === 'what_if' &&
+    lastUploadedFile &&
+    lastHeaders &&
+    lastValidRows?.length
+  ) {
+    const colStats = computeColumnStats(lastHeaders, lastValidRows);
+    const editableContainer = document.getElementById('what_if-config');
+    const editableArea = document.getElementById('editable-features');
 
+    fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ column_stats: colStats })
+    })
+      .then(resp => {
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+      })
+      .then(result => {
+        if (!result.features || !result.features.length) {
+          editableContainer.style.display = 'none';
+          return;
+        }
+        editableArea.innerHTML = '';
+        editableContainer.style.display = 'block';
+        buildEditableUI(result.features);
+      })
+      .catch(err => {
+        console.error("Failed to fetch editable config on what_if click", err);
+        if (editableContainer) editableContainer.style.display = 'none';
+      });
+  }
 }
 
  
