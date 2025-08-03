@@ -1803,12 +1803,12 @@ async def what_if_analysis(
     file: UploadFile = File(None),
     train_file: UploadFile = File(None),
     test_file: UploadFile = File(None),
-    user_id: str = Form(...),
-    sample_id: int = Form(...),
     target_column: str = Form(...),
-    feature_changes: str = Form(...),
+    feature_changes: str = Form(...),  # JSON string of bulk feature edits
+    drop_columns: str = Form(""),
     current_user: User = Depends(get_current_active_user),
 ):
+    user_id = current_user.id
     # ──────────── Token check ─────────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
@@ -1819,7 +1819,6 @@ async def what_if_analysis(
     file_path = None
     train_path = None
     test_path = None
-
     # ──────────── Handle file uploads to Supabase ─────────────
     try:
         if file:

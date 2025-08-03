@@ -566,84 +566,397 @@ Start your response with a short executive summary. Then give 3-5 **actionable r
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI call failed: {str(e)}")
-    
-from typing import Dict, Union, List
+from typing import Dict, List, Any, Optional, Union
+import pandas as pd
+import numpy as np
+from enum import Enum
+from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
+
 class WhatIfInputRequest(BaseModel):
-    sample_row: Dict[str, Union[str, int, float, bool]]
-    column_stats: Dict[str, List[Union[int, float, str, None]]]  # entire column or sample window
+    """
+    Request model for what-if analysis input processing.
+    
+    This model is used by the /what_if/inputs/ endpoint to extract and analyze 
+    features suitable for what-if analysis from column statistics.
+    """
+    column_stats: Dict[str, List[Any]]
+    
+
+
+# Alternative model if you need the actual what-if prediction request
+# (based on the JavaScript code that calls 'what_if' endpoint)
+class WhatIfPredictionRequest(BaseModel):
+    """
+    Request model for what-if prediction analysis.
+    
+    This model would be used by a separate what-if prediction endpoint
+    that takes the target column and feature changes.
+    """
+    target_column: str
+    drop_columns: Optional[List[str]] = []
+    feature_changes: str  # JSON string of feature changes
+
+class FeatureType(Enum):
+    NUMERIC = "numeric"
+    CATEGORICAL = "categorical" 
+    BOOLEAN = "boolean"
+
+class AdjustmentType(Enum):
+    PERCENT = "percent"
+    DISCRETE = "discrete"
+    BOOST_CATEGORY = "boost_category"
+    TOGGLE = "toggle"
+    RANGE = "range"
+
+@dataclass
+class FeatureInfo:
+    name: str
+    label: str
+    type: FeatureType
+    adjustment_type: AdjustmentType
+    min_val: Optional[float] = None
+    max_val: Optional[float] = None
+    step: Optional[float] = None
+    mean: Optional[float] = None
+    median: Optional[float] = None
+    std: Optional[float] = None
+    options: Optional[List[Any]] = None
+    default: Optional[Any] = None
+    adjustment_values: Optional[List[Union[int, float]]] = None
+    recommendation_note: Optional[str] = None
+    null_percentage: Optional[float] = None
+
+class FeatureAnalyzer:
+    """Handles analysis and classification of features for what-if scenarios."""
+    
+    # Configurable thresholds
+    MIN_NON_NULL_RATIO = 0.2
+    MIN_NON_NULL_COUNT = 3
+    MAX_CATEGORICAL_UNIQUE = 50
+    NUMERIC_UNIQUE_THRESHOLD = 20
+    OUTLIER_QUANTILES = (0.05, 0.95)
+    
+    # Reserved column names to exclude
+    RESERVED_COLUMNS = {"id", "target", "label", "prediction", "score"}
+    
+    def __init__(self, min_non_null_ratio: float = 0.2, 
+                 max_categorical_unique: int = 50):
+        self.MIN_NON_NULL_RATIO = min_non_null_ratio
+        self.MAX_CATEGORICAL_UNIQUE = max_categorical_unique
+    
+    def analyze_feature(self, name: str, values: List[Any]) -> Optional[FeatureInfo]:
+        """Analyze a single feature and return FeatureInfo if suitable for editing."""
+        try:
+            if not self._is_editable_feature(name):
+                return None
+            
+            non_nulls = self._get_non_null_values(values)
+            if not self._has_sufficient_data(non_nulls, len(values)):
+                return None
+            
+            null_percentage = (len(values) - len(non_nulls)) / len(values) * 100
+            feature_type = self._determine_feature_type(non_nulls)
+            
+            if feature_type == FeatureType.NUMERIC:
+                return self._analyze_numeric_feature(name, non_nulls, null_percentage)
+            elif feature_type == FeatureType.CATEGORICAL:
+                return self._analyze_categorical_feature(name, non_nulls, null_percentage)
+            elif feature_type == FeatureType.BOOLEAN:
+                return self._analyze_boolean_feature(name, non_nulls, null_percentage)
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to analyze feature '{name}': {str(e)}")
+            return None
+    
+    def _is_editable_feature(self, name: str) -> bool:
+        """Check if feature name suggests it should be editable."""
+        return name.lower() not in self.RESERVED_COLUMNS
+    
+    def _get_non_null_values(self, values: List[Any]) -> List[Any]:
+        """Extract non-null values, handling various null representations."""
+        return [v for v in values if pd.notnull(v) and v is not None and v != ""]
+    
+    def _has_sufficient_data(self, non_nulls: List[Any], total_count: int) -> bool:
+        """Check if there's enough non-null data to make meaningful adjustments."""
+        min_count = max(self.MIN_NON_NULL_COUNT, int(total_count * self.MIN_NON_NULL_RATIO))
+        return len(non_nulls) >= min_count
+    
+    def _determine_feature_type(self, non_nulls: List[Any]) -> Optional[FeatureType]:
+        """Determine the primary type of the feature based on sample values."""
+        if not non_nulls:
+            return None
+        
+        # Check multiple samples for better type detection
+        sample_size = min(10, len(non_nulls))
+        samples = non_nulls[:sample_size]
+        
+        # Boolean detection
+        if all(isinstance(v, bool) for v in samples):
+            return FeatureType.BOOLEAN
+        
+        # Check for boolean-like strings
+        if all(str(v).lower() in {'true', 'false', '1', '0', 'yes', 'no'} for v in samples):
+            return FeatureType.BOOLEAN
+        
+        # Numeric detection
+        numeric_count = 0
+        for v in samples:
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                numeric_count += 1
+            elif isinstance(v, str):
+                try:
+                    float(v)
+                    numeric_count += 1
+                except (ValueError, TypeError):
+                    pass
+        
+        if numeric_count >= len(samples) * 0.8:  # 80% numeric
+            return FeatureType.NUMERIC
+        
+        # Default to categorical
+        return FeatureType.CATEGORICAL
+    
+    def _analyze_numeric_feature(self, name: str, non_nulls: List[Any], 
+                                null_percentage: float) -> FeatureInfo:
+        """Analyze numeric feature and determine adjustment strategy."""
+        try:
+            # Convert to numeric, handling mixed types
+            numeric_values = []
+            for v in non_nulls:
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    numeric_values.append(float(v))
+                elif isinstance(v, str):
+                    try:
+                        numeric_values.append(float(v))
+                    except (ValueError, TypeError):
+                        continue
+            
+            if not numeric_values:
+                raise ValueError("No valid numeric values found")
+            
+            series = pd.Series(numeric_values)
+            
+            # Calculate robust statistics
+            q5, q95 = series.quantile(self.OUTLIER_QUANTILES)
+            mean_val = float(series.mean())
+            median_val = float(series.median())
+            std_val = float(series.std())
+            unique_count = series.nunique()
+            
+            # Determine step size based on data range and distribution
+            data_range = q95 - q5
+            if data_range > 0:
+                step = self._calculate_optimal_step(series, data_range)
+            else:
+                step = 1.0
+            
+            # Choose adjustment strategy
+            if unique_count > self.NUMERIC_UNIQUE_THRESHOLD:
+                adjustment_type = AdjustmentType.PERCENT
+                adjustment_values = [5, 10, 15, 25, -5, -10, -15, -25]
+            else:
+                adjustment_type = AdjustmentType.DISCRETE
+                # Base discrete adjustments on data distribution
+                typical_diff = self._estimate_typical_difference(series)
+                adjustment_values = [typical_diff, typical_diff*2, typical_diff*3,
+                                   -typical_diff, -typical_diff*2, -typical_diff*3]
+            
+            return FeatureInfo(
+                name=name,
+                label=self._create_readable_label(name),
+                type=FeatureType.NUMERIC,
+                adjustment_type=adjustment_type,
+                min_val=float(q5),
+                max_val=float(q95),
+                step=step,
+                mean=mean_val,
+                median=median_val,
+                std=std_val,
+                adjustment_values=adjustment_values,
+                null_percentage=null_percentage
+            )
+            
+        except Exception as e:
+            logger.error(f"Error analyzing numeric feature '{name}': {str(e)}")
+            raise
+    
+    def _analyze_categorical_feature(self, name: str, non_nulls: List[Any], 
+                                   null_percentage: float) -> Optional[FeatureInfo]:
+        """Analyze categorical feature."""
+        series = pd.Series(non_nulls)
+        unique_vals = series.dropna().unique()
+        
+        # Skip if too many unique values
+        if len(unique_vals) > self.MAX_CATEGORICAL_UNIQUE:
+            logger.info(f"Skipping categorical feature '{name}': too many unique values ({len(unique_vals)})")
+            return None
+        
+        # Skip if only one unique value
+        if len(unique_vals) <= 1:
+            return None
+        
+        # Sort by frequency for better UX
+        value_counts = series.value_counts()
+        sorted_options = value_counts.index.tolist()
+        
+        # Create recommendation based on distribution
+        most_common = value_counts.index[0]
+        recommendation = f"'{most_common}' is the most common value. Consider increasing its frequency for analysis."
+        
+        return FeatureInfo(
+            name=name,
+            label=self._create_readable_label(name),
+            type=FeatureType.CATEGORICAL,
+            adjustment_type=AdjustmentType.BOOST_CATEGORY,
+            options=sorted_options,
+            recommendation_note=recommendation,
+            null_percentage=null_percentage
+        )
+    
+    def _analyze_boolean_feature(self, name: str, non_nulls: List[Any], 
+                               null_percentage: float) -> FeatureInfo:
+        """Analyze boolean feature."""
+        # Normalize boolean values
+        normalized_values = []
+        for v in non_nulls:
+            if isinstance(v, bool):
+                normalized_values.append(v)
+            elif isinstance(v, str):
+                normalized_values.append(v.lower() in {'true', '1', 'yes'})
+            elif isinstance(v, (int, float)):
+                normalized_values.append(bool(v))
+        
+        # Use most common value as default
+        series = pd.Series(normalized_values)
+        default_value = bool(series.mode().iloc[0]) if len(series) > 0 else True
+        
+        return FeatureInfo(
+            name=name,
+            label=self._create_readable_label(name),
+            type=FeatureType.BOOLEAN,
+            adjustment_type=AdjustmentType.TOGGLE,
+            default=default_value,
+            null_percentage=null_percentage
+        )
+    
+    def _calculate_optimal_step(self, series: pd.Series, data_range: float) -> float:
+        """Calculate optimal step size for numeric adjustments."""
+        # Base step on a fraction of the range, but consider data precision
+        base_step = data_range / 50
+        
+        # Adjust based on typical differences in the data
+        if len(series) > 1:
+            typical_diff = self._estimate_typical_difference(series)
+            if typical_diff > 0:
+                base_step = min(base_step, typical_diff)
+        
+        # Round to reasonable precision
+        if base_step >= 1:
+            return round(base_step, 0)
+        elif base_step >= 0.1:
+            return round(base_step, 1)
+        elif base_step >= 0.01:
+            return round(base_step, 2)
+        else:
+            return round(base_step, 4)
+    
+    def _estimate_typical_difference(self, series: pd.Series) -> float:
+        """Estimate typical difference between consecutive values."""
+        if len(series) < 2:
+            return 1.0
+        
+        sorted_vals = series.sort_values()
+        diffs = sorted_vals.diff().dropna()
+        
+        if len(diffs) == 0:
+            return 1.0
+        
+        # Use median difference to avoid outlier impact
+        return float(diffs.median()) if diffs.median() > 0 else 1.0
+    
+    def _create_readable_label(self, name: str) -> str:
+        """Convert feature name to readable label."""
+        # Handle common patterns
+        name = name.replace("_", " ").replace("-", " ")
+        
+        # Handle camelCase
+        import re
+        name = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+        
+        # Capitalize properly
+        return ' '.join(word.capitalize() for word in name.split())
+
 @router.post("/what_if/inputs/")
 async def get_bulk_editable_features(req: WhatIfInputRequest):
-    stats = req.column_stats  # dict: {feature: [val1, val2, ..., valN]}
-    editable_features = []
-
-    for name, values in stats.items():
-        if name.lower() in {"id", "target", "label"}:
-            continue
-
-        non_nulls = [v for v in values if pd.notnull(v)]
-        if len(non_nulls) < max(3, int(len(values) * 0.2)):
-            continue
-
-        dtype = None
-        sample_value = non_nulls[0]
-        if isinstance(sample_value, bool):
-            dtype = "boolean"
-        elif isinstance(sample_value, (int, float)):
-            dtype = "number"
-        elif isinstance(sample_value, str):
-            dtype = "category"
-        else:
-            continue
-
-        feature_info = {
-            "name": name,
-            "label": name.replace("_", " ").title(),
-            "type": dtype,
-        }
-
-        if dtype == "number":
-            try:
-                vals = pd.to_numeric(non_nulls)
-                series = pd.Series(vals)
-                unique_count = series.nunique()
-                q5 = float(series.quantile(0.05))
-                q95 = float(series.quantile(0.95))
-                mean = float(series.mean())
-                step = round((q95 - q5) / 50, 4)
-
-                feature_info.update({
-                    "min": q5,
-                    "max": q95,
-                    "step": step,
-                    "mean": mean,
-                })
-
-                if unique_count > 20:
-                    # Use percentage-based adjustments
-                    feature_info["adjustment_type"] = "percent"
-                    feature_info["adjustment_values"] = [5, 10, 15, -5, -10, -15]
-                else:
-                    # Use discrete adjustments
-                    feature_info["adjustment_type"] = "discrete"
-                    feature_info["adjustment_values"] = [1, 2, -1, -2]
-
-            except Exception:
+    """
+    Extract and analyze features suitable for what-if analysis.
+    
+    Returns a list of features with their metadata and suggested adjustment strategies.
+    """
+    try:
+        stats = req.column_stats
+        
+        if not stats:
+            return {"features": [], "message": "No column statistics provided"}
+        
+        analyzer = FeatureAnalyzer()
+        editable_features = []
+        
+        for name, values in stats.items():
+            if not values:  # Skip empty columns
                 continue
-
-        elif dtype == "category":
-            unique_vals = list(pd.Series(non_nulls).dropna().unique())
-
-            if len(unique_vals) > 1:
-                feature_info.update({
-                    "options": unique_vals,
-                    "adjustment_type": "boost_category",
-                    "recommendation_note": "Increasing frequency of this category may improve results"
-                })
-
-        elif dtype == "boolean":
-            feature_info["default"] = bool(sample_value)
-            feature_info["adjustment_type"] = "toggle"
-
-        editable_features.append(feature_info)
-
-    return {"features": editable_features}
+                
+            feature_info = analyzer.analyze_feature(name, values)
+            if feature_info:
+                # Convert to dict for JSON serialization
+                feature_dict = {
+                    "name": feature_info.name,
+                    "label": feature_info.label,
+                    "type": feature_info.type.value,
+                    "adjustment_type": feature_info.adjustment_type.value,
+                    "null_percentage": round(feature_info.null_percentage, 2)
+                }
+                
+                # Add type-specific fields
+                if feature_info.type == FeatureType.NUMERIC:
+                    feature_dict.update({
+                        "min": feature_info.min_val,
+                        "max": feature_info.max_val,
+                        "step": feature_info.step,
+                        "mean": round(feature_info.mean, 4),
+                        "median": round(feature_info.median, 4),
+                        "std": round(feature_info.std, 4),
+                        "adjustment_values": feature_info.adjustment_values
+                    })
+                elif feature_info.type == FeatureType.CATEGORICAL:
+                    feature_dict.update({
+                        "options": feature_info.options,
+                        "recommendation_note": feature_info.recommendation_note
+                    })
+                elif feature_info.type == FeatureType.BOOLEAN:
+                    feature_dict["default"] = feature_info.default
+                
+                editable_features.append(feature_dict)
+        
+        # Sort features for better UX (numeric first, then categorical, then boolean)
+        type_order = {FeatureType.NUMERIC.value: 0, FeatureType.CATEGORICAL.value: 1, FeatureType.BOOLEAN.value: 2}
+        editable_features.sort(key=lambda x: (type_order.get(x["type"], 3), x["name"]))
+        
+        return {
+            "features": editable_features,
+            "summary": {
+                "total_features": len(editable_features),
+                "numeric_features": len([f for f in editable_features if f["type"] == "numeric"]),
+                "categorical_features": len([f for f in editable_features if f["type"] == "categorical"]),
+                "boolean_features": len([f for f in editable_features if f["type"] == "boolean"])
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing what-if inputs: {str(e)}")
+        return {"error": "Failed to process features", "details": str(e)}, 500

@@ -697,10 +697,6 @@ async def login_for_access_token(
     db: Session = Depends(get_master_db_session)
 ):
     """Get access token and refresh token for authentication."""
-    users = db.query(User).all()
-    print("📋 All users in database:")
-    for u in users:
-        print(f"Email: {u.email}")
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         logger.warning(f"Failed login attempt for email: {form_data.username}")

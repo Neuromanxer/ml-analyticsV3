@@ -4473,10 +4473,30 @@ def do_what_if(
     sample_id: int = None,
     target_column: str = None,
     feature_changes: str = "",
-    bulk_changes: dict = None
+    bulk_changes: dict = None,
+    analysis_config: dict = None
 ) -> dict:
-
+    """
+    Enhanced what-if analysis with improved error handling, validation, and insights.
+    
+    Args:
+        user_id: User identifier
+        current_user: User context (for permissions/logging)
+        file_path: Path to single dataset file
+        train_path: Path to training dataset
+        test_path: Path to test dataset
+        sample_id: ID of specific sample to analyze
+        target_column: Target variable column name
+        feature_changes: Individual feature changes (JSON string)
+        bulk_changes: Bulk changes dictionary
+        analysis_config: Configuration for analysis parameters
+    
+    Returns:
+        dict: Analysis results with metrics, visualizations, and insights
+    """
+    
     import numpy as np
+    import pandas as pd
     import os
     import uuid
     import joblib
@@ -4486,238 +4506,576 @@ def do_what_if(
     import seaborn as sns
     import tempfile
     import json
-    import shap
+    import logging
     from pathlib import Path as PathL
     from datetime import datetime
-
-    try:
-        # ───────────── Validate upload mode ─────────────
+    from typing import Dict, List, Any, Optional, Tuple
+    from dataclasses import dataclass
+    
+    # Configure matplotlib for better plots
+    plt.style.use('seaborn-v0_8')
+    sns.set_palette("husl")
+    
+    @dataclass
+    class AnalysisConfig:
+        """Configuration for what-if analysis parameters"""
+        revenue_per_conversion: float = 20.0
+        confidence_level: float = 0.95
+        n_clusters: int = 3
+        top_features_count: int = 5
+        significance_threshold: float = 0.05
+        sample_size_limit: int = 100000
+        
+    @dataclass
+    class ValidationResult:
+        """Result of input validation"""
+        is_valid: bool
+        errors: List[str]
+        warnings: List[str]
+    
+    def validate_inputs() -> ValidationResult:
+        """Comprehensive input validation"""
+        errors = []
+        warnings = []
+        
+        # Validate user authentication
+        if not user_id or not isinstance(user_id, str):
+            errors.append("Invalid user_id provided")
+            
+        # Validate file paths
         if file_path and (train_path or test_path):
-            raise ValueError("Provide either file_path or both train_path+test_path, not both.")
-        if (train_path and not test_path) or (test_path and not train_path):
-            raise ValueError("Both train_path and test_path must be provided together.")
-        if not file_path and not (train_path and test_path):
-            raise ValueError("Provide either a full dataset (file_path) or both train_path+test_path.")
-
-        local_file_path = None
-        local_train_path = None
-        local_test_path = None
-        temp_files = []
-
-        with tempfile.TemporaryDirectory() as temp_dir:
+            errors.append("Provide either file_path or both train_path+test_path, not both")
+        elif (train_path and not test_path) or (test_path and not train_path):
+            errors.append("Both train_path and test_path must be provided together")
+        elif not file_path and not (train_path and test_path):
+            errors.append("Must provide either a full dataset (file_path) or both train_path+test_path")
+            
+        # Validate target column
+        if not target_column or not isinstance(target_column, str):
+            errors.append("Valid target_column is required")
+            
+        # Validate changes
+        if not bulk_changes and not feature_changes:
+            warnings.append("No changes specified - analysis will show baseline predictions")
+            
+        return ValidationResult(len(errors) == 0, errors, warnings)
+    
+    def safe_download_and_load_data() -> Tuple[pd.DataFrame, str]:
+        """Safely download and load data with proper error handling"""
+        try:
+            local_file_path = None
+            local_train_path = None
+            local_test_path = None
+            
             if file_path:
                 file_bytes = download_file_from_supabase(file_path)
-                local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
+                local_file_path = os.path.join(temp_dir, f"data_{uuid.uuid4().hex[:8]}.csv")
                 with open(local_file_path, 'wb') as f:
                     f.write(file_bytes)
-                temp_files.append(local_file_path)
-
-            if train_path and test_path:
+                
+                df = pd.read_csv(local_file_path)
+                dataset_name = os.path.basename(file_path)
+                
+            else:
                 train_bytes = download_file_from_supabase(train_path)
                 test_bytes = download_file_from_supabase(test_path)
-
-                local_train_path = os.path.join(temp_dir, os.path.basename(train_path))
-                local_test_path = os.path.join(temp_dir, os.path.basename(test_path))
-
+                
+                local_train_path = os.path.join(temp_dir, f"train_{uuid.uuid4().hex[:8]}.csv")
+                local_test_path = os.path.join(temp_dir, f"test_{uuid.uuid4().hex[:8]}.csv")
+                
                 with open(local_train_path, 'wb') as f:
                     f.write(train_bytes)
                 with open(local_test_path, 'wb') as f:
                     f.write(test_bytes)
-
-                temp_files.extend([local_train_path, local_test_path])
-
-            model_dir = os.path.join(temp_dir, "models")
-            os.makedirs(model_dir, exist_ok=True)
-
-            if local_file_path:
-                df = pd.read_csv(local_file_path)
-                df = df.dropna(subset=[target_column])
-                dataset_name = os.path.basename(file_path)
-            else:
+                
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
                 df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
-
-            classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
-            regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            model_path = None
-
-            try:
-                if not classifier_path.exists():
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
-                    with open(classifier_path, 'wb') as f:
-                        f.write(model_bytes)
-                    model_path = classifier_path
-            except:
-                pass
-
-            try:
-                if not model_path and not regressor_path.exists():
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
-                    with open(regressor_path, 'wb') as f:
-                        f.write(model_bytes)
-                    model_path = regressor_path
-            except:
-                pass
-
-            if not model_path:
-                if classifier_path.exists():
-                    model_path = classifier_path
-                elif regressor_path.exists():
-                    model_path = regressor_path
-
-            if not model_path or not model_path.exists():
-                raise ValueError("No model found")
-
-            model = joblib.load(model_path)
-
-            if 'ID' in df.columns:
-                original_sample = df[df['ID'] == sample_id]
-            else:
-                original_sample = df.iloc[sample_id:sample_id+1]
-
-            if len(original_sample) == 0:
-                raise ValueError("Sample not found")
-
-            modified_df = df.copy()
-            changes = json.loads(bulk_changes) if isinstance(bulk_changes, str) else bulk_changes
-            for feature, operation in changes.items():
-                if feature not in modified_df.columns:
-                    continue
-                if isinstance(operation, dict):
-                    if 'type' in operation:
-                        op_type = operation['type']
-                        if op_type == 'percent_increase':
-                            pct = operation.get('value', 0)
-                            modified_df[feature] *= (1 + pct / 100.0)
-                        elif op_type == 'percent_decrease':
-                            pct = operation.get('value', 0)
-                            modified_df[feature] *= (1 - pct / 100.0)
-                        elif op_type == 'additive':
-                            delta = operation.get('value', 0)
-                            modified_df[feature] += delta
-                        elif op_type == 'categorical_replace':
-                            new_value = operation.get('value')
-                            modified_df[feature] = new_value
-                        elif op_type == 'categorical_boost':
-                            target_value = operation.get('value')
-                            proportion = operation.get('proportion', 0.1)
-                            idx = modified_df.sample(frac=proportion).index
-                            modified_df.loc[idx, feature] = target_value
-
-            feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
-            original_preds = model[0].predict(df[feature_cols])
-            modified_preds = model[0].predict(modified_df[feature_cols])
-            # ─── Segment-wise Mean Differences ───
-            if {'clv', 'recency', 'total_spent'}.issubset(df.columns):
-                from sklearn.cluster import KMeans
-                kmeans = KMeans(n_clusters=3, random_state=42)
-                df['cluster'] = kmeans.fit_predict(df[['clv', 'recency', 'total_spent']])
-                modified_df['cluster'] = df['cluster']  # keep cluster assignment consistent
-
-                cluster_summary = {}
-                for c in df['cluster'].unique():
-                    orig_cluster_mean = float(np.mean(original_preds[df['cluster'] == c]))
-                    mod_cluster_mean = float(np.mean(modified_preds[modified_df['cluster'] == c]))
-                    cluster_summary[f"cluster_{c}"] = {
-                        "original_mean": orig_cluster_mean,
-                        "modified_mean": mod_cluster_mean,
-                        "change": round(mod_cluster_mean - orig_cluster_mean, 4),
-                        "percent_change": round(((mod_cluster_mean - orig_cluster_mean) / orig_cluster_mean) * 100, 2)
-                    }
-            else:
-                cluster_summary = {}
-
-            mean_diff = float(np.mean(modified_preds) - np.mean(original_preds))
-            mean_percent_change = (
-                (mean_diff / float(np.mean(original_preds))) * 100 if np.mean(original_preds) != 0 else None
-            )
+            
+            # Validate data quality
+            if df.empty:
+                raise ValueError("Dataset is empty")
+                
+            if target_column not in df.columns:
+                raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
+            
+            # Remove rows with missing target values
+            initial_rows = len(df)
+            df = df.dropna(subset=[target_column])
+            final_rows = len(df)
+            
+            if final_rows == 0:
+                raise ValueError(f"No valid rows remaining after removing missing values in '{target_column}'")
+            
+            if initial_rows != final_rows:
+                logging.warning(f"Removed {initial_rows - final_rows} rows with missing target values")
+            
+            # Limit dataset size for performance
+            if len(df) > config.sample_size_limit:
+                df = df.sample(n=config.sample_size_limit, random_state=42)
+                logging.warning(f"Dataset limited to {config.sample_size_limit} rows for performance")
+            
+            return df, dataset_name
+            
+        except Exception as e:
+            raise ValueError(f"Failed to load data: {str(e)}")
+    
+    def load_model() -> Any:
+        """Load the appropriate model with fallback logic"""
+        model_dir = os.path.join(temp_dir, "models")
+        os.makedirs(model_dir, exist_ok=True)
         
-            fig = plt.figure(figsize=(10, 5))
-            sns.kdeplot(original_preds, label="Original", fill=True)
-            sns.kdeplot(modified_preds, label="Modified", fill=True)
-            plt.legend()
-            plt.title("Prediction Distributions")
-            plt.xlabel("Predicted Value")
-            plt.ylabel("Density")
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches="tight")
-            buf.seek(0)
-            dist_base64 = base64.b64encode(buf.read()).decode()
-            plt.close(fig)
-            # ─── Correlation Shift Heatmap ───
-            top_features = df[feature_cols].nunique().sort_values(ascending=False).head(5).index.tolist()
-
-            fig_corr, axes = plt.subplots(1, 2, figsize=(12, 6))
-            sns.heatmap(df[top_features].corr(), ax=axes[0], cmap="coolwarm", annot=True)
-            axes[0].set_title("Original Correlation")
-
-            sns.heatmap(modified_df[top_features].corr(), ax=axes[1], cmap="coolwarm", annot=True)
-            axes[1].set_title("Modified Correlation")
-
-            buf2 = io.BytesIO()
+        model_paths = [
+            (PathL(model_dir) / f"{user_id}_best_classifier.pkl", f"models/{user_id}_best_classifier.pkl"),
+            (PathL(model_dir) / f"{user_id}_best_regressor.pkl", f"models/{user_id}_best_regressor.pkl")
+        ]
+        
+        for local_path, remote_path in model_paths:
+            try:
+                if not local_path.exists():
+                    model_bytes = download_file_from_supabase(remote_path)
+                    with open(local_path, 'wb') as f:
+                        f.write(model_bytes)
+                
+                model = joblib.load(local_path)
+                logging.info(f"Successfully loaded model from {remote_path}")
+                return model
+                
+            except Exception as e:
+                logging.warning(f"Failed to load model from {remote_path}: {e}")
+                continue
+        
+        raise ValueError("No valid model found for user. Please train a model first.")
+    
+    def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> pd.DataFrame:
+        """Apply feature changes with comprehensive validation"""
+        modified_df = df.copy()
+        applied_changes = {}
+        
+        for feature, operation in changes.items():
+            if feature not in modified_df.columns:
+                logging.warning(f"Feature '{feature}' not found in dataset, skipping")
+                continue
+                
+            try:
+                if isinstance(operation, dict) and 'type' in operation:
+                    op_type = operation['type']
+                    value = operation.get('value', 0)
+                    
+                    if op_type == 'percent_increase':
+                        pct = float(value)
+                        if pct < -100:
+                            raise ValueError(f"Percent increase cannot be less than -100% for {feature}")
+                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 + pct / 100.0)
+                        
+                    elif op_type == 'percent_decrease':
+                        pct = float(value)
+                        if pct < 0 or pct > 100:
+                            raise ValueError(f"Percent decrease must be between 0-100% for {feature}")
+                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * (1 - pct / 100.0)
+                        
+                    elif op_type == 'additive':
+                        delta = float(value)
+                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') + delta
+                        
+                    elif op_type == 'multiplicative':
+                        multiplier = float(value)
+                        modified_df[feature] = pd.to_numeric(modified_df[feature], errors='coerce') * multiplier
+                        
+                    elif op_type == 'set_value':
+                        modified_df[feature] = value
+                        
+                    elif op_type == 'categorical_replace':
+                        modified_df[feature] = value
+                        
+                    elif op_type == 'categorical_boost':
+                        target_value = operation.get('value')
+                        proportion = min(max(operation.get('proportion', 0.1), 0), 1)  # Clamp between 0-1
+                        n_samples = int(len(modified_df) * proportion)
+                        if n_samples > 0:
+                            idx = modified_df.sample(n=n_samples, random_state=42).index
+                            modified_df.loc[idx, feature] = target_value
+                    
+                    applied_changes[feature] = operation
+                    
+                else:
+                    # Handle simple value assignments
+                    modified_df[feature] = operation
+                    applied_changes[feature] = {'type': 'set_value', 'value': operation}
+                    
+            except Exception as e:
+                logging.error(f"Failed to apply change to {feature}: {e}")
+                continue
+        
+        return modified_df, applied_changes
+    
+    def calculate_advanced_metrics(original_preds: np.ndarray, modified_preds: np.ndarray) -> Dict[str, Any]:
+        """Calculate comprehensive metrics including statistical significance"""
+        from scipy import stats
+        
+        metrics = {
+            "original_mean": float(np.mean(original_preds)),
+            "modified_mean": float(np.mean(modified_preds)),
+            "original_std": float(np.std(original_preds)),
+            "modified_std": float(np.std(modified_preds)),
+            "original_median": float(np.median(original_preds)),
+            "modified_median": float(np.median(modified_preds))
+        }
+        
+        # Basic changes
+        absolute_change = metrics["modified_mean"] - metrics["original_mean"]
+        percent_change = (absolute_change / metrics["original_mean"] * 100) if metrics["original_mean"] != 0 else None
+        
+        metrics.update({
+            "absolute_change": round(absolute_change, 4),
+            "percent_change": round(percent_change, 2) if percent_change is not None else None,
+            "direction": "increase" if absolute_change > 0 else "decrease" if absolute_change < 0 else "no_change"
+        })
+        
+        # Statistical significance testing
+        try:
+            t_stat, p_value = stats.ttest_rel(modified_preds, original_preds)
+            metrics.update({
+                "t_statistic": float(t_stat),
+                "p_value": float(p_value),
+                "is_significant": p_value < config.significance_threshold,
+                "confidence_level": config.confidence_level
+            })
+            
+            # Effect size (Cohen's d)
+            pooled_std = np.sqrt((metrics["original_std"]**2 + metrics["modified_std"]**2) / 2)
+            cohens_d = absolute_change / pooled_std if pooled_std > 0 else 0
+            metrics["effect_size"] = float(cohens_d)
+            
+            # Confidence interval for the difference
+            diff = modified_preds - original_preds
+            ci = stats.t.interval(config.confidence_level, len(diff)-1, 
+                                loc=np.mean(diff), scale=stats.sem(diff))
+            metrics["confidence_interval"] = [float(ci[0]), float(ci[1])]
+            
+        except Exception as e:
+            logging.warning(f"Statistical tests failed: {e}")
+            metrics.update({
+                "is_significant": None,
+                "p_value": None,
+                "effect_size": None
+            })
+        
+        # Revenue impact estimation
+        revenue_impact = absolute_change * len(original_preds) * config.revenue_per_conversion
+        metrics["estimated_revenue_impact"] = round(revenue_impact, 2)
+        
+        # Risk assessment
+        variance_change = metrics["modified_std"] - metrics["original_std"]
+        metrics.update({
+            "variance_change": round(variance_change, 4),
+            "risk_assessment": "higher_risk" if variance_change > 0 else "lower_risk" if variance_change < 0 else "similar_risk"
+        })
+        
+        return metrics
+    
+    def create_enhanced_visualizations(original_preds: np.ndarray, modified_preds: np.ndarray, 
+                                     df: pd.DataFrame, modified_df: pd.DataFrame, 
+                                     feature_cols: List[str]) -> Dict[str, str]:
+        """Create comprehensive visualizations"""
+        visualizations = {}
+        
+        # 1. Distribution comparison with statistical annotations
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Distribution plot
+        sns.histplot(original_preds, alpha=0.7, label="Original", ax=axes[0,0], stat="density")
+        sns.histplot(modified_preds, alpha=0.7, label="Modified", ax=axes[0,0], stat="density")
+        axes[0,0].set_title("Prediction Distributions")
+        axes[0,0].set_xlabel("Predicted Value")
+        axes[0,0].set_ylabel("Density")
+        axes[0,0].legend()
+        
+        # Box plot comparison
+        data_for_box = np.concatenate([original_preds, modified_preds])
+        labels_for_box = ['Original'] * len(original_preds) + ['Modified'] * len(modified_preds)
+        box_df = pd.DataFrame({'Predictions': data_for_box, 'Type': labels_for_box})
+        sns.boxplot(data=box_df, x='Type', y='Predictions', ax=axes[0,1])
+        axes[0,1].set_title("Prediction Box Plot Comparison")
+        
+        # Scatter plot of original vs modified
+        axes[1,0].scatter(original_preds, modified_preds, alpha=0.6)
+        axes[1,0].plot([min(original_preds), max(original_preds)], 
+                      [min(original_preds), max(original_preds)], 'r--', alpha=0.8)
+        axes[1,0].set_xlabel("Original Predictions")
+        axes[1,0].set_ylabel("Modified Predictions")
+        axes[1,0].set_title("Original vs Modified Predictions")
+        
+        # Difference histogram
+        differences = modified_preds - original_preds
+        axes[1,1].hist(differences, bins=30, alpha=0.7, edgecolor='black')
+        axes[1,1].axvline(np.mean(differences), color='red', linestyle='--', 
+                         label=f'Mean: {np.mean(differences):.3f}')
+        axes[1,1].set_xlabel("Prediction Difference")
+        axes[1,1].set_ylabel("Frequency")
+        axes[1,1].set_title("Distribution of Changes")
+        axes[1,1].legend()
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
+        buf.seek(0)
+        visualizations["distribution_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
+        plt.close(fig)
+        
+        # 2. Feature importance and correlation analysis
+        top_features = df[feature_cols].nunique().sort_values(ascending=False).head(config.top_features_count).index.tolist()
+        
+        if len(top_features) > 1:
+            fig_corr, axes = plt.subplots(1, 3, figsize=(18, 6))
+            
+            # Original correlation
+            original_corr = df[top_features].corr()
+            sns.heatmap(original_corr, ax=axes[0], cmap="RdBu_r", center=0, annot=True, fmt='.2f')
+            axes[0].set_title("Original Feature Correlations")
+            
+            # Modified correlation
+            modified_corr = modified_df[top_features].corr()
+            sns.heatmap(modified_corr, ax=axes[1], cmap="RdBu_r", center=0, annot=True, fmt='.2f')
+            axes[1].set_title("Modified Feature Correlations")
+            
+            # Correlation difference
+            corr_diff = modified_corr - original_corr
+            sns.heatmap(corr_diff, ax=axes[2], cmap="RdYlBu_r", center=0, annot=True, fmt='.3f')
+            axes[2].set_title("Correlation Changes")
+            
             plt.tight_layout()
-            plt.savefig(buf2, format='png')
+            buf2 = io.BytesIO()
+            plt.savefig(buf2, format='png', dpi=300, bbox_inches="tight")
             buf2.seek(0)
-            corr_base64 = base64.b64encode(buf2.read()).decode()
+            visualizations["correlation_analysis"] = f"data:image/png;base64,{base64.b64encode(buf2.read()).decode()}"
             plt.close(fig_corr)
-            # Estimate revenue impact
-            impact_metrics = {
-                "original_mean": float(np.mean(original_preds)),
-                "modified_mean": float(np.mean(modified_preds)),
-                "absolute_change": round(mean_diff, 4),
-                "percent_change": round(mean_percent_change, 2) if mean_percent_change is not None else None,
-                "direction": "increase" if mean_diff > 0 else "decrease" if mean_diff < 0 else "no change"
-            }
-            revenue_per_conversion = 20  # <-- optional, make dynamic later
-            estimated_roi = mean_diff * len(df) * revenue_per_conversion
-            impact_metrics["estimated_revenue_impact"] = round(estimated_roi, 2)
-            # ─── Narrative Insight Generation ───
-            insights = []
-            if impact_metrics["direction"] == "increase":
-                insights.append("📈 The overall prediction mean increased after the applied changes.")
-            elif impact_metrics["direction"] == "decrease":
-                insights.append("📉 The average outcome decreased, potentially signaling a negative shift.")
+        
+        return visualizations
+    
+    def generate_insights(metrics: Dict[str, Any], applied_changes: Dict[str, Any], 
+                         cluster_summary: Dict[str, Any]) -> List[str]:
+        """Generate actionable business insights"""
+        insights = []
+        
+        # Statistical significance insight
+        if metrics.get("is_significant"):
+            insights.append(f"📊 **Statistically Significant**: Changes show significant impact (p-value: {metrics['p_value']:.4f})")
+        elif metrics.get("is_significant") is False:
+            insights.append(f"⚠️ **Not Statistically Significant**: Changes may be due to random variation (p-value: {metrics['p_value']:.4f})")
+        
+        # Effect size interpretation
+        effect_size = metrics.get("effect_size", 0)
+        if effect_size:
+            if abs(effect_size) < 0.2:
+                insights.append("📏 **Small Effect**: Changes have minimal practical impact")
+            elif abs(effect_size) < 0.5:
+                insights.append("📈 **Medium Effect**: Changes show moderate practical significance")
             else:
-                insights.append("⏸️ No significant change in average prediction after modifications.")
-
-            for f, op in changes.items():
-                if isinstance(op, dict):
-                    if op.get("type") in {"percent_increase", "additive"}:
-                        insights.append(f"🔧 Increasing '{f}' was associated with a {impact_metrics['direction']} in outcome.")
-                    elif op.get("type") in {"percent_decrease"}:
-                        insights.append(f"📉 Decreasing '{f}' led to a {impact_metrics['direction']} as well.")
-                    elif op.get("type") == "categorical_replace":
-                        insights.append(f"🔄 Changing '{f}' to '{op.get('value')}' was applied across the dataset.")
-
+                insights.append("🚀 **Large Effect**: Changes demonstrate substantial practical impact")
+        
+        # Direction and magnitude insights
+        direction = metrics["direction"]
+        percent_change = metrics.get("percent_change")
+        
+        if direction == "increase" and percent_change:
+            if percent_change > 10:
+                insights.append(f"📈 **Strong Positive Impact**: {percent_change:.1f}% increase in predictions")
+            else:
+                insights.append(f"🔼 **Modest Improvement**: {percent_change:.1f}% increase observed")
+        elif direction == "decrease" and percent_change:
+            if abs(percent_change) > 10:
+                insights.append(f"📉 **Significant Decline**: {abs(percent_change):.1f}% decrease in predictions")
+            else:
+                insights.append(f"🔽 **Minor Decrease**: {abs(percent_change):.1f}% reduction observed")
+        
+        # Risk assessment
+        risk = metrics.get("risk_assessment")
+        if risk == "higher_risk":
+            insights.append("⚠️ **Increased Variability**: Changes introduce higher prediction uncertainty")
+        elif risk == "lower_risk":
+            insights.append("✅ **Reduced Variability**: Changes lead to more consistent predictions")
+        
+        # Feature-specific insights
+        for feature, change in applied_changes.items():
+            change_type = change.get("type", "unknown")
+            value = change.get("value", "N/A")
+            
+            if change_type in ["percent_increase", "additive", "multiplicative"]:
+                insights.append(f"🔧 **{feature.title()}**: Increasing this feature contributed to the {direction}")
+            elif change_type == "percent_decrease":
+                insights.append(f"📉 **{feature.title()}**: Decreasing this feature led to {direction}")
+            elif change_type in ["categorical_replace", "set_value"]:
+                insights.append(f"🔄 **{feature.title()}**: Changed to '{value}' across dataset")
+        
+        # Cluster-specific insights
+        if cluster_summary:
+            best_cluster = max(cluster_summary.items(), key=lambda x: x[1]["change"])
+            worst_cluster = min(cluster_summary.items(), key=lambda x: x[1]["change"])
+            
+            insights.append(f"🎯 **Best Performing Segment**: {best_cluster[0]} showed {best_cluster[1]['change']:.3f} improvement")
+            insights.append(f"📊 **Underperforming Segment**: {worst_cluster[0]} had {worst_cluster[1]['change']:.3f} change")
+        
+        # Revenue impact insight
+        revenue_impact = metrics.get("estimated_revenue_impact", 0)
+        if abs(revenue_impact) > 1000:
+            insights.append(f"💰 **Revenue Impact**: Estimated ${revenue_impact:,.2f} {'gain' if revenue_impact > 0 else 'loss'}")
+        
+        return insights
+    
+    # Main execution starts here
+    try:
+        # Initialize configuration
+        config = AnalysisConfig(**(analysis_config or {}))
+        
+        # Validate inputs
+        validation = validate_inputs()
+        if not validation.is_valid:
+            return {
+                "status": "error",
+                "errors": validation.errors,
+                "warnings": validation.warnings
+            }
+        
+        # Process changes
+        if isinstance(bulk_changes, str):
+            try:
+                changes = json.loads(bulk_changes)
+            except json.JSONDecodeError as e:
+                return {"status": "error", "errors": [f"Invalid JSON in bulk_changes: {e}"]}
+        else:
+            changes = bulk_changes or {}
+        
+        # Add individual feature changes if provided
+        if feature_changes:
+            try:
+                individual_changes = json.loads(feature_changes)
+                changes.update(individual_changes)
+            except json.JSONDecodeError as e:
+                logging.warning(f"Invalid feature_changes JSON: {e}")
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Load data and model
+            df, dataset_name = safe_download_and_load_data()
+            model = load_model()
+            
+            # Validate sample selection
+            if sample_id is not None:
+                if 'ID' in df.columns:
+                    original_sample = df[df['ID'] == sample_id]
+                    if len(original_sample) == 0:
+                        return {"status": "error", "errors": [f"Sample with ID {sample_id} not found"]}
+                else:
+                    if sample_id >= len(df) or sample_id < 0:
+                        return {"status": "error", "errors": [f"Sample index {sample_id} out of range"]}
+                    original_sample = df.iloc[sample_id:sample_id+1]
+            
+            # Apply changes
+            modified_df, applied_changes = apply_feature_changes(df, changes)
+            
+            # Get feature columns
+            feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
+            
+            if not feature_cols:
+                return {"status": "error", "errors": ["No feature columns found for prediction"]}
+            
+            # Generate predictions
+            try:
+                # Handle different model formats (pipeline vs direct model)
+                if hasattr(model, 'predict'):
+                    predictor = model
+                elif isinstance(model, (list, tuple)) and len(model) > 0:
+                    predictor = model[0]
+                else:
+                    return {"status": "error", "errors": ["Invalid model format"]}
+                
+                original_preds = predictor.predict(df[feature_cols])
+                modified_preds = predictor.predict(modified_df[feature_cols])
+                
+            except Exception as e:
+                return {"status": "error", "errors": [f"Prediction failed: {str(e)}"]}
+            
+            # Calculate metrics
+            metrics = calculate_advanced_metrics(original_preds, modified_preds)
+            
+            # Cluster analysis (if applicable)
+            cluster_summary = {}
+            if {'clv', 'recency', 'total_spent'}.issubset(df.columns):
+                try:
+                    from sklearn.cluster import KMeans
+                    kmeans = KMeans(n_clusters=config.n_clusters, random_state=42, n_init=10)
+                    df['cluster'] = kmeans.fit_predict(df[['clv', 'recency', 'total_spent']])
+                    modified_df['cluster'] = df['cluster']
+                    
+                    for c in df['cluster'].unique():
+                        cluster_mask = df['cluster'] == c
+                        orig_mean = float(np.mean(original_preds[cluster_mask]))
+                        mod_mean = float(np.mean(modified_preds[cluster_mask]))
+                        change = mod_mean - orig_mean
+                        
+                        cluster_summary[f"cluster_{c}"] = {
+                            "original_mean": orig_mean,
+                            "modified_mean": mod_mean,
+                            "change": round(change, 4),
+                            "percent_change": round((change / orig_mean) * 100, 2) if orig_mean != 0 else 0,
+                            "sample_count": int(np.sum(cluster_mask))
+                        }
+                except Exception as e:
+                    logging.warning(f"Cluster analysis failed: {e}")
+            
+            # Create visualizations
+            visualizations = create_enhanced_visualizations(
+                original_preds, modified_preds, df, modified_df, feature_cols
+            )
+            
+            # Generate insights
+            insights = generate_insights(metrics, applied_changes, cluster_summary)
+            
+            # Prepare response
             response_data = {
                 "status": "success",
                 "user_id": user_id,
-                "id": str(uuid.uuid4()),
+                "analysis_id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
-                "type": "bulk_what_if_analysis",
-                "dataset": dataset_name,
+                "type": "enhanced_what_if_analysis",
+                "dataset": {
+                    "name": dataset_name,
+                    "rows": len(df),
+                    "features": len(feature_cols)
+                },
                 "parameters": {
                     "target_column": target_column,
-                    "bulk_changes": changes
+                    "applied_changes": applied_changes,
+                    "sample_id": sample_id,
+                    "configuration": {
+                        "revenue_per_conversion": config.revenue_per_conversion,
+                        "confidence_level": config.confidence_level,
+                        "significance_threshold": config.significance_threshold
+                    }
                 },
-                "metrics": impact_metrics,
-                "visualizations": {
-                    "distribution_plot": f"data:image/png;base64,{dist_base64}",
-                    "correlation_shift": f"data:image/png;base64,{corr_base64}"
-                },
+                "metrics": metrics,
+                "visualizations": visualizations,
                 "cluster_summary": cluster_summary,
-                "insights": insights
+                "insights": insights,
+                "validation": {
+                    "warnings": validation.warnings,
+                    "data_quality": {
+                        "missing_target_rows_removed": len(df) < len(pd.read_csv(local_file_path if file_path else local_train_path)) if 'local_file_path' in locals() or 'local_train_path' in locals() else False
+                    }
+                }
             }
-
+            
             return response_data
-
+            
     except Exception as e:
-        print(f"[⚠️] Error in do_what_if: {e}")
-        raise ValueError(f"What-if analysis failed: {str(e)}")
+        logging.error(f"What-if analysis failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "error_id": str(uuid.uuid4()),
+            "message": f"Analysis failed: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 def do_risk_analysis(
     user_id: str,

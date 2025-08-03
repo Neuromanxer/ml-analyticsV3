@@ -1748,99 +1748,362 @@ function computeColumnStats(headers, rows) {
   });
   return colStats;
 }
-
 function buildEditableUI(features) {
   const container = document.getElementById('editable-features');
-  if (!container) return;
+  if (!container) {
+    console.error('editable-features container not found');
+    return;
+  }
+
+  // Clear old UI and reset changes
+  container.innerHTML = '';
+  window.bulkFeatureChanges = {};
+
+  // Validate features input
+  if (!Array.isArray(features) || features.length === 0) {
+    container.innerHTML = '<p class="text-muted">No editable features available.</p>';
+    return;
+  }
+
+  // Create a document fragment for better performance
+  const fragment = document.createDocumentFragment();
+
+  features.forEach((feature, index) => {
+    try {
+      const controlElement = createFeatureControl(feature, index);
+      if (controlElement) {
+        fragment.appendChild(controlElement);
+      }
+    } catch (error) {
+      console.error(`Error creating control for feature ${feature.name}:`, error);
+    }
+  });
+
+  container.appendChild(fragment);
   
-  container.innerHTML = ''; // Clear old UI
-  window.bulkFeatureChanges = {}; // Reset changes
+  // Add reset button
+  const resetButton = createResetButton(features);
+  container.appendChild(resetButton);
+}
+
+function createFeatureControl(feature, index) {
+  // Validate feature object
+  if (!feature || !feature.name) {
+    console.warn('Invalid feature object:', feature);
+    return null;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'editable-control';
+  wrapper.style.cssText = `
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: #fafafa;
+  `;
+  wrapper.setAttribute('data-feature-name', feature.name);
+
+  const label = document.createElement('label');
+  label.style.cssText = `
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+  `;
+
+  let controlElement;
+
+  switch (feature.type) {
+    case 'number':
+      controlElement = createNumericControl(feature, label);
+      break;
+    case 'category':
+      controlElement = createCategoricalControl(feature, label);
+      break;
+    case 'boolean':
+      controlElement = createBooleanControl(feature, label);
+      break;
+    default:
+      console.warn(`Unsupported feature type: ${feature.type} for feature ${feature.name}`);
+      return null;
+  }
+
+  if (controlElement) {
+    wrapper.appendChild(label);
+    wrapper.appendChild(controlElement);
+    
+    // Add feature description if available
+    if (feature.description) {
+      const description = document.createElement('small');
+      description.className = 'feature-description';
+      description.style.cssText = 'color: #666; font-style: italic; display: block; margin-top: 4px;';
+      description.textContent = feature.description;
+      wrapper.appendChild(description);
+    }
+  }
+
+  return wrapper;
+}
+
+function createNumericControl(feature, label) {
+  // Validate numeric feature properties
+  const min = typeof feature.min === 'number' ? feature.min : 0;
+  const max = typeof feature.max === 'number' ? feature.max : 100;
+  const defaultValue = feature.mean ?? feature.default ?? min;
+  const step = feature.step || (max - min > 100 ? Math.ceil((max - min) / 100) : 0.01);
+
+  if (min >= max) {
+    console.warn(`Invalid range for feature ${feature.name}: min=${min}, max=${max}`);
+    return null;
+  }
+
+  // Create container for slider and input
+  const container = document.createElement('div');
+  container.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+  // Value display/input
+  const valueInput = document.createElement('input');
+  valueInput.type = 'number';
+  valueInput.min = min;
+  valueInput.max = max;
+  valueInput.step = step;
+  valueInput.value = defaultValue;
+  valueInput.id = `${feature.name}-input`;
+  valueInput.style.cssText = 'width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;';
+
+  // Range slider
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = min;
+  slider.max = max;
+  slider.step = step;
+  slider.value = defaultValue;
+  slider.id = `${feature.name}-slider`;
+  slider.style.cssText = 'flex: 1; margin: 0 10px;';
+
+  // Min/max labels
+  const minLabel = document.createElement('span');
+  minLabel.textContent = min.toFixed(2);
+  minLabel.style.cssText = 'font-size: 12px; color: #666;';
+
+  const maxLabel = document.createElement('span');
+  maxLabel.textContent = max.toFixed(2);
+  maxLabel.style.cssText = 'font-size: 12px; color: #666;';
+
+  // Update label with current value
+  label.innerHTML = `${feature.label || feature.name}: <span id="${feature.name}-value" style="color: #007bff; font-weight: normal;">${defaultValue}</span>`;
+
+  // Event handlers
+  const updateValue = (newValue) => {
+    const numValue = parseFloat(newValue);
+    if (isNaN(numValue) || numValue < min || numValue > max) return;
+
+    slider.value = numValue;
+    valueInput.value = numValue;
+    document.getElementById(`${feature.name}-value`).textContent = numValue.toFixed(2);
+    
+    // Calculate change from original value
+    const originalValue = feature.mean ?? feature.default ?? min;
+    window.bulkFeatureChanges[feature.name] = {
+      type: 'additive',
+      value: numValue - originalValue,
+      original_value: originalValue,
+      new_value: numValue
+    };
+
+    // Dispatch custom event for real-time updates
+    dispatchFeatureChangeEvent(feature.name, numValue);
+  };
+
+  slider.addEventListener('input', () => updateValue(slider.value));
+  valueInput.addEventListener('input', () => updateValue(valueInput.value));
+  
+  // Prevent form submission on Enter
+  valueInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      updateValue(valueInput.value);
+    }
+  });
+
+  container.appendChild(minLabel);
+  container.appendChild(slider);
+  container.appendChild(maxLabel);
+  container.appendChild(valueInput);
+
+  return container;
+}
+
+function createCategoricalControl(feature, label) {
+  if (!Array.isArray(feature.options) || feature.options.length === 0) {
+    console.warn(`No options available for categorical feature ${feature.name}`);
+    return null;
+  }
+
+  label.textContent = `${feature.label || feature.name}:`;
+
+  const select = document.createElement('select');
+  select.id = `${feature.name}-select`;
+  select.style.cssText = `
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+  `;
+
+  // Add default option
+  const defaultOption = document.createElement('option');
+  defaultOption.value = '';
+  defaultOption.textContent = '-- Select an option --';
+  defaultOption.disabled = true;
+  select.appendChild(defaultOption);
+
+  // Add feature options
+  feature.options.forEach(option => {
+    const opt = document.createElement('option');
+    opt.value = option;
+    opt.textContent = option;
+    
+    // Select default value if specified
+    if (feature.default === option) {
+      opt.selected = true;
+    }
+    
+    select.appendChild(opt);
+  });
+
+  // Set initial selection
+  if (feature.default && feature.options.includes(feature.default)) {
+    select.value = feature.default;
+  } else {
+    select.selectedIndex = 0; // Select first real option
+  }
+
+  select.addEventListener('change', () => {
+    if (select.value) {
+      window.bulkFeatureChanges[feature.name] = {
+        type: 'categorical_replace',
+        value: select.value,
+        original_value: feature.default || feature.options[0]
+      };
+      dispatchFeatureChangeEvent(feature.name, select.value);
+    } else {
+      delete window.bulkFeatureChanges[feature.name];
+    }
+  });
+
+  return select;
+}
+
+function createBooleanControl(feature, label) {
+  const container = document.createElement('div');
+  container.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.id = `${feature.name}-checkbox`;
+  checkbox.checked = feature.default ?? true;
+  checkbox.style.cssText = 'transform: scale(1.2);';
+
+  const labelText = document.createElement('span');
+  labelText.textContent = feature.label || feature.name;
+  labelText.style.cssText = 'cursor: pointer; user-select: none;';
+
+  // Make label clickable
+  labelText.addEventListener('click', () => {
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change'));
+  });
+
+  checkbox.addEventListener('change', () => {
+    window.bulkFeatureChanges[feature.name] = {
+      type: 'categorical_replace',
+      value: checkbox.checked,
+      original_value: feature.default ?? true
+    };
+    dispatchFeatureChangeEvent(feature.name, checkbox.checked);
+  });
+
+  // Clear the label since we're using custom layout
+  label.style.display = 'none';
+
+  container.appendChild(checkbox);
+  container.appendChild(labelText);
+
+  return container;
+}
+
+function createResetButton(features) {
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button';
+  resetButton.textContent = '🔄 Reset All Changes';
+  resetButton.className = 'btn btn-outline-secondary';
+  resetButton.style.cssText = `
+    margin-top: 15px;
+    padding: 8px 16px;
+    border: 1px solid #6c757d;
+    border-radius: 4px;
+    background-color: white;
+    cursor: pointer;
+  `;
+
+  resetButton.addEventListener('click', () => {
+    if (confirm('Are you sure you want to reset all changes?')) {
+      resetAllFeatures(features);
+    }
+  });
+
+  return resetButton;
+}
+
+function resetAllFeatures(features) {
+  window.bulkFeatureChanges = {};
 
   features.forEach(feature => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'editable-control';
-    wrapper.style.marginBottom = '15px';
+    try {
+      switch (feature.type) {
+        case 'number':
+          const slider = document.getElementById(`${feature.name}-slider`);
+          const input = document.getElementById(`${feature.name}-input`);
+          const valueSpan = document.getElementById(`${feature.name}-value`);
+          const defaultValue = feature.mean ?? feature.default ?? feature.min;
+          
+          if (slider) slider.value = defaultValue;
+          if (input) input.value = defaultValue;
+          if (valueSpan) valueSpan.textContent = defaultValue.toFixed(2);
+          break;
 
-    // ----------- LABEL -----------
-    const label = document.createElement('label');
-    label.style.display = 'block';
-    label.style.marginBottom = '4px';
-    label.style.fontWeight = 'bold';
+        case 'category':
+          const select = document.getElementById(`${feature.name}-select`);
+          if (select) {
+            select.value = feature.default || feature.options[0] || '';
+          }
+          break;
 
-    // ----------- NUMERIC SLIDER -----------
-    if (feature.type === 'number') {
-      label.innerHTML = `${feature.label || feature.name}: <span id="${feature.name}-value">${feature.mean || feature.min}</span>`;
-      
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.min = feature.min;
-      slider.max = feature.max;
-      slider.step = feature.step || 1;
-      slider.value = feature.mean || feature.min;
-      slider.id = `${feature.name}-slider`;
-      slider.style.width = '100%';
-
-      slider.addEventListener('input', () => {
-        const valueSpan = document.getElementById(`${feature.name}-value`);
-        if (valueSpan) valueSpan.textContent = slider.value;
-        window.bulkFeatureChanges[feature.name] = {
-          type: 'additive',
-          value: parseFloat(slider.value) - (feature.mean || feature.min)
-        };
-      });
-
-      wrapper.appendChild(label);
-      wrapper.appendChild(slider);
+        case 'boolean':
+          const checkbox = document.getElementById(`${feature.name}-checkbox`);
+          if (checkbox) {
+            checkbox.checked = feature.default ?? true;
+          }
+          break;
+      }
+    } catch (error) {
+      console.error(`Error resetting feature ${feature.name}:`, error);
     }
-
-    // ----------- CATEGORICAL DROPDOWN -----------
-    else if (feature.type === 'category') {
-      label.textContent = `${feature.label || feature.name}:`;
-
-      const select = document.createElement('select');
-      select.id = `${feature.name}-select`;
-      select.style.width = '100%';
-
-      feature.options.forEach(option => {
-        const opt = document.createElement('option');
-        opt.value = option;
-        opt.textContent = option;
-        select.appendChild(opt);
-      });
-
-      select.addEventListener('change', () => {
-        window.bulkFeatureChanges[feature.name] = {
-          type: 'categorical_replace',
-          value: select.value
-        };
-      });
-
-      wrapper.appendChild(label);
-      wrapper.appendChild(select);
-    }
-
-    // ----------- BOOLEAN TOGGLE -----------
-    else if (feature.type === 'boolean') {
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = feature.default ?? true;
-      checkbox.style.marginLeft = '8px';
-
-      checkbox.addEventListener('change', () => {
-        window.bulkFeatureChanges[feature.name] = {
-          type: 'categorical_replace',
-          value: checkbox.checked
-        };
-      });
-
-      label.textContent = `${feature.label || feature.name}:`;
-      label.appendChild(checkbox);
-      wrapper.appendChild(label);
-    }
-
-    container.appendChild(wrapper);
   });
+
+  // Dispatch reset event
+  document.dispatchEvent(new CustomEvent('featuresReset'));
 }
+
+function dispatchFeatureChangeEvent(featureName, value) {
+  document.dispatchEvent(new CustomEvent('featureChanged', {
+    detail: { featureName, value, changes: window.bulkFeatureChanges }
+  }));
+}
+
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
   const selectedAnalysis = runButton.dataset.analysisType;
@@ -2006,7 +2269,7 @@ function prepareAndRunAnalysis() {
     callRealAPI('what_if', {
       target_column: targetCol,
       drop_columns: dropCols,
-      bulk_changes: window.bulkFeatureChanges
+      feature_changes: JSON.stringify(window.bulkFeatureChanges)
     });
 
     break;
