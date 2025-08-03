@@ -576,10 +576,6 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-# Initialize router and logger
-router = APIRouter()
-logger = logging.getLogger(__name__)
-
 class WhatIfInputRequest(BaseModel):
     """
     Request model for what-if analysis input processing.

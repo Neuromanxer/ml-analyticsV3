@@ -2042,91 +2042,71 @@ function buildEditableUI(features) {
   const buttonContainer = createControlButtons(features);
   container.appendChild(buttonContainer);
 }
-
 function createNumericMassControl(feature) {
   const container = document.createElement('div');
-  container.style.cssText = 'display: flex; flex-direction: column; gap: 15px;';
+  container.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
 
-  // Percentage adjustment slider
-  const percentContainer = document.createElement('div');
-  percentContainer.innerHTML = `
+  // Single percentage adjustment slider
+  const sliderContainer = document.createElement('div');
+  sliderContainer.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <label style="font-weight: 500; color: #555;">Percentage Change:</label>
-      <span id="percent-value-${feature.name}" style="font-weight: 600; color: #1976d2;">0%</span>
+      <label style="font-weight: 500; color: #555;">Adjust Values:</label>
+      <span id="numeric-value-${feature.name}" style="font-weight: 600; color: #1976d2; font-size: 14px;">0%</span>
     </div>
     <input type="range" 
-           id="percent-slider-${feature.name}"
+           id="numeric-slider-${feature.name}"
            min="-50" 
            max="50" 
-           step="1" 
+           step="5" 
            value="0"
-           style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none;">
-    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-top: 4px;">
+           style="width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #ff4444 0%, #ffaa00 50%, #44aa44 100%); outline: none; cursor: pointer;">
+    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 4px;">
       <span>-50%</span>
-      <span>0%</span>
+      <span style="font-weight: 600;">No Change</span>
       <span>+50%</span>
     </div>
   `;
 
-  // Fixed value adjustment
-  const fixedContainer = document.createElement('div');
-  const step = feature.step || 1;
-  const minVal = feature.min || 0;
-  const maxVal = feature.max || 100;
-  
-  fixedContainer.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <label style="font-weight: 500; color: #555;">Fixed Adjustment:</label>
-      <span id="fixed-value-${feature.name}" style="font-weight: 600; color: #1976d2;">+0</span>
+  // Current value display
+  const infoContainer = document.createElement('div');
+  infoContainer.innerHTML = `
+    <div style="background: #f8f9fa; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #666;">
+      <strong>Current:</strong> Mean = ${feature.mean?.toFixed(2) || 'N/A'} | 
+      Range: ${feature.min?.toFixed(1) || 'N/A'} - ${feature.max?.toFixed(1) || 'N/A'}
     </div>
-    <input type="range" 
-           id="fixed-slider-${feature.name}"
-           min="${-Math.abs(maxVal - minVal) / 4}" 
-           max="${Math.abs(maxVal - minVal) / 4}" 
-           step="${step}" 
-           value="0"
-           style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none;">
   `;
 
-  container.appendChild(percentContainer);
-  container.appendChild(fixedContainer);
+  container.appendChild(sliderContainer);
+  container.appendChild(infoContainer);
 
-  // Add event listeners
+  // Add event listener
   setTimeout(() => {
-    const percentSlider = document.getElementById(`percent-slider-${feature.name}`);
-    const fixedSlider = document.getElementById(`fixed-slider-${feature.name}`);
-    const percentValue = document.getElementById(`percent-value-${feature.name}`);
-    const fixedValue = document.getElementById(`fixed-value-${feature.name}`);
+    const slider = document.getElementById(`numeric-slider-${feature.name}`);
+    const valueDisplay = document.getElementById(`numeric-value-${feature.name}`);
 
-    if (percentSlider && fixedSlider) {
-      percentSlider.addEventListener('input', (e) => {
+    if (slider && valueDisplay) {
+      slider.addEventListener('input', (e) => {
         const value = parseInt(e.target.value);
-        percentValue.textContent = `${value > 0 ? '+' : ''}${value}%`;
         
-        // Reset fixed slider when using percentage
-        fixedSlider.value = 0;
-        fixedValue.textContent = '+0';
+        // Update display
+        if (value === 0) {
+          valueDisplay.textContent = 'No Change';
+          valueDisplay.style.color = '#666';
+        } else {
+          valueDisplay.textContent = `${value > 0 ? '+' : ''}${value}%`;
+          valueDisplay.style.color = value > 0 ? '#2e7d32' : '#d32f2f';
+        }
         
-        updateFeatureChange(feature.name, {
-          type: 'percentage',
-          value: value,
-          original_mean: feature.mean
-        });
-      });
-
-      fixedSlider.addEventListener('input', (e) => {
-        const value = parseFloat(e.target.value);
-        fixedValue.textContent = `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
-        
-        // Reset percentage slider when using fixed
-        percentSlider.value = 0;
-        percentValue.textContent = '0%';
-        
-        updateFeatureChange(feature.name, {
-          type: 'fixed',
-          value: value,
-          original_mean: feature.mean
-        });
+        // Update feature change
+        if (value === 0) {
+          updateFeatureChange(feature.name, null);
+        } else {
+          updateFeatureChange(feature.name, {
+            type: 'percentage',
+            value: value,
+            original_mean: feature.mean
+          });
+        }
       });
     }
   }, 100);
@@ -2138,52 +2118,94 @@ function createCategoricalMassControl(feature) {
   const container = document.createElement('div');
   
   if (!feature.options || feature.options.length === 0) {
-    container.innerHTML = '<p style="color: #888; font-style: italic;">No options available for adjustment.</p>';
+    container.innerHTML = '<p style="color: #888; font-style: italic;">No categories available for adjustment.</p>';
     return container;
   }
 
-  container.innerHTML = `
-    <div style="margin-bottom: 10px;">
+  // Category selection
+  const categoryContainer = document.createElement('div');
+  categoryContainer.innerHTML = `
+    <div style="margin-bottom: 15px;">
       <label style="font-weight: 500; color: #555; display: block; margin-bottom: 8px;">
-        Boost Category (increase its frequency):
+        Select Category to Boost:
       </label>
       <select id="category-select-${feature.name}" 
-              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-        <option value="">No change</option>
+              style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white;">
+        <option value="">-- No Change --</option>
         ${feature.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
       </select>
     </div>
-    <div>
-      <label style="font-weight: 500; color: #555; display: block; margin-bottom: 8px;">
-        Boost Amount:
-      </label>
+  `;
+
+  // Boost percentage slider
+  const boostContainer = document.createElement('div');
+  boostContainer.innerHTML = `
+    <div style="margin-bottom: 15px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-size: 12px; color: #888;">Low</span>
-        <span id="boost-value-${feature.name}" style="font-weight: 600; color: #1976d2;">0%</span>
-        <span style="font-size: 12px; color: #888;">High</span>
+        <label style="font-weight: 500; color: #555;">Boost Strength:</label>
+        <span id="categorical-boost-${feature.name}" style="font-weight: 600; color: #1976d2; font-size: 14px;">0%</span>
       </div>
       <input type="range" 
              id="boost-slider-${feature.name}"
              min="0" 
-             max="30" 
+             max="50" 
              step="5" 
              value="0"
-             style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none;">
+             disabled
+             style="width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #e0e0e0 0%, #4caf50 100%); outline: none; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 4px;">
+        <span>No Boost</span>
+        <span>+25%</span>
+        <span>Max Boost (+50%)</span>
+      </div>
     </div>
   `;
+
+  // Current distribution display
+  const infoContainer = document.createElement('div');
+  const topCategories = feature.options.slice(0, 3).join(', ');
+  infoContainer.innerHTML = `
+    <div style="background: #f8f9fa; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #666;">
+      <strong>Available:</strong> ${topCategories}${feature.options.length > 3 ? ` (+${feature.options.length - 3} more)` : ''}
+    </div>
+  `;
+
+  container.appendChild(categoryContainer);
+  container.appendChild(boostContainer);
+  container.appendChild(infoContainer);
 
   // Add event listeners
   setTimeout(() => {
     const categorySelect = document.getElementById(`category-select-${feature.name}`);
     const boostSlider = document.getElementById(`boost-slider-${feature.name}`);
-    const boostValue = document.getElementById(`boost-value-${feature.name}`);
+    const boostValue = document.getElementById(`categorical-boost-${feature.name}`);
 
     const updateCategoryChange = () => {
       const selectedCategory = categorySelect?.value;
       const boostAmount = parseInt(boostSlider?.value || 0);
       
-      boostValue.textContent = `+${boostAmount}%`;
+      // Enable/disable boost slider based on category selection
+      if (selectedCategory) {
+        boostSlider.disabled = false;
+        boostSlider.style.opacity = '1';
+        boostSlider.style.cursor = 'pointer';
+      } else {
+        boostSlider.disabled = true;
+        boostSlider.style.opacity = '0.5';
+        boostSlider.style.cursor = 'not-allowed';
+        boostSlider.value = 0;
+      }
       
+      // Update display
+      if (boostAmount === 0 || !selectedCategory) {
+        boostValue.textContent = 'No Boost';
+        boostValue.style.color = '#666';
+      } else {
+        boostValue.textContent = `+${boostAmount}%`;
+        boostValue.style.color = '#2e7d32';
+      }
+      
+      // Update feature change
       if (selectedCategory && boostAmount > 0) {
         updateFeatureChange(feature.name, {
           type: 'boost_category',
@@ -2191,12 +2213,15 @@ function createCategoricalMassControl(feature) {
           boost_percentage: boostAmount
         });
       } else {
-        updateFeatureChange(feature.name, null); // Remove change
+        updateFeatureChange(feature.name, null);
       }
     };
 
     categorySelect?.addEventListener('change', updateCategoryChange);
     boostSlider?.addEventListener('input', updateCategoryChange);
+    
+    // Initialize state
+    updateCategoryChange();
   }, 100);
 
   return container;
@@ -2205,69 +2230,225 @@ function createCategoricalMassControl(feature) {
 function createBooleanMassControl(feature) {
   const container = document.createElement('div');
   
-  container.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 15px;">
-      <label style="font-weight: 500; color: #555;">Force all values to:</label>
-      <div style="display: flex; gap: 10px;">
-        <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;">
-          <input type="radio" name="bool-${feature.name}" value="" checked>
-          <span>No change</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;">
-          <input type="radio" name="bool-${feature.name}" value="true">
-          <span>True</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;">
-          <input type="radio" name="bool-${feature.name}" value="false">
-          <span>False</span>
-        </label>
+  // Boolean value selection
+  const selectionContainer = document.createElement('div');
+  selectionContainer.innerHTML = `
+    <div style="margin-bottom: 15px;">
+      <label style="font-weight: 500; color: #555; display: block; margin-bottom: 8px;">
+        Force Values To:
+      </label>
+      <select id="boolean-select-${feature.name}" 
+              style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white;">
+        <option value="">-- No Change --</option>
+        <option value="true">True</option>
+        <option value="false">False</option>
+      </select>
+    </div>
+  `;
+
+  // Boost percentage slider
+  const boostContainer = document.createElement('div');
+  boostContainer.innerHTML = `
+    <div style="margin-bottom: 15px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <label style="font-weight: 500; color: #555;">Change Strength:</label>
+        <span id="boolean-boost-${feature.name}" style="font-weight: 600; color: #1976d2; font-size: 14px;">0%</span>
+      </div>
+      <input type="range" 
+             id="boolean-slider-${feature.name}"
+             min="0" 
+             max="100" 
+             step="10" 
+             value="0"
+             disabled
+             style="width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #e0e0e0 0%, #ff9800 50%, #f44336 100%); outline: none; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 4px;">
+        <span>No Change</span>
+        <span>50%</span>
+        <span>Force All (100%)</span>
       </div>
     </div>
   `;
 
+  // Information display
+  const infoContainer = document.createElement('div');
+  infoContainer.innerHTML = `
+    <div style="background: #f8f9fa; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #666;">
+      <strong>Effect:</strong> Higher percentages will change more records to the selected value
+    </div>
+  `;
+
+  container.appendChild(selectionContainer);
+  container.appendChild(boostContainer);
+  container.appendChild(infoContainer);
+
   // Add event listeners
   setTimeout(() => {
-    const radioButtons = document.querySelectorAll(`input[name="bool-${feature.name}"]`);
-    radioButtons.forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        const value = e.target.value;
-        if (value === '') {
-          updateFeatureChange(feature.name, null); // Remove change
-        } else {
-          updateFeatureChange(feature.name, {
-            type: 'force_boolean',
-            value: value === 'true'
-          });
-        }
-      });
-    });
+    const booleanSelect = document.getElementById(`boolean-select-${feature.name}`);
+    const boostSlider = document.getElementById(`boolean-slider-${feature.name}`);
+    const boostValue = document.getElementById(`boolean-boost-${feature.name}`);
+
+    const updateBooleanChange = () => {
+      const selectedValue = booleanSelect?.value;
+      const changeStrength = parseInt(boostSlider?.value || 0);
+      
+      // Enable/disable boost slider based on boolean selection
+      if (selectedValue) {
+        boostSlider.disabled = false;
+        boostSlider.style.opacity = '1';
+        boostSlider.style.cursor = 'pointer';
+      } else {
+        boostSlider.disabled = true;
+        boostSlider.style.opacity = '0.5';
+        boostSlider.style.cursor = 'not-allowed';
+        boostSlider.value = 0;
+      }
+      
+      // Update display
+      if (changeStrength === 0 || !selectedValue) {
+        boostValue.textContent = 'No Change';
+        boostValue.style.color = '#666';
+      } else if (changeStrength === 100) {
+        boostValue.textContent = 'Force All';
+        boostValue.style.color = '#d32f2f';
+      } else {
+        boostValue.textContent = `${changeStrength}%`;
+        boostValue.style.color = '#f57c00';
+      }
+      
+      // Update feature change
+      if (selectedValue && changeStrength > 0) {
+        updateFeatureChange(feature.name, {
+          type: 'force_boolean',
+          value: selectedValue === 'true',
+          strength: changeStrength
+        });
+      } else {
+        updateFeatureChange(feature.name, null);
+      }
+    };
+
+    booleanSelect?.addEventListener('change', updateBooleanChange);
+    boostSlider?.addEventListener('input', updateBooleanChange);
+    
+    // Initialize state
+    updateBooleanChange();
   }, 100);
 
   return container;
 }
 
+// Enhanced feature control creation with better styling
+function createFeatureControl(feature, index) {
+  const container = document.createElement('div');
+  container.style.cssText = `
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease;
+  `;
+  
+  // Add hover effect
+  container.addEventListener('mouseenter', () => {
+    container.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+  });
+  container.addEventListener('mouseleave', () => {
+    container.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+  });
+
+  // Feature header
+  const header = document.createElement('div');
+  header.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #f0f0f0;">
+      <h5 style="margin: 0; color: #333; font-weight: 600; font-size: 16px;">${feature.label || feature.name}</h5>
+      <span style="background: ${getTypeColor(feature.type)}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;">
+        ${feature.type.toUpperCase()}
+      </span>
+    </div>
+  `;
+  container.appendChild(header);
+
+  // Create appropriate control based on feature type
+  let controlElement;
+  switch (feature.type) {
+    case 'numeric':
+      controlElement = createNumericMassControl(feature);
+      break;
+    case 'categorical':
+      controlElement = createCategoricalMassControl(feature);
+      break;
+    case 'boolean':
+      controlElement = createBooleanMassControl(feature);
+      break;
+    default:
+      console.warn(`Unknown feature type: ${feature.type}`);
+      return null;
+  }
+
+  if (controlElement) {
+    container.appendChild(controlElement);
+  }
+
+  return container;
+}
+
+// Helper function to get colors for different types
+function getTypeColor(type) {
+  switch (type) {
+    case 'numeric': return '#1976d2';
+    case 'categorical': return '#388e3c';
+    case 'boolean': return '#f57c00';
+    default: return '#666';
+  }
+}
+
+// Enhanced control buttons with better styling
 function createControlButtons(features) {
   const container = document.createElement('div');
   container.style.cssText = `
     margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid #e0e0e0;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
     display: flex;
-    gap: 10px;
-    justify-content: flex-end;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: center;
   `;
+
+  const leftSection = document.createElement('div');
+  leftSection.innerHTML = `
+    <div style="color: #666; font-size: 14px;">
+      <strong>${features.length}</strong> features available for adjustment
+    </div>
+  `;
+
+  const rightSection = document.createElement('div');
+  rightSection.style.cssText = 'display: flex; gap: 12px;';
 
   const resetButton = document.createElement('button');
   resetButton.innerHTML = '↻ Reset All';
   resetButton.style.cssText = `
     padding: 10px 20px;
-    background: #f5f5f5;
+    background: white;
     border: 1px solid #ddd;
     border-radius: 6px;
     cursor: pointer;
     font-weight: 500;
-    color: #555;
+    color: #666;
+    transition: all 0.2s ease;
   `;
+  resetButton.addEventListener('mouseenter', () => {
+    resetButton.style.background = '#f5f5f5';
+    resetButton.style.borderColor = '#bbb';
+  });
+  resetButton.addEventListener('mouseleave', () => {
+    resetButton.style.background = 'white';
+    resetButton.style.borderColor = '#ddd';
+  });
   resetButton.addEventListener('click', () => resetAllChanges(features));
 
   const previewButton = document.createElement('button');
@@ -2280,15 +2461,24 @@ function createControlButtons(features) {
     cursor: pointer;
     font-weight: 500;
     color: white;
+    transition: background 0.2s ease;
   `;
+  previewButton.addEventListener('mouseenter', () => {
+    previewButton.style.background = '#1565c0';
+  });
+  previewButton.addEventListener('mouseleave', () => {
+    previewButton.style.background = '#1976d2';
+  });
   previewButton.addEventListener('click', previewChanges);
 
-  container.appendChild(resetButton);
-  container.appendChild(previewButton);
+  rightSection.appendChild(resetButton);
+  rightSection.appendChild(previewButton);
+  
+  container.appendChild(leftSection);
+  container.appendChild(rightSection);
 
   return container;
 }
-
 function updateFeatureChange(featureName, changeConfig) {
   if (!window.bulkFeatureChanges) {
     window.bulkFeatureChanges = {};
