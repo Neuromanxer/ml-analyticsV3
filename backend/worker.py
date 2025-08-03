@@ -4627,33 +4627,52 @@ def do_what_if(
         except Exception as e:
             raise ValueError(f"Failed to load data: {str(e)}")
     
-    def load_model() -> Any:
-        """Load the appropriate model with fallback logic"""
+    def load_model(df: pd.DataFrame, target_column: str) -> Any:
+        """Load classifier or regressor based on the target column's distribution"""
         model_dir = os.path.join(temp_dir, "models")
         os.makedirs(model_dir, exist_ok=True)
-        
-        # Use correct Supabase paths (user-specific directory)
-        model_paths = [
-            (PathL(model_dir) / f"{user_id}_best_classifier.pkl", f"{user_id}/{user_id}_best_classifier.pkl"),
-            (PathL(model_dir) / f"{user_id}_best_regressor.pkl", f"{user_id}/{user_id}_best_regressor.pkl")
-        ]
-        
-        for local_path, remote_path in model_paths:
-            try:
-                if not local_path.exists():
-                    model_bytes = download_file_from_supabase(remote_path)
-                    with open(local_path, 'wb') as f:
-                        f.write(model_bytes)
 
-                model = joblib.load(local_path)
-                logging.info(f"✅ Successfully loaded model from Supabase: {remote_path}")
-                return model
+        # Determine whether the task is classification or regression
+        target_values = df[target_column].dropna()
+        num_unique = target_values.nunique()
+        total = len(target_values)
 
-            except Exception as e:
-                logging.warning(f"⚠️ Failed to load model from {remote_path}: {e}")
-                continue
+        is_classification = (
+            pd.api.types.is_object_dtype(target_values) or
+            pd.api.types.is_bool_dtype(target_values) or
+            (num_unique < 0.05 * total and num_unique <= 20)
+        )
 
-        raise ValueError("❌ No valid model found for user. Please train a model first.")
+        selected_model_type = "classifier" if is_classification else "regressor"
+        logging.info(f"🔍 Target column '{target_column}' detected as: {selected_model_type.upper()}")
+
+        # Choose the correct model path
+        model_paths = {
+            "classifier": (
+                PathL(model_dir) / f"{user_id}_best_classifier.pkl",
+                f"{user_id}/{user_id}_best_classifier.pkl"
+            ),
+            "regressor": (
+                PathL(model_dir) / f"{user_id}_best_regressor.pkl",
+                f"{user_id}/{user_id}_best_regressor.pkl"
+            )
+        }
+
+        local_path, remote_path = model_paths[selected_model_type]
+
+        try:
+            if not local_path.exists():
+                model_bytes = download_file_from_supabase(remote_path)
+                with open(local_path, 'wb') as f:
+                    f.write(model_bytes)
+
+            model = joblib.load(local_path)
+            logging.info(f"✅ Successfully loaded {selected_model_type} model from Supabase: {remote_path}")
+            return model
+
+        except Exception as e:
+            raise ValueError(f"❌ Failed to load {selected_model_type} model: {str(e)}")
+
 
     def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """Apply feature changes with comprehensive validation for mass scenario simulation"""
