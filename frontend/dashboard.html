@@ -1843,8 +1843,6 @@ function prepareAndRunAnalysis() {
   const dropCols = document.getElementById('drop-columns').value;
   const featureCol = document.getElementById('feature-column').value;
   const timeCol = document.getElementById('time-column').value;
-  const desiredOutcome = document.getElementById('desired-outcome').value;
-  const editableFeatures = document.getElementById('editable-features').value;
   const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
     // Inputs & preview elements
   const fullInput  = document.getElementById('full-input');
@@ -1907,8 +1905,6 @@ function prepareAndRunAnalysis() {
       callRealAPI('counterfactual', {
         target_column: targetCol,
         drop_columns: dropCols,
-        desired_outcome: desiredOutcome,
-        editable_features: editableFeatures
       });
       break;
       
