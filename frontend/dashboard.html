@@ -1655,8 +1655,12 @@ function signOutUser() {
 }
 
 function parseAndPreview(file, nameEl, previewEl, tableEl) {
+  nameEl.textContent = file.name;
+  nameEl.style.color = '#0066cc';
+  
   const reader = new FileReader();
   const API_BASE_URL = "/api";  // Use your actual deployed URL if needed
+  
   reader.onload = async function (e) {
     const text = e.target.result;
     const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -1667,16 +1671,17 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
       nameEl.textContent = 'File is empty';
       nameEl.style.color = 'red';
       previewEl.style.display = 'none';
-      editableContainer.style.display = 'none';
+      if (editableContainer) editableContainer.style.display = 'none';
       return;
     }
 
     // Only allow editable panel for these analysis modes
     const allowedModes = ["counterfactual", "classification-predict", "regression-predict", "feature-impact"];
-    if (!allowedModes.includes(selectedAnalysisMethod)) {
-      editableContainer.style.display = 'none';
+    if (editableContainer) {
+      if (!allowedModes.includes(selectedAnalysisMethod)) {
+        editableContainer.style.display = 'none';
+      }
     }
-
 
     // Determine delimiter
     let delim = ',';
@@ -1689,9 +1694,15 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
 
     // Skip invalid rows
     const validRows = dataRows.filter(row => row.length === headers.length);
-    if (!validRows.length) return;
+    if (!validRows.length) {
+      nameEl.textContent = 'No valid data rows found';
+      nameEl.style.color = 'red';
+      previewEl.style.display = 'none';
+      if (editableContainer) editableContainer.style.display = 'none';
+      return;
+    }
 
-    // Show preview table
+    // Show preview table FIRST - this was missing before async operations
     let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
     for (let i = 0; i < Math.min(validRows.length, 5); i++) {
       const cells = validRows[i];
@@ -1700,6 +1711,11 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     html += '</tbody>';
     tableEl.innerHTML = html;
     previewEl.style.display = 'block';
+
+    // Only proceed with editable features if the container exists and mode is allowed
+    if (!editableContainer || !editableArea || !allowedModes.includes(selectedAnalysisMethod)) {
+      return;
+    }
 
     // Compute column stats (based on first 100 rows)
     const colStats = {};
@@ -1714,7 +1730,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
       });
     });
 
-    // Request editable feature suggestions (bulk)
+    // Request editable feature suggestions (bulk) - this is async and optional
     try {
       const response = await fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
         method: "POST",
@@ -1723,6 +1739,10 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
           column_stats: colStats
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
       const result = await response.json();
       if (!result.features || !result.features.length) {
@@ -1736,7 +1756,8 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
 
     } catch (err) {
       console.error("Failed to fetch editable config", err);
-      editableContainer.style.display = 'none';
+      // Don't hide the container completely, just show a message or hide gracefully
+      if (editableContainer) editableContainer.style.display = 'none';
     }
   };
 
@@ -1744,7 +1765,8 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     nameEl.textContent = 'Error reading file';
     nameEl.style.color = 'red';
     previewEl.style.display = 'none';
-    document.getElementById('editable-features-container').style.display = 'none';
+    const editableContainer = document.getElementById('counterfactual-config');
+    if (editableContainer) editableContainer.style.display = 'none';
   };
 
   reader.readAsText(file);
@@ -1752,6 +1774,8 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
 
 function buildEditableUI(features) {
   const container = document.getElementById('editable-features');
+  if (!container) return;
+  
   container.innerHTML = ''; // Clear old UI
   window.bulkFeatureChanges = {}; // Reset changes
 
@@ -1780,7 +1804,8 @@ function buildEditableUI(features) {
       slider.style.width = '100%';
 
       slider.addEventListener('input', () => {
-        document.getElementById(`${feature.name}-value`).textContent = slider.value;
+        const valueSpan = document.getElementById(`${feature.name}-value`);
+        if (valueSpan) valueSpan.textContent = slider.value;
         window.bulkFeatureChanges[feature.name] = {
           type: 'additive',
           value: parseFloat(slider.value) - (feature.mean || feature.min)
@@ -1839,7 +1864,6 @@ function buildEditableUI(features) {
     container.appendChild(wrapper);
   });
 }
-
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
   const selectedAnalysis = runButton.dataset.analysisType;
