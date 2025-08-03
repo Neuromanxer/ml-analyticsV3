@@ -1843,7 +1843,6 @@ async def what_if_analysis(
         file_path=file_path,
         train_path=train_path,
         test_path=test_path,
-        sample_id=sample_id,
         target_column=target_column,
         feature_changes=feature_changes
     )
