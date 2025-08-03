@@ -30,11 +30,11 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
 
-from .auth import get_current_active_user, get_master_db_session, User, Base
-from .preprocessing import preprocess_data
+# from .auth import get_current_active_user, get_master_db_session, User, Base
+# from .preprocessing import preprocess_data
 
-# from auth import get_current_active_user, get_master_db_session, User, Base
-# from preprocessing import preprocess_data
+from auth import get_current_active_user, get_master_db_session, User, Base
+from preprocessing import preprocess_data
 
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -566,3 +566,84 @@ Start your response with a short executive summary. Then give 3-5 **actionable r
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI call failed: {str(e)}")
+    
+from typing import Dict, Union, List
+class WhatIfInputRequest(BaseModel):
+    sample_row: Dict[str, Union[str, int, float, bool]]
+    column_stats: Dict[str, List[Union[int, float, str, None]]]  # entire column or sample window
+@router.post("/what_if/inputs/")
+async def get_bulk_editable_features(req: WhatIfInputRequest):
+    stats = req.column_stats  # dict: {feature: [val1, val2, ..., valN]}
+    editable_features = []
+
+    for name, values in stats.items():
+        if name.lower() in {"id", "target", "label"}:
+            continue
+
+        non_nulls = [v for v in values if pd.notnull(v)]
+        if len(non_nulls) < max(3, int(len(values) * 0.2)):
+            continue
+
+        dtype = None
+        sample_value = non_nulls[0]
+        if isinstance(sample_value, bool):
+            dtype = "boolean"
+        elif isinstance(sample_value, (int, float)):
+            dtype = "number"
+        elif isinstance(sample_value, str):
+            dtype = "category"
+        else:
+            continue
+
+        feature_info = {
+            "name": name,
+            "label": name.replace("_", " ").title(),
+            "type": dtype,
+        }
+
+        if dtype == "number":
+            try:
+                vals = pd.to_numeric(non_nulls)
+                series = pd.Series(vals)
+                unique_count = series.nunique()
+                q5 = float(series.quantile(0.05))
+                q95 = float(series.quantile(0.95))
+                mean = float(series.mean())
+                step = round((q95 - q5) / 50, 4)
+
+                feature_info.update({
+                    "min": q5,
+                    "max": q95,
+                    "step": step,
+                    "mean": mean,
+                })
+
+                if unique_count > 20:
+                    # Use percentage-based adjustments
+                    feature_info["adjustment_type"] = "percent"
+                    feature_info["adjustment_values"] = [5, 10, 15, -5, -10, -15]
+                else:
+                    # Use discrete adjustments
+                    feature_info["adjustment_type"] = "discrete"
+                    feature_info["adjustment_values"] = [1, 2, -1, -2]
+
+            except Exception:
+                continue
+
+        elif dtype == "category":
+            unique_vals = list(pd.Series(non_nulls).dropna().unique())
+
+            if len(unique_vals) > 1:
+                feature_info.update({
+                    "options": unique_vals,
+                    "adjustment_type": "boost_category",
+                    "recommendation_note": "Increasing frequency of this category may improve results"
+                })
+
+        elif dtype == "boolean":
+            feature_info["default"] = bool(sample_value)
+            feature_info["adjustment_type"] = "toggle"
+
+        editable_features.append(feature_info)
+
+    return {"features": editable_features}

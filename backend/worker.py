@@ -44,36 +44,36 @@ import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
 
-from .anomaly_detection import train_best_anomaly_detection
-from .preprocessing import preprocess_data
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .auth import master_db_cm
-from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-from .target import generate_customer_summary
-from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-from .preprocessing import preprocess_data
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .feature_importance import safe_generate_feature_importance
-from .clustering import run_kmeans, find_optimal_k, label_clusters_general
-from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
+# from .anomaly_detection import train_best_anomaly_detection
+# from .preprocessing import preprocess_data
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .auth import master_db_cm
+# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from .target import generate_customer_summary
+# from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+# from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+# from .preprocessing import preprocess_data
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .feature_importance import safe_generate_feature_importance
+# from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+# from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
 
 
 
 
-# from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
-# from anomaly_detection import train_best_anomaly_detection
-# from preprocessing import preprocess_data
-# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from auth import master_db_cm
-# from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-# from target import generate_customer_summary
-# from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-# from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-# from preprocessing import preprocess_data
-# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from feature_importance import safe_generate_feature_importance
-# from clustering import run_kmeans, find_optimal_k, label_clusters_general
+from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
+from anomaly_detection import train_best_anomaly_detection
+from preprocessing import preprocess_data
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from auth import master_db_cm
+from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from target import generate_customer_summary
+from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+from preprocessing import preprocess_data
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from feature_importance import safe_generate_feature_importance
+from clustering import run_kmeans, find_optimal_k, label_clusters_general
 
 # OAuth2 scheme
 # Configure logging
@@ -87,20 +87,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-celery_app = Celery(
-    "tasks",
-    broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
-    backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
-)
-
-# BROKER_URL = "redis://localhost:6379/0"
-# RESULT_BACKEND = "redis://localhost:6379/1"
-
 # celery_app = Celery(
-#     "worker",
-#     broker=BROKER_URL,
-#     backend=RESULT_BACKEND
+#     "tasks",
+#     broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
+#     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 # )
+
+BROKER_URL = "redis://localhost:6379/0"
+RESULT_BACKEND = "redis://localhost:6379/1"
+
+celery_app = Celery(
+    "worker",
+    broker=BROKER_URL,
+    backend=RESULT_BACKEND
+)
 
 import numpy as np
 
@@ -4472,9 +4472,10 @@ def do_what_if(
     test_path: str = None,
     sample_id: int = None,
     target_column: str = None,
-    feature_changes: str = ""
+    feature_changes: str = "",
+    bulk_changes: dict = None
 ) -> dict:
-    
+
     import numpy as np
     import os
     import uuid
@@ -4488,7 +4489,7 @@ def do_what_if(
     import shap
     from pathlib import Path as PathL
     from datetime import datetime
-    
+
     try:
         # ───────────── Validate upload mode ─────────────
         if file_path and (train_path or test_path):
@@ -4498,47 +4499,36 @@ def do_what_if(
         if not file_path and not (train_path and test_path):
             raise ValueError("Provide either a full dataset (file_path) or both train_path+test_path.")
 
-        # Handle file downloads from Supabase
-        # Note: file_path, train_path, test_path are now Supabase storage paths (e.g., "user123/dataset.csv")
         local_file_path = None
         local_train_path = None
         local_test_path = None
         temp_files = []
-        
-        # Create temporary directory for processing
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Download files from Supabase to temporary locations
             if file_path:
-                # Download single file from Supabase using the storage path
                 file_bytes = download_file_from_supabase(file_path)
                 local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
                 with open(local_file_path, 'wb') as f:
                     f.write(file_bytes)
                 temp_files.append(local_file_path)
-            
+
             if train_path and test_path:
-                # Download train and test files from Supabase using the storage paths
                 train_bytes = download_file_from_supabase(train_path)
                 test_bytes = download_file_from_supabase(test_path)
-                
+
                 local_train_path = os.path.join(temp_dir, os.path.basename(train_path))
                 local_test_path = os.path.join(temp_dir, os.path.basename(test_path))
-                
+
                 with open(local_train_path, 'wb') as f:
                     f.write(train_bytes)
                 with open(local_test_path, 'wb') as f:
                     f.write(test_bytes)
-                    
+
                 temp_files.extend([local_train_path, local_test_path])
-            
-            # Create temporary directories for models and outputs
+
             model_dir = os.path.join(temp_dir, "models")
             os.makedirs(model_dir, exist_ok=True)
-            
-            user_dir = PathL(temp_dir) / "user_outputs"
-            user_dir.mkdir(exist_ok=True)
 
-            # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
                 df = df.dropna(subset=[target_column])
@@ -4551,45 +4541,39 @@ def do_what_if(
                 df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
 
-            # ───────────── Load user model from Supabase ─────────────
-            model_path = None
             classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
             regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            
-            # Try to download model from Supabase if it exists
+            model_path = None
+
             try:
                 if not classifier_path.exists():
-                    # Try to download classifier model from Supabase
                     model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
                     with open(classifier_path, 'wb') as f:
                         f.write(model_bytes)
                     model_path = classifier_path
             except:
                 pass
-            
+
             try:
                 if not model_path and not regressor_path.exists():
-                    # Try to download regressor model from Supabase
                     model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
                     with open(regressor_path, 'wb') as f:
                         f.write(model_bytes)
                     model_path = regressor_path
             except:
                 pass
-            
-            # Use whichever model exists
+
             if not model_path:
                 if classifier_path.exists():
                     model_path = classifier_path
                 elif regressor_path.exists():
                     model_path = regressor_path
-            
+
             if not model_path or not model_path.exists():
                 raise ValueError("No model found")
 
             model = joblib.load(model_path)
 
-            # Get original sample
             if 'ID' in df.columns:
                 original_sample = df[df['ID'] == sample_id]
             else:
@@ -4598,148 +4582,143 @@ def do_what_if(
             if len(original_sample) == 0:
                 raise ValueError("Sample not found")
 
-            # Create modified sample
-            modified_sample = original_sample.copy()
-            changes = json.loads(feature_changes)
+            modified_df = df.copy()
+            changes = json.loads(bulk_changes) if isinstance(bulk_changes, str) else bulk_changes
+            for feature, operation in changes.items():
+                if feature not in modified_df.columns:
+                    continue
+                if isinstance(operation, dict):
+                    if 'type' in operation:
+                        op_type = operation['type']
+                        if op_type == 'percent_increase':
+                            pct = operation.get('value', 0)
+                            modified_df[feature] *= (1 + pct / 100.0)
+                        elif op_type == 'percent_decrease':
+                            pct = operation.get('value', 0)
+                            modified_df[feature] *= (1 - pct / 100.0)
+                        elif op_type == 'additive':
+                            delta = operation.get('value', 0)
+                            modified_df[feature] += delta
+                        elif op_type == 'categorical_replace':
+                            new_value = operation.get('value')
+                            modified_df[feature] = new_value
+                        elif op_type == 'categorical_boost':
+                            target_value = operation.get('value')
+                            proportion = operation.get('proportion', 0.1)
+                            idx = modified_df.sample(frac=proportion).index
+                            modified_df.loc[idx, feature] = target_value
 
-            for feature, new_value in changes.items():
-                if feature in modified_sample.columns:
-                    modified_sample[feature] = new_value
-            # ───────────── Optional: Generate Summary Stats for Modified Sample ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(modified_sample.columns):
-                    summary_stats = generate_customer_summary(modified_sample)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats not generated for modified sample.",
-                        "tip": "Ensure 'clv', 'recency', 'total_spent', and 'upsell_score' are part of the dataset."
+            feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
+            original_preds = model[0].predict(df[feature_cols])
+            modified_preds = model[0].predict(modified_df[feature_cols])
+            # ─── Segment-wise Mean Differences ───
+            if {'clv', 'recency', 'total_spent'}.issubset(df.columns):
+                from sklearn.cluster import KMeans
+                kmeans = KMeans(n_clusters=3, random_state=42)
+                df['cluster'] = kmeans.fit_predict(df[['clv', 'recency', 'total_spent']])
+                modified_df['cluster'] = df['cluster']  # keep cluster assignment consistent
+
+                cluster_summary = {}
+                for c in df['cluster'].unique():
+                    orig_cluster_mean = float(np.mean(original_preds[df['cluster'] == c]))
+                    mod_cluster_mean = float(np.mean(modified_preds[modified_df['cluster'] == c]))
+                    cluster_summary[f"cluster_{c}"] = {
+                        "original_mean": orig_cluster_mean,
+                        "modified_mean": mod_cluster_mean,
+                        "change": round(mod_cluster_mean - orig_cluster_mean, 4),
+                        "percent_change": round(((mod_cluster_mean - orig_cluster_mean) / orig_cluster_mean) * 100, 2)
                     }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Summary generation failed: {str(e)}",
-                    "tip": "Try creating these business-level features on datasets.html before running explanations."
-                }
-
-            # Get predictions for both original and modified
-            features_cols = [col for col in df.columns if col != target_column and col != 'ID']
-            original_pred = model[0].predict(original_sample[features_cols])
-            modified_pred = model[0].predict(modified_sample[features_cols])
-            prediction_diff = float(modified_pred[0]) - float(original_pred[0])
-            percent_change = (
-                (prediction_diff / float(original_pred[0])) * 100 if original_pred[0] != 0 else None
-            )
-
-            # Directional summary for the AI/UX
-            if prediction_diff > 0:
-                direction = "increase"
-            elif prediction_diff < 0:
-                direction = "decrease"
             else:
-                direction = "no change"
+                cluster_summary = {}
 
-            impact_metrics = {
-                "original_prediction": float(original_pred[0]),
-                "modified_prediction": float(modified_pred[0]),
-                "absolute_change": round(prediction_diff, 4),
-                "percent_change": round(percent_change, 2) if percent_change is not None else None,
-                "direction": direction
-            }
-
-            # Get SHAP values for both
-            explainer = shap.TreeExplainer(model[0])
-            original_shap = explainer.shap_values(original_sample[features_cols])
-            modified_shap = explainer.shap_values(modified_sample[features_cols])
-
-            # Generate comparison visualization
-            fig = plt.figure(figsize=(12, 8))
-            plt.subplot(1, 2, 1)
-            shap.waterfall_plot(
-                explainer.expected_value if isinstance(explainer.expected_value, float) else explainer.expected_value[0],
-                original_shap[0] if isinstance(original_shap, list) else original_shap[0, :],
-                original_sample[features_cols].iloc[0],
-                show=False
+            mean_diff = float(np.mean(modified_preds) - np.mean(original_preds))
+            mean_percent_change = (
+                (mean_diff / float(np.mean(original_preds))) * 100 if np.mean(original_preds) != 0 else None
             )
-            plt.title("Original Sample")
-
-            plt.subplot(1, 2, 2)
-            shap.waterfall_plot(
-                explainer.expected_value if isinstance(explainer.expected_value, float) else explainer.expected_value[0],
-                modified_shap[0] if isinstance(modified_shap, list) else modified_shap[0, :],
-                modified_sample[features_cols].iloc[0],
-                show=False
-            )
-            plt.title("Modified Sample")
-
+        
+            fig = plt.figure(figsize=(10, 5))
+            sns.kdeplot(original_preds, label="Original", fill=True)
+            sns.kdeplot(modified_preds, label="Modified", fill=True)
+            plt.legend()
+            plt.title("Prediction Distributions")
+            plt.xlabel("Predicted Value")
+            plt.ylabel("Density")
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches="tight")
             buf.seek(0)
-            comparison_base64 = base64.b64encode(buf.read()).decode()
+            dist_base64 = base64.b64encode(buf.read()).decode()
             plt.close(fig)
+            # ─── Correlation Shift Heatmap ───
+            top_features = df[feature_cols].nunique().sort_values(ascending=False).head(5).index.tolist()
 
-            # ───────────── Save metadata to Supabase ─────────────
-            try:
-                # Create entry for metadata
-                entry = {
-                    "id": str(uuid.uuid4()),
-                    "created_at": datetime.utcnow().isoformat(),
-                    "type": "what_if_analysis",
-                    "dataset": dataset_name,
-                    "parameters": {
-                        "target_column": target_column,
-                        "sample_id": sample_id,
-                        "feature_changes": changes
-                    },
-                    "thumbnailData": f"data:image/png;base64,{comparison_base64}" if comparison_base64 else "",
-                    "imageData": f"data:image/png;base64,{comparison_base64}" if comparison_base64 else "",
-                    "visualizations": {
-                        "comparison_plot": f"data:image/png;base64,{comparison_base64}"
-                    },
-                    "metrics": impact_metrics,
-                    "summary_stats": summary_stats
-                }
+            fig_corr, axes = plt.subplots(1, 2, figsize=(12, 6))
+            sns.heatmap(df[top_features].corr(), ax=axes[0], cmap="coolwarm", annot=True)
+            axes[0].set_title("Original Correlation")
 
-                try:
-                    entry = ensure_json_serializable(entry)
-                    with master_db_cm() as db:
-                        _append_limited_metadata(user_id, entry, db=db, max_entries=5)
-                except Exception as meta_error:
-                    print(f"[⚠️] Metadata save error: {meta_error}")
+            sns.heatmap(modified_df[top_features].corr(), ax=axes[1], cmap="coolwarm", annot=True)
+            axes[1].set_title("Modified Correlation")
 
-            except Exception as meta_error:
-                print(f"[⚠️] Metadata save error: {meta_error}")
+            buf2 = io.BytesIO()
+            plt.tight_layout()
+            plt.savefig(buf2, format='png')
+            buf2.seek(0)
+            corr_base64 = base64.b64encode(buf2.read()).decode()
+            plt.close(fig_corr)
+            # Estimate revenue impact
+            impact_metrics = {
+                "original_mean": float(np.mean(original_preds)),
+                "modified_mean": float(np.mean(modified_preds)),
+                "absolute_change": round(mean_diff, 4),
+                "percent_change": round(mean_percent_change, 2) if mean_percent_change is not None else None,
+                "direction": "increase" if mean_diff > 0 else "decrease" if mean_diff < 0 else "no change"
+            }
+            revenue_per_conversion = 20  # <-- optional, make dynamic later
+            estimated_roi = mean_diff * len(df) * revenue_per_conversion
+            impact_metrics["estimated_revenue_impact"] = round(estimated_roi, 2)
+            # ─── Narrative Insight Generation ───
+            insights = []
+            if impact_metrics["direction"] == "increase":
+                insights.append("📈 The overall prediction mean increased after the applied changes.")
+            elif impact_metrics["direction"] == "decrease":
+                insights.append("📉 The average outcome decreased, potentially signaling a negative shift.")
+            else:
+                insights.append("⏸️ No significant change in average prediction after modifications.")
 
-            # ───────────── Build response ─────────────
+            for f, op in changes.items():
+                if isinstance(op, dict):
+                    if op.get("type") in {"percent_increase", "additive"}:
+                        insights.append(f"🔧 Increasing '{f}' was associated with a {impact_metrics['direction']} in outcome.")
+                    elif op.get("type") in {"percent_decrease"}:
+                        insights.append(f"📉 Decreasing '{f}' led to a {impact_metrics['direction']} as well.")
+                    elif op.get("type") == "categorical_replace":
+                        insights.append(f"🔄 Changing '{f}' to '{op.get('value')}' was applied across the dataset.")
+
             response_data = {
                 "status": "success",
                 "user_id": user_id,
                 "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
-                "type": "what_if_analysis",
+                "type": "bulk_what_if_analysis",
                 "dataset": dataset_name,
                 "parameters": {
                     "target_column": target_column,
-                    "sample_id": sample_id,
-                    "feature_changes": changes
+                    "bulk_changes": changes
                 },
-                "original_prediction": float(original_pred[0]),
-                "modified_prediction": float(modified_pred[0]),
-                "feature_changes": changes,
-                "visualization": f"data:image/png;base64,{comparison_base64}",
                 "metrics": impact_metrics,
                 "visualizations": {
-                    "comparison_plot": f"data:image/png;base64,{comparison_base64}"
+                    "distribution_plot": f"data:image/png;base64,{dist_base64}",
+                    "correlation_shift": f"data:image/png;base64,{corr_base64}"
                 },
-                "insights": {}
+                "cluster_summary": cluster_summary,
+                "insights": insights
             }
 
-
-            # Return full response
             return response_data
 
     except Exception as e:
         print(f"[⚠️] Error in do_what_if: {e}")
         raise ValueError(f"What-if analysis failed: {str(e)}")
+
 def do_risk_analysis(
     user_id: str,
     current_user: dict = None,
@@ -5443,6 +5422,82 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
         traceback.print_exc()
         return False
 
+def run_ab_test(
+    user_id: str,
+    file_path: str,
+    target_column: str = "converted",
+    variant_column: str = "variant",
+    drop_columns: str = "",
+    current_user: dict = None
+) -> dict:
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download dataset
+            file_bytes = download_file_from_supabase(file_path)
+            local_path = os.path.join(temp_dir, os.path.basename(file_path))
+            with open(local_path, 'wb') as f:
+                f.write(file_bytes)
+
+            df = pd.read_csv(local_path)
+            if drop_columns:
+                drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
+                df.drop(columns=[c for c in drops if c in df.columns], inplace=True)
+
+            if target_column not in df.columns or variant_column not in df.columns:
+                raise ValueError(f"Columns '{target_column}' and/or '{variant_column}' not found in dataset.")
+
+            df = df.dropna(subset=[target_column, variant_column])
+            df[target_column] = df[target_column].astype(int)
+
+            # Group and summarize
+            summary = df.groupby(variant_column)[target_column].agg(["count", "sum"])
+            summary.columns = ["total_users", "conversions"]
+            summary["conversion_rate"] = summary["conversions"] / summary["total_users"]
+
+            # Run Chi-squared test
+            contingency = pd.crosstab(df[variant_column], df[target_column])
+            chi2, p_value, _, _ = chi2_contingency(contingency)
+
+            # Choose best variant
+            best_variant = summary["conversion_rate"].idxmax()
+            lift = summary.loc[best_variant, "conversion_rate"] - summary["conversion_rate"].min()
+
+            entry = {
+                "id": str(uuid.uuid4()),
+                "created_at": datetime.utcnow().isoformat(),
+                "type": "ab_test",
+                "dataset": os.path.basename(file_path),
+                "target_column": target_column,
+                "variant_column": variant_column,
+                "summary_stats": summary.reset_index().to_dict("records"),
+                "p_value": round(p_value, 6),
+                "winner": best_variant,
+                "lift": round(lift * 100, 2),
+                "conversion_rate": {
+                    var: round(rate * 100, 2)
+                    for var, rate in summary["conversion_rate"].items()
+                },
+                "insights": f"Variant '{best_variant}' performed best with {round(lift*100, 2)}% higher conversion rate.",
+            }
+
+            entry = ensure_json_serializable(entry)
+
+            # Save metadata
+            from db.session import master_db_cm
+            with master_db_cm() as db:
+                _append_limited_metadata(user_id, entry, db=db, max_entries=5)
+
+            return {
+                "status": "success",
+                "id": entry["id"],
+                "user_id": user_id,
+                **entry
+            }
+
+    except Exception as e:
+        print(f"[⚠️] Error in run_ab_test: {e}")
+        raise e
 
 @celery_app.task
 def run_classification(
@@ -5875,3 +5930,24 @@ def run_forecast(
             "error": error_msg,
             "user_id": user_id
         }
+@celery_app.task
+def run_ab_test_task(
+    user_id: str,
+    file_path: str,
+    target_column: str = "converted",
+    variant_column: str = "variant",
+    drop_columns: str = "",
+    current_user: dict = None
+):
+    import time
+    time.sleep(1)  # Optional: rate-limiting, simulate delay
+    
+    # Delegate to full implementation
+    return run_ab_test(
+        user_id=user_id,
+        file_path=file_path,
+        target_column=target_column,
+        variant_column=variant_column,
+        drop_columns=drop_columns,
+        current_user=current_user
+    )

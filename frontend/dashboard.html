@@ -636,7 +636,168 @@
       color: #0099ff;
       animation: spin 1s linear infinite;
     }
-    
+      /* Enhanced Editable What-If Panel */
+        #editable-features {
+            padding: 25px;
+            background: linear-gradient(135deg, #f8fcff 0%, #f0f9ff 100%);
+            border: 1px solid rgba(0, 153, 255, 0.15);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 153, 255, 0.08);
+            font-family: 'Poppins', sans-serif;
+            margin-bottom: 20px;
+        }
+
+        /* Each input wrapper */
+        .editable-control {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(0, 153, 255, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .editable-control:hover {
+            box-shadow: 0 4px 16px rgba(0, 153, 255, 0.12);
+            border-color: rgba(0, 153, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* Label styling */
+        .editable-control label {
+            font-weight: 600;
+            font-size: 14px;
+            color: #0066cc;
+            margin-bottom: 12px;
+            display: block;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* Sliders */
+        .editable-control input[type="range"] {
+            width: 100%;
+            appearance: none;
+            height: 8px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, #e6f7ff 0%, #cce7ff 100%);
+            outline: none;
+            transition: all 0.3s ease;
+            margin: 10px 0;
+        }
+
+        .editable-control input[type="range"]:hover {
+            background: linear-gradient(90deg, #cce7ff 0%, #b3daff 100%);
+        }
+
+        .editable-control input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 153, 255, 0.3);
+        }
+
+        .editable-control input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.4);
+        }
+
+        .editable-control input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 153, 255, 0.3);
+        }
+
+        /* Value display for sliders */
+        .editable-control span {
+            background: linear-gradient(135deg, #0099ff, #0066cc);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+            display: inline-block;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        /* Dropdowns */
+        .editable-control select {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid rgba(0, 153, 255, 0.15);
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
+            color: #333;
+            font-family: 'Poppins', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .editable-control select:focus {
+            border-color: #0099ff;
+            box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.1);
+            background: white;
+        }
+
+        .editable-control select:hover {
+            border-color: rgba(0, 153, 255, 0.3);
+            background: white;
+        }
+
+        /* Toggle (boolean) */
+        .editable-control input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-left: 12px;
+            cursor: pointer;
+            accent-color: #0099ff;
+            transform: scale(1.2);
+            transition: all 0.3s ease;
+        }
+
+        .editable-control input[type="checkbox"]:hover {
+            transform: scale(1.3);
+        }
+
+        /* Analysis-Specific Configuration */
+        #analysis-specific-config {
+            margin-top: 20px;
+        }
+
+        .config-section {
+            background: linear-gradient(135deg, #f8fcff 0%, #f0f9ff 100%);
+            border: 1px solid rgba(0, 153, 255, 0.15);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 153, 255, 0.08);
+        }
+
+        .config-section h3 {
+            color: #0066cc;
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -699,6 +860,22 @@
             cursor: pointer;
             font-size: 1.2rem;
         }
+                    .input-row {
+                flex-direction: column;
+            }
+            
+            .input-group {
+                min-width: auto;
+            }
+            
+            #editable-features {
+                padding: 20px;
+            }
+            
+            .editable-control {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
     }
 
     .mobile-toggle {
@@ -975,23 +1152,10 @@
             </div>
           </div>
 
-          <!-- Counterfactual Specific -->
-          <div id="counterfactual-config" class="config-section" style="display: none;">
-            <h3>Counterfactual Settings</h3>
-            <div class="input-row">
-              <div class="input-group">
-                <label for="desired-outcome">Desired Outcome</label>
-                <input type="text" id="desired-outcome" placeholder="e.g., 0 (no churn), 1 (purchase)">
-                <small class="help-text">The target outcome you want to achieve</small>
-              </div>
-              <div class="input-group">
-                <label for="editable-features">Editable Features</label>
-                <input type="text" id="editable-features" placeholder="Features you can modify">
-                <small class="help-text">Which inputs can be changed to influence outcome</small>
-              </div>
-            </div>
+          <div id="counterfactual-config;" class="config-section mt-4">
+            <h3>✏️ Editable Features</h3>
+            <div id="editable-features"></div>
           </div>
-        </div>
 
         <div class="config-actions">
           <button class="btn secondary" onclick="resetConfiguration()">Reset</button>
@@ -1065,7 +1229,12 @@
               <button id="btn-counterfactual" class="btn analysis-btn" data-category="advanced">
                 <i class="fas fa-random"></i>
                 <span>Counterfactual</span>
-                <small>What-if scenarios</small>
+                <small>Smallest Change You Need</small>
+              </button>
+              <button id="btn-what-if" class="btn analysis-btn" data-category="advanced">
+                <i class="fas fa-vial"></i>
+                <span>What-If Bulk</span>
+                <small>Mass-level simulation</small>
               </button>
               <button id="btn-segments" class="btn analysis-btn" data-category="advanced">
                 <i class="fas fa-users"></i>
@@ -1136,8 +1305,8 @@
 
   <script>
 
-  // const API_BASE_URL = 'http://127.0.0.1:8000';
-  const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+  const API_BASE_URL = 'http://127.0.0.1:8000';
+  // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
       // Inputs & preview elements
     const fullInput  = document.getElementById('full-input');
     const trainInput = document.getElementById('train-input');
@@ -1179,6 +1348,7 @@
   survival:               '/survival/',
   classification_predict: '/classification/predict/',
   regression_predict: '/regression/predict/',
+    what_if:                '/what_if/'         // ✅ Add this line
 };
   // Show error message
   function showError(message) {
@@ -1376,7 +1546,9 @@ document.getElementById('btn-time-series-analysis').addEventListener('click', ()
 document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
 document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
 document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
-  fullInput.addEventListener('change', function() {
+document.getElementById('btn-what-if').addEventListener('click', () => selectAnalysisMethod('what_if'));
+  
+fullInput.addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;
 
@@ -1482,57 +1654,191 @@ function signOutUser() {
     window.location.href = "/index.html"; // Adjust the path if needed
 }
 
-    // Core parser + previewer
-    function parseAndPreview(file, nameEl, previewEl, tableEl) {
-      const analysisButtons = document.querySelectorAll('.analysis-btn');
-      nameEl.textContent = file.name;
-      nameEl.style.color = '#0066cc';
-      const reader = new FileReader();
+function parseAndPreview(file, nameEl, previewEl, tableEl) {
+  const reader = new FileReader();
+  const API_BASE_URL = "/api";  // Use your actual deployed URL if needed
+  reader.onload = async function (e) {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    const editableContainer = document.getElementById('counterfactual-config');
+    const editableArea = document.getElementById('editable-features');
 
-      reader.onload = function(e) {
-        const text = e.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (!lines.length) {
-          nameEl.textContent = 'File is empty';
-          nameEl.style.color = 'red';
-          previewEl.style.display = 'none';
-          return;
-        }
+    if (!lines.length) {
+      nameEl.textContent = 'File is empty';
+      nameEl.style.color = 'red';
+      previewEl.style.display = 'none';
+      editableContainer.style.display = 'none';
+      return;
+    }
 
-        // choose delimiter
-        let delim = ',';
-        if (file.name.toLowerCase().endsWith('.txt')) {
-          delim = lines[0].includes('\t') ? '\t' : /\s+/;
-        }
-
-        const headers = lines[0].split(delim).map(h => h.trim());
-        const maxRows = Math.min(5, lines.length - 1);
-
-        // build table
-        let html = '<thead><tr>' +
-                  headers.map(h => `<th>${h}</th>`).join('') +
-                  '</tr></thead><tbody>';
-
-        for (let i = 1; i <= maxRows; i++) {
-          const cells = lines[i].split(delim).map(c => c.trim());
-          html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
-        }
-        html += '</tbody>';
-
-        tableEl.innerHTML = html;
-        previewEl.style.display = 'block';
-      };
-
-      reader.onerror = function() {
-        nameEl.textContent = 'Error reading file';
-        nameEl.style.color = 'red';
-        previewEl.style.display = 'none';
-      };
-
-      reader.readAsText(file);
+    // Only allow editable panel for these analysis modes
+    const allowedModes = ["counterfactual", "classification-predict", "regression-predict", "feature-impact"];
+    if (!allowedModes.includes(selectedAnalysisMethod)) {
+      editableContainer.style.display = 'none';
     }
 
 
+    // Determine delimiter
+    let delim = ',';
+    if (file.name.toLowerCase().endsWith('.txt')) {
+      delim = lines[0].includes('\t') ? '\t' : /\s+/;
+    }
+
+    const headers = lines[0].split(delim).map(h => h.trim());
+    const dataRows = lines.slice(1).map(line => line.split(delim).map(c => c.trim()));
+
+    // Skip invalid rows
+    const validRows = dataRows.filter(row => row.length === headers.length);
+    if (!validRows.length) return;
+
+    // Show preview table
+    let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+    for (let i = 0; i < Math.min(validRows.length, 5); i++) {
+      const cells = validRows[i];
+      html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+    }
+    html += '</tbody>';
+    tableEl.innerHTML = html;
+    previewEl.style.display = 'block';
+
+    // Compute column stats (based on first 100 rows)
+    const colStats = {};
+    const maxStatsRows = 100;
+    headers.forEach((h, idx) => {
+      colStats[h] = validRows.slice(0, maxStatsRows).map(row => {
+        const val = row[idx];
+        if (!isNaN(val) && val.trim() !== "") return parseFloat(val);
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+        return val;
+      });
+    });
+
+    // Request editable feature suggestions (bulk)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          column_stats: colStats
+        })
+      });
+
+      const result = await response.json();
+      if (!result.features || !result.features.length) {
+        editableContainer.style.display = 'none';
+        return;
+      }
+
+      editableArea.innerHTML = '';
+      editableContainer.style.display = 'block';
+      buildEditableUI(result.features); // This function renders sliders/toggles/etc.
+
+    } catch (err) {
+      console.error("Failed to fetch editable config", err);
+      editableContainer.style.display = 'none';
+    }
+  };
+
+  reader.onerror = function () {
+    nameEl.textContent = 'Error reading file';
+    nameEl.style.color = 'red';
+    previewEl.style.display = 'none';
+    document.getElementById('editable-features-container').style.display = 'none';
+  };
+
+  reader.readAsText(file);
+}
+
+function buildEditableUI(features) {
+  const container = document.getElementById('editable-features');
+  container.innerHTML = ''; // Clear old UI
+  window.bulkFeatureChanges = {}; // Reset changes
+
+  features.forEach(feature => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'editable-control';
+    wrapper.style.marginBottom = '15px';
+
+    // ----------- LABEL -----------
+    const label = document.createElement('label');
+    label.style.display = 'block';
+    label.style.marginBottom = '4px';
+    label.style.fontWeight = 'bold';
+
+    // ----------- NUMERIC SLIDER -----------
+    if (feature.type === 'number') {
+      label.innerHTML = `${feature.label || feature.name}: <span id="${feature.name}-value">${feature.mean || feature.min}</span>`;
+      
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = feature.min;
+      slider.max = feature.max;
+      slider.step = feature.step || 1;
+      slider.value = feature.mean || feature.min;
+      slider.id = `${feature.name}-slider`;
+      slider.style.width = '100%';
+
+      slider.addEventListener('input', () => {
+        document.getElementById(`${feature.name}-value`).textContent = slider.value;
+        window.bulkFeatureChanges[feature.name] = {
+          type: 'additive',
+          value: parseFloat(slider.value) - (feature.mean || feature.min)
+        };
+      });
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(slider);
+    }
+
+    // ----------- CATEGORICAL DROPDOWN -----------
+    else if (feature.type === 'category') {
+      label.textContent = `${feature.label || feature.name}:`;
+
+      const select = document.createElement('select');
+      select.id = `${feature.name}-select`;
+      select.style.width = '100%';
+
+      feature.options.forEach(option => {
+        const opt = document.createElement('option');
+        opt.value = option;
+        opt.textContent = option;
+        select.appendChild(opt);
+      });
+
+      select.addEventListener('change', () => {
+        window.bulkFeatureChanges[feature.name] = {
+          type: 'categorical_replace',
+          value: select.value
+        };
+      });
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(select);
+    }
+
+    // ----------- BOOLEAN TOGGLE -----------
+    else if (feature.type === 'boolean') {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = feature.default ?? true;
+      checkbox.style.marginLeft = '8px';
+
+      checkbox.addEventListener('change', () => {
+        window.bulkFeatureChanges[feature.name] = {
+          type: 'categorical_replace',
+          value: checkbox.checked
+        };
+      });
+
+      label.textContent = `${feature.label || feature.name}:`;
+      label.appendChild(checkbox);
+      wrapper.appendChild(label);
+    }
+
+    container.appendChild(wrapper);
+  });
+}
 
 function prepareAndRunAnalysis() {
   const runButton = document.getElementById('run-analysis-btn');
@@ -1692,7 +1998,19 @@ function prepareAndRunAnalysis() {
         drop_columns: dropCols
       });
       break;
-      
+    case 'what-if':
+      if (!targetCol) return showError('Please specify the target column for What-If analysis.');
+      if (!window.bulkFeatureChanges || Object.keys(window.bulkFeatureChanges).length === 0) {
+      return showError('Please specify at least one bulk feature change.');
+    }
+
+    callRealAPI('what_if', {
+      target_column: targetCol,
+      drop_columns: dropCols,
+      bulk_changes: window.bulkFeatureChanges
+    });
+
+    break;
     default:
       showError(`Unknown analysis type: ${selectedAnalysis}`);
   }
@@ -2243,6 +2561,32 @@ function displayResults(endpoint, data) {
         }
       }
   break;
+  case 'what-if':
+    metricsDetails.innerHTML = buildMetricsHtml(data);
+
+    // Add distribution visualization
+    if (data.visualizations?.distribution_plot) {
+      addVisualization('📈 Prediction Distribution Shift', data.visualizations.distribution_plot);
+    }
+
+    // Add correlation shift visualization
+    if (data.visualizations?.correlation_shift) {
+      addVisualization('🔀 Correlation Shift', data.visualizations.correlation_shift);
+    }
+
+    // Show cluster summary if available
+    if (data.cluster_summary) {
+      addTextBlock('📊 Cluster Summary', `<pre>${data.cluster_summary}</pre>`);
+    }
+
+    // Show AI-generated insights
+    if (data.insights && data.insights.length) {
+      const insightsHtml = data.insights.map(insight => `<li>${insight}</li>`).join('');
+      addTextBlock('🧠 Insights', `<ul>${insightsHtml}</ul>`);
+    }
+
+  break;
+
 
     default:
       modelDetails.innerHTML += '<p>No renderer defined for this analysis.</p>';

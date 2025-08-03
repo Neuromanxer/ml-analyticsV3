@@ -33,9 +33,9 @@ from pydantic import BaseModel, Field, EmailStr
 from dotenv import load_dotenv
 
 
-from .storage import supabase
+# from .storage import supabase
 
-# from storage import supabase
+from storage import supabase
 
 
 
@@ -50,7 +50,7 @@ POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.environ.get("POSTGRES_USER", "ethanhong")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "printing")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
-MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "master_ml_insights")
+MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "ml_insights_db")
 
 # Master database for user management
 MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
@@ -343,11 +343,7 @@ def authenticate_user(email: str, password: str, db: Session):
     email = email.strip().lower()  # sanitize
 
     # Print all users in the DB (for debugging)
-    all_users = db.query(User).all()
-    print("📋 All users in database:")
-    for u in all_users:
-        print(f"- ID: {u.id}, Email: {u.email}, Hashed: {u.hashed_password}")
-    print("💾 DB in use:", db.bind.url)
+
     # Now attempt to find the user
     user = get_user_by_email(db, email)
     
@@ -355,20 +351,9 @@ def authenticate_user(email: str, password: str, db: Session):
         print(f"❌ User NOT found for: {email}")
         return False
 
-    print(f"✅ User found: {user.email}")
-    print("🔐 Verifying login for:", email)
-    print("Plain:", password)
-
     hashed_input = get_password_hash(password)
-    print("Live Hashed Input (new hash):", hashed_input)
-    print("Stored Hash:", user.hashed_password)
 
     match = verify_password(password, user.hashed_password)
-    print("Match:", match)
-
-    if not match:
-        print("❌ Password did not match.")
-        return False
 
     print("✅ Password verified.")
     return user
@@ -495,16 +480,21 @@ class PasswordResetRequest(BaseModel):
 import smtplib
 from email.message import EmailMessage
 import os
+import smtplib
+import ssl
+from email.message import EmailMessage
+
 async def send_email(to_email: str, subject: str, body: str):
     print("🚀 Attempting to send email via SMTP...")
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = os.getenv("SMTP_FROM_EMAIL")
+    msg["From"] = os.getenv("SMTP_USERNAME")  # use the same email you log in with
     msg["To"] = to_email
     msg.set_content(body)
 
     try:
-        with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465) as server:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(os.getenv("SMTP_HOST"), port=465, context=context) as server:
             server.login(os.getenv("SMTP_USERNAME"), os.getenv("SMTP_PASSWORD"))
             server.send_message(msg)
         print("✅ SMTP email sent.")
@@ -514,6 +504,7 @@ async def send_email(to_email: str, subject: str, body: str):
 
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+
 async def sendgrid_email(to_email: str, subject: str, body: str):
     message = Mail(
         from_email=os.getenv("SENDGRID_FROM_EMAIL"),
@@ -524,18 +515,14 @@ async def sendgrid_email(to_email: str, subject: str, body: str):
 
     try:
         sg = SendGridAPIClient(api_key=os.getenv("SENDGRID_API_KEY"))
-
-        # Set EU region if applicable
-        if os.getenv("SENDGRID_REGION", "").lower() == "eu":
-            sg.set_sendgrid_data_residency("eu")
-
         response = sg.send(message)
-        print(f"Email sent to {to_email} - Status Code: {response.status_code}")
+        print(f"✅ SendGrid email sent to {to_email} - Status Code: {response.status_code}")
         print(response.body)
         print(response.headers)
-
     except Exception as e:
-        print(f"SendGrid Error: {str(e)}")
+        print(f"❌ SendGrid Error: {str(e)}")
+        raise
+
 @router.post("/request-password-reset")
 async def request_password_reset(
     req: PasswordResetRequest,
@@ -543,9 +530,7 @@ async def request_password_reset(
 ):
     sanitized_email = str(req.email).lower().strip()
     user = get_user_by_email(db, sanitized_email)
-    print(f"DB Session: {db}")
-    print(f"Sanitized Email: {sanitized_email}")
-    print("💾 DB in use:", db.bind.url)
+
     if not user:
         # Return the same generic response to avoid revealing valid emails
         return {"message": "If this email exists, you will receive reset instructions."}
