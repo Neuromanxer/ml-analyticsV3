@@ -1333,23 +1333,24 @@
     const token  = safeStorageGet('access_token');
     const analysisButtons = document.querySelectorAll('.analysis-btn');
     const runButton = document.getElementById('run-analysis-btn');
-        // 1) Map your friendly endpoint names to their paths
-  const endpointMap = {
-  regression:             '/regression/',
-  classification:         '/classification/',
-  clustering:             '/cluster/',
-  visualize:              '/visualize/',
-  'feature-impact':       '/feature_impact/',
-  counterfactual:         '/counterfactual/',
-  segments:               '/segment_analysis/',
-  risk:                   '/risk_analysis/',
-  'decision-paths':       '/decision_paths/',
-  'time-series-analysis': '/forecast/',
-  survival:               '/survival/',
-  classification_predict: '/classification/predict/',
-  regression_predict: '/regression/predict/',
-    what_if:                '/what_if/'         // ✅ Add this line
-};
+    // 1) Map your friendly endpoint names to their paths
+    const endpointMap = {
+      regression:             '/regression/',
+      classification:         '/classification/',
+      clustering:             '/cluster/',
+      visualize:              '/visualize/',
+      'feature-impact':       '/feature_impact/',
+      counterfactual:         '/counterfactual/',
+      segments:               '/segment_analysis/',
+      risk:                   '/risk_analysis/',
+      'decision-paths':       '/decision_paths/',
+      'time-series-analysis': '/forecast/',
+      survival:               '/survival/',
+      'classification-predict': '/classification/predict/',
+      'regression-predict':     '/regression/predict/',
+      'what-if':                '/what_if/'     // ✅ Fixed key to match btn-what-if
+    };
+
   // Show error message
   function showError(message) {
     errorMessage.textContent = message;
