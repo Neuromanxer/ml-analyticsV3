@@ -1658,7 +1658,7 @@ function signOutUser() {
 function parseAndPreview(file, nameEl, previewEl, tableEl) {
   nameEl.textContent = file.name;
   nameEl.style.color = '#0066cc';
-  
+  const selectedAnalysis = runButton.dataset.analysisType;
   const reader = new FileReader();
   const API_BASE_URL = "/api";  // Use your actual deployed URL if needed
   
@@ -1679,7 +1679,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     // Only allow editable panel for these analysis modes
     const allowedModes = ["what_if"];
     if (editableContainer) {
-      if (!allowedModes.includes(selectedAnalysisMethod)) {
+      if (!allowedModes.includes(selectedAnalysis)) {
         editableContainer.style.display = 'none';
       }
     }
@@ -1714,7 +1714,7 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     previewEl.style.display = 'block';
 
     // Only proceed with editable features if the container exists and mode is allowed
-    if (!editableContainer || !editableArea || !allowedModes.includes(selectedAnalysisMethod)) {
+    if (!editableContainer || !editableArea || !allowedModes.includes(selectedAnalysis)) {
       return;
     }
 
