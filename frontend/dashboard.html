@@ -1748,6 +1748,252 @@ function computeColumnStats(headers, rows) {
   });
   return colStats;
 }
+// 2. THE CRITICAL MISSING FUNCTIONS IN YOUR buildEditableUI():
+function createFeatureControl(feature, index) {
+  const controlDiv = document.createElement('div');
+  controlDiv.className = 'feature-control mb-3 p-3 border rounded';
+  
+  let controlHTML = '';
+  
+  switch(feature.type) {
+    case 'numeric':
+      const min = feature.min_value || 0;
+      const max = feature.max_value || 100;
+      const current = feature.current_value || feature.default_value || min;
+      const step = feature.step || ((max - min) / 100);
+      
+      controlHTML = `
+        <div class="row align-items-center">
+          <div class="col-md-3">
+            <label class="form-label fw-bold">${feature.name}</label>
+            <small class="text-muted d-block">Range: ${min} - ${max}</small>
+          </div>
+          <div class="col-md-6">
+            <input type="range" 
+                   class="form-range" 
+                   id="feature-${index}"
+                   data-feature-name="${feature.name}"
+                   min="${min}" 
+                   max="${max}"
+                   value="${current}"
+                   step="${step}">
+          </div>
+          <div class="col-md-3">
+            <input type="number" 
+                   class="form-control form-control-sm"
+                   id="value-${index}"
+                   min="${min}" 
+                   max="${max}"
+                   value="${current}"
+                   step="${step}">
+          </div>
+        </div>
+      `;
+      break;
+      
+    case 'categorical':
+      const options = feature.categories?.map(cat => 
+        `<option value="${cat}" ${cat === feature.current_value ? 'selected' : ''}>${cat}</option>`
+      ).join('') || '';
+      
+      controlHTML = `
+        <div class="row align-items-center">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">${feature.name}</label>
+          </div>
+          <div class="col-md-8">
+            <select class="form-select" data-feature-name="${feature.name}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      `;
+      break;
+      
+    case 'boolean':
+      controlHTML = `
+        <div class="form-check">
+          <input class="form-check-input" 
+                 type="checkbox" 
+                 id="feature-${index}"
+                 data-feature-name="${feature.name}"
+                 ${feature.current_value ? 'checked' : ''}>
+          <label class="form-check-label fw-bold" for="feature-${index}">
+            ${feature.name}
+          </label>
+        </div>
+      `;
+      break;
+  }
+  
+  controlDiv.innerHTML = controlHTML;
+  
+  // Add event listeners for this control
+  addFeatureControlListeners(controlDiv, feature, index);
+  
+  return controlDiv;
+}
+
+// 3. EVENT LISTENERS FOR FEATURE CONTROLS
+function addFeatureControlListeners(controlDiv, feature, index) {
+  const featureName = feature.name;
+  
+  if (feature.type === 'numeric') {
+    const rangeInput = controlDiv.querySelector(`#feature-${index}`);
+    const numberInput = controlDiv.querySelector(`#value-${index}`);
+    
+    // Sync range and number inputs
+    rangeInput?.addEventListener('input', function() {
+      numberInput.value = this.value;
+      updateFeatureValue(featureName, parseFloat(this.value));
+    });
+    
+    numberInput?.addEventListener('input', function() {
+      rangeInput.value = this.value;
+      updateFeatureValue(featureName, parseFloat(this.value));
+    });
+    
+  } else if (feature.type === 'categorical') {
+    const selectInput = controlDiv.querySelector('select');
+    selectInput?.addEventListener('change', function() {
+      updateFeatureValue(featureName, this.value);
+    });
+    
+  } else if (feature.type === 'boolean') {
+    const checkboxInput = controlDiv.querySelector(`#feature-${index}`);
+    checkboxInput?.addEventListener('change', function() {
+      updateFeatureValue(featureName, this.checked);
+    });
+  }
+}
+
+// 4. UPDATE FEATURE VALUE FUNCTION (MISSING)
+function updateFeatureValue(featureName, value) {
+  if (!window.bulkFeatureChanges) {
+    window.bulkFeatureChanges = {};
+  }
+  
+  window.bulkFeatureChanges[featureName] = value;
+  console.log(`Updated ${featureName} to:`, value);
+  
+  // Update any summary display
+  updateChangeSummary();
+}
+
+// 5. CONTROL BUTTONS FUNCTION (MISSING)
+function createControlButtons(features) {
+  const buttonDiv = document.createElement('div');
+  buttonDiv.className = 'control-buttons mt-4 p-3 bg-light rounded';
+  
+  buttonDiv.innerHTML = `
+    <div class="row">
+      <div class="col-md-8">
+        <div id="change-summary" class="text-muted small">
+          No changes made yet
+        </div>
+      </div>
+      <div class="col-md-4 text-end">
+        <button class="btn btn-outline-secondary btn-sm me-2" onclick="resetWhatIfChanges()">
+          <i class="fas fa-undo"></i> Reset
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="applyWhatIfChanges()">
+          <i class="fas fa-play"></i> Apply Changes
+        </button>
+      </div>
+    </div>
+  `;
+  
+  return buttonDiv;
+}
+
+// 6. MISSING UTILITY FUNCTIONS
+function updateChangeSummary() {
+  const summaryDiv = document.getElementById('change-summary');
+  if (!summaryDiv) return;
+  
+  const changes = window.bulkFeatureChanges || {};
+  const changeCount = Object.keys(changes).length;
+  
+  if (changeCount === 0) {
+    summaryDiv.textContent = 'No changes made yet';
+    summaryDiv.className = 'text-muted small';
+  } else {
+    summaryDiv.textContent = `${changeCount} feature${changeCount > 1 ? 's' : ''} modified`;
+    summaryDiv.className = 'text-info small fw-bold';
+  }
+}
+
+function resetWhatIfChanges() {
+  window.bulkFeatureChanges = {};
+  
+  // Reset all form controls to their original values
+  document.querySelectorAll('#editable-features input, #editable-features select').forEach(input => {
+    if (input.type === 'range' || input.type === 'number') {
+      input.value = input.defaultValue;
+    } else if (input.type === 'checkbox') {
+      input.checked = input.defaultChecked;
+    } else if (input.tagName === 'SELECT') {
+      input.selectedIndex = 0;
+    }
+  });
+  
+  updateChangeSummary();
+  console.log('What-if changes reset');
+}
+
+function applyWhatIfChanges() {
+  const changes = window.bulkFeatureChanges || {};
+  
+  if (Object.keys(changes).length === 0) {
+    showError('No changes to apply');
+    return;
+  }
+  
+  console.log('Applying what-if changes:', changes);
+  
+  // This should trigger your main analysis with the changes
+  // You need to modify your existing runAnalysis function to use these changes
+  runAnalysisWithWhatIfChanges(changes);
+}
+
+// 7. INTEGRATION WITH YOUR EXISTING ANALYSIS SYSTEM
+function runAnalysisWithWhatIfChanges(changes) {
+  // Get the currently selected analysis type
+  const runButton = document.getElementById('run-analysis-btn');
+  const analysisType = runButton?.dataset.analysisType;
+  
+  if (!analysisType) {
+    showError('No analysis method selected');
+    return;
+  }
+  
+  // Show loading state
+  showLoading('Applying what-if changes and running analysis...');
+  
+  // Your existing runAnalysis function needs to be modified to accept what-if changes
+  // Something like:
+  const analysisConfig = {
+    analysis_type: analysisType,
+    what_if_changes: changes,
+    // ... other config
+  };
+  
+  // Call your existing analysis endpoint with the what-if changes
+  fetch(`${API_BASE_URL}/api/run_analysis/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(analysisConfig)
+  })
+  .then(response => response.json())
+  .then(results => {
+    hideLoading();
+    displayAnalysisResults(results);
+  })
+  .catch(error => {
+    hideLoading();
+    showError('Analysis failed: ' + error.message);
+  });
+}
 function buildEditableUI(features) {
   const container = document.getElementById('editable-features');
   if (!container) {
@@ -1795,102 +2041,6 @@ function buildEditableUI(features) {
   // Add control buttons
   const buttonContainer = createControlButtons(features);
   container.appendChild(buttonContainer);
-}
-
-function createFeatureControl(feature, index) {
-  // Validate feature object
-  if (!feature || !feature.name) {
-    console.warn('Invalid feature object:', feature);
-    return null;
-  }
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'editable-control';
-  wrapper.style.cssText = `
-    margin-bottom: 25px;
-    padding: 20px;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    background-color: #fafafa;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  `;
-  wrapper.setAttribute('data-feature-name', feature.name);
-
-  const header = document.createElement('div');
-  header.style.cssText = `
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-  `;
-
-  const label = document.createElement('label');
-  label.style.cssText = `
-    font-weight: 600;
-    color: #333;
-    font-size: 16px;
-    margin: 0;
-  `;
-  label.textContent = feature.label || feature.name;
-
-  // Add feature info badge
-  const infoBadge = document.createElement('span');
-  infoBadge.style.cssText = `
-    background: #e3f2fd;
-    color: #1976d2;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-  `;
-  infoBadge.textContent = feature.type;
-
-  header.appendChild(label);
-  header.appendChild(infoBadge);
-  wrapper.appendChild(header);
-
-  // Create appropriate control based on feature type
-  let controlElement;
-  switch (feature.type) {
-    case 'numeric':
-      controlElement = createNumericMassControl(feature);
-      break;
-    case 'categorical':
-      controlElement = createCategoricalMassControl(feature);
-      break;
-    case 'boolean':
-      controlElement = createBooleanMassControl(feature);
-      break;
-    default:
-      console.warn(`Unsupported feature type: ${feature.type} for feature ${feature.name}`);
-      return null;
-  }
-
-  if (controlElement) {
-    wrapper.appendChild(controlElement);
-    
-    // Add feature stats if available
-    if (feature.type === 'numeric' && feature.mean !== undefined) {
-      const stats = document.createElement('div');
-      stats.style.cssText = `
-        margin-top: 10px;
-        padding: 10px;
-        background: #f5f5f5;
-        border-radius: 6px;
-        font-size: 12px;
-        color: #666;
-      `;
-      stats.innerHTML = `
-        <strong>Stats:</strong> 
-        Mean: ${feature.mean?.toFixed(2)}, 
-        Median: ${feature.median?.toFixed(2)}, 
-        Range: ${feature.min?.toFixed(2)} - ${feature.max?.toFixed(2)}
-      `;
-      wrapper.appendChild(stats);
-    }
-  }
-
-  return wrapper;
 }
 
 function createNumericMassControl(feature) {
