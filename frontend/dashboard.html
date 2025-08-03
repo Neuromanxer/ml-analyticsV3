@@ -1333,6 +1333,11 @@
     const token  = safeStorageGet('access_token');
     const analysisButtons = document.querySelectorAll('.analysis-btn');
     const runButton = document.getElementById('run-analysis-btn');
+
+    let lastUploadedFile = null;
+  let lastHeaders = null;
+  let lastValidRows = null;
+
     // 1) Map your friendly endpoint names to their paths
     const endpointMap = {
       regression:             '/regression/',
@@ -1730,6 +1735,9 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
         return val;
       });
     });
+    lastUploadedFile = file;
+    lastHeaders = headers;
+    lastValidRows = validRows;
 
     // Request editable feature suggestions (bulk) - this is async and optional
     try {
@@ -1771,6 +1779,20 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
   };
 
   reader.readAsText(file);
+}
+function computeColumnStats(headers, rows) {
+  const maxStatsRows = 100;
+  const colStats = {};
+  headers.forEach((h, idx) => {
+    colStats[h] = rows.slice(0, maxStatsRows).map(row => {
+      const val = row[idx];
+      if (!isNaN(val) && val.trim() !== "") return parseFloat(val);
+      if (val.toLowerCase?.() === 'true') return true;
+      if (val.toLowerCase?.() === 'false') return false;
+      return val;
+    });
+  });
+  return colStats;
 }
 
 function buildEditableUI(features) {
@@ -2058,6 +2080,35 @@ function selectAnalysisMethod(analysisType) {
   document.getElementById(`btn-${analysisType}`).classList.add('selected');
   
   console.log('Selected analysis method:', analysisType);
+  if (analysisType === 'what_if' && lastHeaders && lastValidRows?.length) {
+  const colStats = computeColumnStats(lastHeaders, lastValidRows);
+  const editableContainer = document.getElementById('what_if-config');
+  const editableArea = document.getElementById('editable-features');
+
+  fetch(`${API_BASE_URL}/api/what_if/inputs/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ column_stats: colStats })
+  })
+    .then(resp => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    })
+    .then(result => {
+      if (!result.features || !result.features.length) {
+        editableContainer.style.display = 'none';
+        return;
+      }
+      editableArea.innerHTML = '';
+      editableContainer.style.display = 'block';
+      buildEditableUI(result.features);
+    })
+    .catch(err => {
+      console.error("Failed to fetch editable config on what_if click", err);
+      if (editableContainer) editableContainer.style.display = 'none';
+    });
+}
+
 }
 
  
