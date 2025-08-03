@@ -572,7 +572,12 @@ import numpy as np
 from enum import Enum
 from dataclasses import dataclass
 import logging
+from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
+# Initialize router and logger
+router = APIRouter()
 logger = logging.getLogger(__name__)
 
 class WhatIfInputRequest(BaseModel):
@@ -583,21 +588,18 @@ class WhatIfInputRequest(BaseModel):
     features suitable for what-if analysis from column statistics.
     """
     column_stats: Dict[str, List[Any]]
-    
+    sample_row: Optional[Dict[str, Any]] = None
 
-
-# Alternative model if you need the actual what-if prediction request
-# (based on the JavaScript code that calls 'what_if' endpoint)
 class WhatIfPredictionRequest(BaseModel):
     """
-    Request model for what-if prediction analysis.
+    Request model for what-if prediction analysis with mass column adjustments.
     
-    This model would be used by a separate what-if prediction endpoint
-    that takes the target column and feature changes.
+    This model handles bulk changes to entire columns rather than individual rows.
     """
     target_column: str
     drop_columns: Optional[List[str]] = []
-    feature_changes: str  # JSON string of feature changes
+    feature_changes: Dict[str, Dict[str, Any]]  # Mass column adjustments
+    original_data: List[Dict[str, Any]]  # The original dataset to modify
 
 class FeatureType(Enum):
     NUMERIC = "numeric"
@@ -629,6 +631,230 @@ class FeatureInfo:
     recommendation_note: Optional[str] = None
     null_percentage: Optional[float] = None
 
+class WhatIfProcessor:
+    """Handles mass column adjustments for what-if analysis."""
+    
+    def __init__(self):
+        self.random_state = np.random.RandomState(42)  # For reproducible results
+    
+    def apply_mass_changes(self, df: pd.DataFrame, feature_changes: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
+        """
+        Apply mass changes to entire columns based on feature_changes configuration.
+        
+        Args:
+            df: Original DataFrame
+            feature_changes: Dictionary of column names to change configurations
+            
+        Returns:
+            Modified DataFrame with changes applied
+        """
+        modified_df = df.copy()
+        
+        for column_name, change_config in feature_changes.items():
+            if column_name not in modified_df.columns:
+                logger.warning(f"Column '{column_name}' not found in dataset")
+                continue
+                
+            try:
+                modified_df[column_name] = self._apply_column_change(
+                    modified_df[column_name], 
+                    change_config
+                )
+                logger.info(f"Applied {change_config['type']} change to column '{column_name}'")
+                
+            except Exception as e:
+                logger.error(f"Failed to apply change to column '{column_name}': {str(e)}")
+                # Continue with other columns even if one fails
+                continue
+        
+        return modified_df
+    
+    def _apply_column_change(self, series: pd.Series, change_config: Dict[str, Any]) -> pd.Series:
+        """Apply a specific change configuration to a pandas Series."""
+        
+        change_type = change_config.get('type')
+        
+        if change_type == 'percentage':
+            return self._apply_percentage_change(series, change_config)
+        elif change_type == 'fixed':
+            return self._apply_fixed_change(series, change_config)
+        elif change_type == 'boost_category':
+            return self._apply_category_boost(series, change_config)
+        elif change_type == 'force_boolean':
+            return self._apply_boolean_force(series, change_config)
+        elif change_type == 'range_scale':
+            return self._apply_range_scale(series, change_config)
+        else:
+            logger.warning(f"Unknown change type: {change_type}")
+            return series
+    
+    def _apply_percentage_change(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """Apply percentage change to numeric column."""
+        percentage = config.get('value', 0)
+        if percentage == 0:
+            return series
+        
+        # Only apply to numeric, non-null values
+        mask = pd.to_numeric(series, errors='coerce').notna()
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        # Apply percentage change
+        multiplier = 1 + (percentage / 100)
+        modified_series = series.copy()
+        modified_series[mask] = numeric_series[mask] * multiplier
+        
+        return modified_series
+    
+    def _apply_fixed_change(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """Apply fixed value change to numeric column."""
+        fixed_value = config.get('value', 0)
+        if fixed_value == 0:
+            return series
+        
+        # Only apply to numeric, non-null values
+        mask = pd.to_numeric(series, errors='coerce').notna()
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        # Apply fixed change
+        modified_series = series.copy()
+        modified_series[mask] = numeric_series[mask] + fixed_value
+        
+        return modified_series
+    
+    def _apply_range_scale(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """Scale values to fit within a new range."""
+        new_min = config.get('new_min')
+        new_max = config.get('new_max')
+        
+        if new_min is None or new_max is None:
+            return series
+        
+        # Only apply to numeric, non-null values
+        mask = pd.to_numeric(series, errors='coerce').notna()
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        if not mask.any():
+            return series
+        
+        # Get current min/max of non-null values
+        current_min = numeric_series[mask].min()
+        current_max = numeric_series[mask].max()
+        
+        if current_min == current_max:
+            # All values are the same, set to middle of new range
+            modified_series = series.copy()
+            modified_series[mask] = (new_min + new_max) / 2
+            return modified_series
+        
+        # Scale to new range
+        modified_series = series.copy()
+        scaled_values = (numeric_series[mask] - current_min) / (current_max - current_min)
+        modified_series[mask] = scaled_values * (new_max - new_min) + new_min
+        
+        return modified_series
+    
+    def _apply_category_boost(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """Boost frequency of a specific category in categorical column."""
+        target_category = config.get('category')
+        boost_percentage = config.get('boost_percentage', 0)
+        
+        if not target_category or boost_percentage <= 0:
+            return series
+        
+        modified_series = series.copy()
+        non_null_mask = series.notna()
+        
+        if not non_null_mask.any():
+            return series
+        
+        # Calculate how many additional instances we need
+        current_count = (series == target_category).sum()
+        total_non_null = non_null_mask.sum()
+        
+        # Calculate target count based on boost percentage
+        additional_needed = int((boost_percentage / 100) * total_non_null)
+        
+        if additional_needed <= 0:
+            return series
+        
+        # Find non-target category instances to convert
+        non_target_mask = (series != target_category) & non_null_mask
+        non_target_indices = series[non_target_mask].index.tolist()
+        
+        if len(non_target_indices) == 0:
+            return series
+        
+        # Randomly select indices to convert
+        convert_count = min(additional_needed, len(non_target_indices))
+        indices_to_convert = self.random_state.choice(
+            non_target_indices, 
+            size=convert_count, 
+            replace=False
+        )
+        
+        # Apply the conversion
+        modified_series.loc[indices_to_convert] = target_category
+        
+        return modified_series
+    
+    def _apply_boolean_force(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """Force all values in boolean column to specific value."""
+        target_value = config.get('value')
+        
+        if target_value is None:
+            return series
+        
+        # Convert to boolean and apply to non-null values
+        modified_series = series.copy()
+        non_null_mask = series.notna()
+        modified_series[non_null_mask] = target_value
+        
+        return modified_series
+    
+    def generate_change_summary(self, original_df: pd.DataFrame, 
+                               modified_df: pd.DataFrame, 
+                               feature_changes: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate a summary of what changes were applied."""
+        summary = {
+            'total_changes': len(feature_changes),
+            'rows_affected': len(modified_df),
+            'changes_applied': {}
+        }
+        
+        for column_name, change_config in feature_changes.items():
+            if column_name not in original_df.columns:
+                continue
+                
+            change_summary = {
+                'type': change_config.get('type'),
+                'configuration': change_config
+            }
+            
+            # Add before/after statistics
+            if column_name in modified_df.columns:
+                orig_col = original_df[column_name]
+                mod_col = modified_df[column_name]
+                
+                if pd.api.types.is_numeric_dtype(orig_col):
+                    change_summary['before'] = {
+                        'mean': float(orig_col.mean()) if orig_col.notna().any() else None,
+                        'median': float(orig_col.median()) if orig_col.notna().any() else None,
+                        'std': float(orig_col.std()) if orig_col.notna().any() else None
+                    }
+                    change_summary['after'] = {
+                        'mean': float(mod_col.mean()) if mod_col.notna().any() else None,
+                        'median': float(mod_col.median()) if mod_col.notna().any() else None,
+                        'std': float(mod_col.std()) if mod_col.notna().any() else None
+                    }
+                else:
+                    # For categorical data, show value counts
+                    change_summary['before'] = orig_col.value_counts().head(5).to_dict()
+                    change_summary['after'] = mod_col.value_counts().head(5).to_dict()
+            
+            summary['changes_applied'][column_name] = change_summary
+        
+        return summary
+
 class FeatureAnalyzer:
     """Handles analysis and classification of features for what-if scenarios."""
     
@@ -647,8 +873,19 @@ class FeatureAnalyzer:
         self.MIN_NON_NULL_RATIO = min_non_null_ratio
         self.MAX_CATEGORICAL_UNIQUE = max_categorical_unique
     
+    def analyze_features(self, column_stats: Dict[str, List[Any]]) -> List[FeatureInfo]:
+        """Analyze all features and return list of editable features."""
+        features = []
+        
+        for name, values in column_stats.items():
+            feature_info = self.analyze_feature(name, values)
+            if feature_info:
+                features.append(feature_info)
+        
+        return features
+    
     def analyze_feature(self, name: str, values: List[Any]) -> Optional[FeatureInfo]:
-        """Analyze a single feature and return FeatureInfo if suitable for editing."""
+        """Analyze a single feature and return FeatureInfo if suitable for mass editing."""
         try:
             if not self._is_editable_feature(name):
                 return None
@@ -679,217 +916,179 @@ class FeatureAnalyzer:
     
     def _get_non_null_values(self, values: List[Any]) -> List[Any]:
         """Extract non-null values, handling various null representations."""
-        return [v for v in values if pd.notnull(v) and v is not None and v != ""]
+        return [v for v in values if pd.notnull(v) and v is not None 
+                and str(v).lower() not in ['', 'nan', 'null', 'none']]
     
     def _has_sufficient_data(self, non_nulls: List[Any], total_count: int) -> bool:
-        """Check if there's enough non-null data to make meaningful adjustments."""
-        min_count = max(self.MIN_NON_NULL_COUNT, int(total_count * self.MIN_NON_NULL_RATIO))
-        return len(non_nulls) >= min_count
+        """Check if feature has sufficient non-null data for analysis."""
+        if len(non_nulls) < self.MIN_NON_NULL_COUNT:
+            return False
+        
+        non_null_ratio = len(non_nulls) / total_count if total_count > 0 else 0
+        return non_null_ratio >= self.MIN_NON_NULL_RATIO
     
-    def _determine_feature_type(self, non_nulls: List[Any]) -> Optional[FeatureType]:
-        """Determine the primary type of the feature based on sample values."""
-        if not non_nulls:
-            return None
+    def _determine_feature_type(self, non_nulls: List[Any]) -> FeatureType:
+        """Determine the type of feature based on its values."""
+        # Try to convert to numeric
+        numeric_values = []
+        for val in non_nulls:
+            try:
+                numeric_val = pd.to_numeric(val)
+                if not pd.isna(numeric_val):
+                    numeric_values.append(numeric_val)
+            except (ValueError, TypeError):
+                pass
         
-        # Check multiple samples for better type detection
-        sample_size = min(10, len(non_nulls))
-        samples = non_nulls[:sample_size]
-        
-        # Boolean detection
-        if all(isinstance(v, bool) for v in samples):
-            return FeatureType.BOOLEAN
-        
-        # Check for boolean-like strings
-        if all(str(v).lower() in {'true', 'false', '1', '0', 'yes', 'no'} for v in samples):
-            return FeatureType.BOOLEAN
-        
-        # Numeric detection
-        numeric_count = 0
-        for v in samples:
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                numeric_count += 1
-            elif isinstance(v, str):
-                try:
-                    float(v)
-                    numeric_count += 1
-                except (ValueError, TypeError):
-                    pass
-        
-        if numeric_count >= len(samples) * 0.8:  # 80% numeric
+        # If most values are numeric, treat as numeric
+        if len(numeric_values) / len(non_nulls) > 0.8:
             return FeatureType.NUMERIC
         
-        # Default to categorical
-        return FeatureType.CATEGORICAL
+        # Check for boolean
+        unique_vals = set(str(v).lower() for v in non_nulls)
+        boolean_indicators = {'true', 'false', '1', '0', 'yes', 'no', 'y', 'n'}
+        if unique_vals.issubset(boolean_indicators):
+            return FeatureType.BOOLEAN
+        
+        # Check if suitable for categorical
+        unique_count = len(set(non_nulls))
+        if unique_count <= self.MAX_CATEGORICAL_UNIQUE:
+            return FeatureType.CATEGORICAL
+        
+        # Default to categorical for non-numeric with reasonable unique count
+        return FeatureType.CATEGORICAL if unique_count <= 100 else FeatureType.NUMERIC
     
     def _analyze_numeric_feature(self, name: str, non_nulls: List[Any], 
                                 null_percentage: float) -> FeatureInfo:
-        """Analyze numeric feature and determine adjustment strategy."""
-        try:
-            # Convert to numeric, handling mixed types
-            numeric_values = []
-            for v in non_nulls:
-                if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    numeric_values.append(float(v))
-                elif isinstance(v, str):
-                    try:
-                        numeric_values.append(float(v))
-                    except (ValueError, TypeError):
-                        continue
-            
-            if not numeric_values:
-                raise ValueError("No valid numeric values found")
-            
-            series = pd.Series(numeric_values)
-            
-            # Calculate robust statistics
-            q5, q95 = series.quantile(self.OUTLIER_QUANTILES)
-            mean_val = float(series.mean())
-            median_val = float(series.median())
-            std_val = float(series.std())
-            unique_count = series.nunique()
-            
-            # Determine step size based on data range and distribution
-            data_range = q95 - q5
-            if data_range > 0:
-                step = self._calculate_optimal_step(series, data_range)
-            else:
-                step = 1.0
-            
-            # Choose adjustment strategy
-            if unique_count > self.NUMERIC_UNIQUE_THRESHOLD:
-                adjustment_type = AdjustmentType.PERCENT
-                adjustment_values = [5, 10, 15, 25, -5, -10, -15, -25]
-            else:
-                adjustment_type = AdjustmentType.DISCRETE
-                # Base discrete adjustments on data distribution
-                typical_diff = self._estimate_typical_difference(series)
-                adjustment_values = [typical_diff, typical_diff*2, typical_diff*3,
-                                   -typical_diff, -typical_diff*2, -typical_diff*3]
-            
-            return FeatureInfo(
-                name=name,
-                label=self._create_readable_label(name),
-                type=FeatureType.NUMERIC,
-                adjustment_type=adjustment_type,
-                min_val=float(q5),
-                max_val=float(q95),
-                step=step,
-                mean=mean_val,
-                median=median_val,
-                std=std_val,
-                adjustment_values=adjustment_values,
-                null_percentage=null_percentage
-            )
-            
-        except Exception as e:
-            logger.error(f"Error analyzing numeric feature '{name}': {str(e)}")
-            raise
+        """Analyze numeric feature and create FeatureInfo."""
+        numeric_vals = [pd.to_numeric(v) for v in non_nulls if pd.notnull(pd.to_numeric(v, errors='coerce'))]
+        
+        if not numeric_vals:
+            return None
+        
+        stats = {
+            'mean': float(np.mean(numeric_vals)),
+            'median': float(np.median(numeric_vals)),
+            'std': float(np.std(numeric_vals)),
+            'min': float(np.min(numeric_vals)),
+            'max': float(np.max(numeric_vals))
+        }
+        
+        # Determine appropriate adjustment values for percentage changes
+        adjustment_values = [-50, -25, -10, -5, 0, 5, 10, 25, 50, 100]
+        
+        # Create recommendation note
+        recommendation_note = f"Current mean: {stats['mean']:.2f}, Range: {stats['min']:.2f} to {stats['max']:.2f}"
+        
+        return FeatureInfo(
+            name=name,
+            label=self._create_readable_label(name),
+            type=FeatureType.NUMERIC,
+            adjustment_type=AdjustmentType.PERCENT,
+            min_val=stats['min'],
+            max_val=stats['max'],
+            mean=stats['mean'],
+            median=stats['median'],
+            std=stats['std'],
+            adjustment_values=adjustment_values,
+            recommendation_note=recommendation_note,
+            null_percentage=null_percentage
+        )
     
     def _analyze_categorical_feature(self, name: str, non_nulls: List[Any], 
-                                   null_percentage: float) -> Optional[FeatureInfo]:
-        """Analyze categorical feature."""
-        series = pd.Series(non_nulls)
-        unique_vals = series.dropna().unique()
+                                   null_percentage: float) -> FeatureInfo:
+        """Analyze categorical feature and create FeatureInfo."""
+        unique_vals = list(set(non_nulls))
+        value_counts = pd.Series(non_nulls).value_counts()
         
-        # Skip if too many unique values
-        if len(unique_vals) > self.MAX_CATEGORICAL_UNIQUE:
-            logger.info(f"Skipping categorical feature '{name}': too many unique values ({len(unique_vals)})")
-            return None
+        # Get most common category as default
+        most_common = value_counts.index[0] if len(value_counts) > 0 else unique_vals[0]
         
-        # Skip if only one unique value
-        if len(unique_vals) <= 1:
-            return None
-        
-        # Sort by frequency for better UX
-        value_counts = series.value_counts()
-        sorted_options = value_counts.index.tolist()
-        
-        # Create recommendation based on distribution
-        most_common = value_counts.index[0]
-        recommendation = f"'{most_common}' is the most common value. Consider increasing its frequency for analysis."
+        recommendation_note = f"Most common: {most_common} ({value_counts.iloc[0]} occurrences)"
         
         return FeatureInfo(
             name=name,
             label=self._create_readable_label(name),
             type=FeatureType.CATEGORICAL,
             adjustment_type=AdjustmentType.BOOST_CATEGORY,
-            options=sorted_options,
-            recommendation_note=recommendation,
+            options=unique_vals,
+            default=most_common,
+            recommendation_note=recommendation_note,
             null_percentage=null_percentage
         )
     
     def _analyze_boolean_feature(self, name: str, non_nulls: List[Any], 
                                null_percentage: float) -> FeatureInfo:
-        """Analyze boolean feature."""
+        """Analyze boolean feature and create FeatureInfo."""
         # Normalize boolean values
-        normalized_values = []
-        for v in non_nulls:
-            if isinstance(v, bool):
-                normalized_values.append(v)
-            elif isinstance(v, str):
-                normalized_values.append(v.lower() in {'true', '1', 'yes'})
-            elif isinstance(v, (int, float)):
-                normalized_values.append(bool(v))
+        true_indicators = {'true', '1', 'yes', 'y'}
+        false_indicators = {'false', '0', 'no', 'n'}
         
-        # Use most common value as default
-        series = pd.Series(normalized_values)
-        default_value = bool(series.mode().iloc[0]) if len(series) > 0 else True
+        normalized_vals = []
+        for val in non_nulls:
+            str_val = str(val).lower()
+            if str_val in true_indicators:
+                normalized_vals.append(True)
+            elif str_val in false_indicators:
+                normalized_vals.append(False)
+        
+        true_count = sum(normalized_vals)
+        false_count = len(normalized_vals) - true_count
+        
+        recommendation_note = f"Current: {true_count} True, {false_count} False"
         
         return FeatureInfo(
             name=name,
             label=self._create_readable_label(name),
             type=FeatureType.BOOLEAN,
             adjustment_type=AdjustmentType.TOGGLE,
-            default=default_value,
+            options=[True, False],
+            default=true_count > false_count,
+            recommendation_note=recommendation_note,
             null_percentage=null_percentage
         )
     
-    def _calculate_optimal_step(self, series: pd.Series, data_range: float) -> float:
-        """Calculate optimal step size for numeric adjustments."""
-        # Base step on a fraction of the range, but consider data precision
-        base_step = data_range / 50
-        
-        # Adjust based on typical differences in the data
-        if len(series) > 1:
-            typical_diff = self._estimate_typical_difference(series)
-            if typical_diff > 0:
-                base_step = min(base_step, typical_diff)
-        
-        # Round to reasonable precision
-        if base_step >= 1:
-            return round(base_step, 0)
-        elif base_step >= 0.1:
-            return round(base_step, 1)
-        elif base_step >= 0.01:
-            return round(base_step, 2)
-        else:
-            return round(base_step, 4)
-    
-    def _estimate_typical_difference(self, series: pd.Series) -> float:
-        """Estimate typical difference between consecutive values."""
-        if len(series) < 2:
-            return 1.0
-        
-        sorted_vals = series.sort_values()
-        diffs = sorted_vals.diff().dropna()
-        
-        if len(diffs) == 0:
-            return 1.0
-        
-        # Use median difference to avoid outlier impact
-        return float(diffs.median()) if diffs.median() > 0 else 1.0
-    
     def _create_readable_label(self, name: str) -> str:
-        """Convert feature name to readable label."""
-        # Handle common patterns
-        name = name.replace("_", " ").replace("-", " ")
+        """Convert column name to readable label."""
+        # Replace underscores and capitalize
+        label = name.replace('_', ' ').replace('-', ' ')
+        return ' '.join(word.capitalize() for word in label.split())
+
+def _generate_scenario_description(feature_changes: Dict[str, Dict[str, Any]]) -> str:
+    """Generate a human-readable description of the scenario."""
+    descriptions = []
+    
+    for column_name, change_config in feature_changes.items():
+        change_type = change_config.get('type')
         
-        # Handle camelCase
-        import re
-        name = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+        if change_type == 'percentage':
+            percentage = change_config.get('value', 0)
+            if percentage > 0:
+                descriptions.append(f"{column_name} increased by {percentage}%")
+            elif percentage < 0:
+                descriptions.append(f"{column_name} decreased by {abs(percentage)}%")
         
-        # Capitalize properly
-        return ' '.join(word.capitalize() for word in name.split())
+        elif change_type == 'fixed':
+            value = change_config.get('value', 0)
+            if value > 0:
+                descriptions.append(f"{column_name} increased by {value}")
+            elif value < 0:
+                descriptions.append(f"{column_name} decreased by {abs(value)}")
+        
+        elif change_type == 'boost_category':
+            category = change_config.get('category')
+            boost = change_config.get('boost_percentage', 0)
+            descriptions.append(f"{column_name} boosted '{category}' by {boost}%")
+        
+        elif change_type == 'force_boolean':
+            value = change_config.get('value')
+            descriptions.append(f"{column_name} set to {value}")
+    
+    if not descriptions:
+        return "No changes applied"
+    
+    return "Scenario: " + ", ".join(descriptions)
+
+# Router endpoints
 
 @router.post("/what_if/inputs/")
 async def get_bulk_editable_features(req: WhatIfInputRequest):
@@ -959,4 +1158,67 @@ async def get_bulk_editable_features(req: WhatIfInputRequest):
         
     except Exception as e:
         logger.error(f"Error processing what-if inputs: {str(e)}")
-        return {"error": "Failed to process features", "details": str(e)}, 500
+        raise HTTPException(status_code=500, detail={"error": "Failed to process features", "details": str(e)})
+
+@router.post("/what_if/predict/")
+async def process_what_if_prediction(req: WhatIfPredictionRequest):
+    """
+    Process what-if prediction request with mass changes.
+    
+    This endpoint applies mass changes to features and returns prediction results.
+    Note: You'll need to integrate your actual model predictor.
+    """
+    try:
+        # Convert original data to DataFrame
+        original_df = pd.DataFrame(req.original_data)
+        
+        # Apply mass changes
+        processor = WhatIfProcessor()
+        modified_df = processor.apply_mass_changes(original_df, req.feature_changes)
+        
+        # Remove target and drop columns for prediction
+        prediction_df = modified_df.copy()
+        columns_to_drop = [req.target_column] + (req.drop_columns or [])
+        prediction_df = prediction_df.drop(columns=[col for col in columns_to_drop if col in prediction_df.columns])
+        
+        # TODO: Replace this with your actual model predictor
+        # For now, returning dummy predictions
+        predictions = np.random.rand(len(prediction_df))  # Replace with: model_predictor.predict(prediction_df)
+        
+        # Generate change summary
+        change_summary = processor.generate_change_summary(
+            original_df, modified_df, req.feature_changes
+        )
+        
+        # Calculate prediction statistics
+        original_target = original_df[req.target_column] if req.target_column in original_df.columns else None
+        
+        prediction_stats = {
+            'mean_prediction': float(np.mean(predictions)),
+            'median_prediction': float(np.median(predictions)),
+            'std_prediction': float(np.std(predictions)),
+            'min_prediction': float(np.min(predictions)),
+            'max_prediction': float(np.max(predictions))
+        }
+        
+        if original_target is not None:
+            prediction_stats['original_mean'] = float(original_target.mean())
+            prediction_stats['mean_change'] = prediction_stats['mean_prediction'] - prediction_stats['original_mean']
+            prediction_stats['percent_change'] = (prediction_stats['mean_change'] / prediction_stats['original_mean']) * 100
+        
+        return {
+            'success': True,
+            'predictions': predictions.tolist(),
+            'prediction_stats': prediction_stats,
+            'change_summary': change_summary,
+            'scenario_description': _generate_scenario_description(req.feature_changes)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing what-if prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail={"error": "Failed to process prediction", "details": str(e)})
+
+@router.get("/what_if/health")
+async def health_check():
+    """Health check endpoint for what-if analysis router."""
+    return {"status": "healthy", "service": "what-if-analysis"}
