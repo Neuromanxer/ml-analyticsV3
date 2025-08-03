@@ -1231,7 +1231,7 @@
                 <span>Counterfactual</span>
                 <small>Smallest Change You Need</small>
               </button>
-              <button id="btn-what-if" class="btn analysis-btn" data-category="advanced">
+              <button id="btn-what_if" class="btn analysis-btn" data-category="advanced">
                 <i class="fas fa-vial"></i>
                 <span>What-If Bulk</span>
                 <small>Mass-level simulation</small>
@@ -1348,7 +1348,7 @@
       survival:               '/survival/',
       'classification-predict': '/classification/predict/',
       'regression-predict':     '/regression/predict/',
-      'what-if':                '/what_if/'     // ✅ Fixed key to match btn-what-if
+      'what_if':                '/what_if/'    
     };
 
   // Show error message
@@ -1547,7 +1547,7 @@ document.getElementById('btn-time-series-analysis').addEventListener('click', ()
 document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
 document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
 document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
-document.getElementById('btn-what-if').addEventListener('click', () => selectAnalysisMethod('what_if'));
+document.getElementById('btn-what_if').addEventListener('click', () => selectAnalysisMethod('what_if'));
   
 fullInput.addEventListener('change', function() {
     const file = this.files[0];
@@ -2023,7 +2023,7 @@ function prepareAndRunAnalysis() {
         drop_columns: dropCols
       });
       break;
-    case 'what-if':
+    case 'what_if':
       if (!targetCol) return showError('Please specify the target column for What-If analysis.');
       if (!window.bulkFeatureChanges || Object.keys(window.bulkFeatureChanges).length === 0) {
       return showError('Please specify at least one bulk feature change.');
@@ -2586,7 +2586,7 @@ function displayResults(endpoint, data) {
         }
       }
   break;
-  case 'what-if':
+  case 'what_if':
     metricsDetails.innerHTML = buildMetricsHtml(data);
 
     // Add distribution visualization
