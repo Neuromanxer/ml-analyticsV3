@@ -144,7 +144,19 @@ def plot_to_base64(fig):
     img_base64 = base64.b64encode(buf.read()).decode("utf-8")
     plt.close(fig)  # ✅ Close the figure properly
     return img_base64
-
+def hash_filename(file_path: str) -> str:
+    return hashlib.md5(Path(file_path).name.encode()).hexdigest()[:10]
+def hash_filename_from_paths(file_path: str = None, train_path: str = None, test_path: str = None) -> str:
+    """
+    Generate a consistent hash based on dataset file names.
+    """
+    if file_path:
+        base_name = Path(file_path).name
+    elif train_path and test_path:
+        base_name = Path(train_path).name + "+" + Path(test_path).name
+    else:
+        base_name = "unknown.csv"
+    return hashlib.md5(base_name.encode()).hexdigest()[:10]
 from fastapi.responses import FileResponse, StreamingResponse
 # Assuming you have these imports for your auth system
 # from your_auth_module import get_current_active_user, User
@@ -310,7 +322,7 @@ def do_classification(
             
             # Save training columns for SHAP alignment
             training_columns = list(X_train.columns)
-            training_columns_path = user_dir / "training_columns.json"
+            training_columns_path = user_dir / training_columns_filename
             with open(training_columns_path, "w") as f:
                 json.dump(training_columns, f)
 
@@ -417,12 +429,18 @@ def do_classification(
             except Exception as e:
                 print(f"[⚠️] Classification report plot failed: {e}")
                 classification_report_base64 = ""
+            
+            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
+            model_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
+            data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
+            training_columns_filename = f"training_columns_{dataset_hash}.json"
 
-            model_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
+
+            model_path = PathL(model_dir) / model_filename
             joblib.dump(final_model, model_path)
 
             # Save the data used for SHAP (full processed dataset)
-            data_path = user_dir / "data.csv"
+            data_path = user_dir / data_filename
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
             # Attempt to generate customer-level summary stats
@@ -730,11 +748,16 @@ def do_classification_predict(
             return [convert_numpy_types(item) for item in obj]
         else:
             return obj
+    dataset_hash = hash_filename(file_path)
 
+    # Consistent and unique filenames for this dataset
+    model_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
+    training_columns_filename = f"training_columns_{dataset_hash}.json"
+    data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
     try:
         # Setup paths - models are still stored locally, but data files are in Supabase
         
-        model_supabase_path = f"{user_id}/{user_id}_best_classifier.pkl"
+        model_supabase_path = f"{user_id}/{model_filename}"
 
         try:
             print(f"[📦] Downloading model from Supabase: {model_supabase_path}")
@@ -752,7 +775,8 @@ def do_classification_predict(
             raise FileNotFoundError(f"Failed to load model from Supabase for user {user_id}: {str(e)}")
 
         # For training columns, we'll also store this in Supabase
-        training_columns_supabase_path = f"{user_id}/training_columns.json"
+        training_columns_supabase_path = f"{user_id}/{training_columns_filename}"
+        data_supabase_path = f"{user_id}/{data_filename}"
         # Download training columns from Supabase
         try:
             training_columns_data = download_file_from_supabase(training_columns_supabase_path)
@@ -762,7 +786,7 @@ def do_classification_predict(
         
         # Download prediction data from Supabase
         try:
-            prediction_data = download_file_from_supabase(file_path)
+            prediction_data = download_file_from_supabase(data_supabase_path)
             dataset_name = os.path.basename(file_path)
         except Exception as e:
             raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
@@ -2158,8 +2182,9 @@ def do_regression(
             # Create user directory for outputs
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-            processed_data_path = user_dir / "processed_full_data.csv"
-            
+            data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
+            processed_data_path = user_dir / data_filename
+
             # ───────────── File processing ─────────────
             train_df = None
             test_df = None
@@ -2227,10 +2252,14 @@ def do_regression(
                 target_column=target_column,
             )
             print("Model training completed!")
-
+            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
             # ───────────── Save Model & Preprocessor ─────────────
-            model_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            preprocessor_path = PathL(model_dir) / f"{user_id}_preprocessor.pkl"
+            preprocessor_filename = f"{user_id}_preprocessor_{dataset_hash}.pkl"
+            training_columns_filename = f"{user_id}_training_columns_{dataset_hash}.json"
+
+            # Save paths
+            model_path = PathL(model_dir) / model_filename
+            preprocessor_path = PathL(model_dir) / preprocessor_filename
 
             joblib.dump(results["final_model"], model_path)
             joblib.dump(results["preprocessor"], preprocessor_path)
@@ -2298,14 +2327,15 @@ def do_regression(
                 else:
                     financial_inputs = None
                     
-                # Save training columns for SHAP alignment
-                training_columns_path = user_dir / "training_columns.json"
+                training_columns_filename = f"training_columns_{dataset_hash}.json"
+                training_columns_path = user_dir / training_columns_filename
+
                 with open(training_columns_path, "w") as f:
                     json.dump(list(X_full_df.columns), f)
                 upload_file_to_supabase(
                     user_id=user_id,
                     file_path=str(training_columns_path),
-                    filename="training_columns.json"
+                    filename=training_columns_filename
                 )
                 # Save processed data for SHAP - CREATE FILE BEFORE UPLOAD
                 X_full_df.to_csv(processed_data_path, index=False)
@@ -2352,7 +2382,7 @@ def do_regression(
 
                 # Save training columns needed by SHAP
                 try:
-                    training_columns_path = user_dir / "training_columns.json"
+                    training_columns_path = user_dir / training_columns_filename
                     with open(training_columns_path, "w") as f:
                         json.dump(list(X_full_df.columns), f)
                     print(f"[✅] Saved training columns to {training_columns_path}")
@@ -2612,10 +2642,18 @@ def do_regression_predict(
         if file_path is None:
             raise ValueError("You must provide a file_path for prediction input.")
 
+        # Compute dataset hash from the uploaded file
+        dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
+
+        # Construct consistent hashed filenames
+        model_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
+        preprocessor_filename = f"{user_id}_preprocessor_{dataset_hash}.pkl"
+        training_columns_filename = f"training_columns_{dataset_hash}.json"
+
         # Supabase paths
-        model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
-        preprocessor_supabase_path = f"{user_id}/{user_id}_preprocessor.pkl"
-        training_columns_supabase_path = f"{user_id}/training_columns.json"
+        model_supabase_path = f"{user_id}/{model_filename}"
+        preprocessor_supabase_path = f"{user_id}/{preprocessor_filename}"
+        training_columns_supabase_path = f"{user_id}/{training_columns_filename}"
 
         # ───── Download training columns ─────
         try:
@@ -3022,6 +3060,13 @@ def do_visualization(
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
 
+            model_path = None
+            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
+            classifier_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
+            regressor_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
+            classifier_path = PathL(model_dir) / classifier_filename
+            regressor_path = PathL(model_dir) / regressor_filename
+
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
@@ -3071,39 +3116,31 @@ def do_visualization(
             pdp_b64 = None
             if feature_column in NUMS:
                 try:
-                    # Try to load existing model from temp directory or download from Supabase
-                    model_path = None
-                    classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
-                    regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-                    
-                    # Try to download model from Supabase if it exists
                     try:
                         if not classifier_path.exists():
-                            # Try to download classifier model from Supabase
-                            model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
+                            model_bytes = download_file_from_supabase(f"{user_id}/{classifier_filename}")
                             with open(classifier_path, 'wb') as f:
                                 f.write(model_bytes)
-                            model_path = classifier_path
-                    except:
-                        pass
-                    
+                        model_path = classifier_path
+                    except Exception as e:
+                        print(f"[⚠️] Classifier model not found: {e}")
+
+                    # Try loading regressor model (only if classifier not found)
                     try:
-                        if not model_path and not regressor_path.exists():
-                            # Try to download regressor model from Supabase
-                            model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
+                        if model_path is None and not regressor_path.exists():
+                            model_bytes = download_file_from_supabase(f"{user_id}/{regressor_filename}")
                             with open(regressor_path, 'wb') as f:
                                 f.write(model_bytes)
+                        if model_path is None:
                             model_path = regressor_path
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"[⚠️] Regressor model not found: {e}")
                     
-                    # Use whichever model exists
-                    if not model_path:
-                        if classifier_path.exists():
-                            model_path = classifier_path
-                        elif regressor_path.exists():
-                            model_path = regressor_path
                     
+                    if model_path is None:
+                        model_path = classifier_path if classifier_path.exists() else regressor_path if regressor_path.exists() else None
+
+                                        
                     if model_path and model_path.exists():
                         model = joblib.load(model_path)
                         estimator = model 
@@ -3393,28 +3430,31 @@ def do_counterfactual(
 
 
             # Supabase paths (bucket keys)
-            regressor_filename = f"{user_id}/{user_id}_best_regressor.pkl"
-            classifier_filename = f"{user_id}/{user_id}_best_classifier.pkl"
+            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
 
-            # Local save filenames (no folder nesting)
-            regressor_local = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            classifier_local = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
+            regressor_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
+            classifier_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
 
+            regressor_supabase_path = f"{user_id}/{regressor_filename}"
+            classifier_supabase_path = f"{user_id}/{classifier_filename}"
+
+            regressor_local = PathL(model_dir) / regressor_filename
+            classifier_local = PathL(model_dir) / classifier_filename
             model_path = None
 
             try:
                 if target_is_continuous:
-                    model_bytes = download_file_from_supabase(regressor_filename)
+                    model_bytes = download_file_from_supabase(regressor_supabase_path)
                     with open(regressor_local, "wb") as f:
                         f.write(model_bytes)
                     model_path = regressor_local
-                    logger.info(f"✅ Downloaded regressor model: {regressor_filename}")
+                    logger.info(f"✅ Downloaded regressor model: {regressor_supabase_path}")
                 else:
-                    model_bytes = download_file_from_supabase(classifier_filename)
+                    model_bytes = download_file_from_supabase(classifier_supabase_path)
                     with open(classifier_local, "wb") as f:
                         f.write(model_bytes)
                     model_path = classifier_local
-                    logger.info(f"✅ Downloaded classifier model: {classifier_filename}")
+                    logger.info(f"✅ Downloaded classifier model: {classifier_supabase_path}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to download model: {e}")
                 raise ValueError("No trained model found for this user")
@@ -3425,8 +3465,6 @@ def do_counterfactual(
             # Load the model
             model = joblib.load(model_path)
             estimator = model
-
-
 
             # Store expected training feature names
             if hasattr(estimator, "feature_names_in_"):
@@ -4017,7 +4055,8 @@ def do_survival(
             
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-
+            base_path_for_hash = file_path or train_path
+            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
@@ -4639,12 +4678,25 @@ def do_what_if(
         except Exception as e:
             raise ValueError(f"Failed to load data: {str(e)}")
     
-    def load_model(df: pd.DataFrame, target_column: str) -> Any:
-        """Load classifier or regressor based on the target column's distribution"""
-        model_dir = os.path.join(temp_dir, "models")
+    def load_model(
+        df: pd.DataFrame,
+        target_column: str,
+        user_id: str,
+        file_path: Optional[str] = None,
+    ) -> Any:
+        """
+        Load the classifier or regressor model from Supabase based on dataset hash and target column distribution.
+        """
+        import os
+        import joblib
+        import logging
+        from pathlib import Path
+
+        # Setup model directory
+        model_dir = os.path.join(temp_dir or tempfile.gettempdir(), "models")
         os.makedirs(model_dir, exist_ok=True)
 
-        # Determine whether the task is classification or regression
+        # Determine classification or regression
         target_values = df[target_column].dropna()
         num_unique = target_values.nunique()
         total = len(target_values)
@@ -4655,23 +4707,16 @@ def do_what_if(
             (num_unique < 0.05 * total and num_unique <= 20)
         )
 
-        selected_model_type = "classifier" if is_classification else "regressor"
-        logging.info(f"🔍 Target column '{target_column}' detected as: {selected_model_type.upper()}")
+        model_type = "classifier" if is_classification else "regressor"
+        logging.info(f"🔍 Target column '{target_column}' detected as: {model_type.upper()}")
 
-        # Choose the correct model path
-        model_paths = {
-            "classifier": (
-                PathL(model_dir) / f"{user_id}_best_classifier.pkl",
-                f"{user_id}/{user_id}_best_classifier.pkl"
-            ),
-            "regressor": (
-                PathL(model_dir) / f"{user_id}_best_regressor.pkl",
-                f"{user_id}/{user_id}_best_regressor.pkl"
-            )
-        }
+        # Compute dataset hash
+        dataset_hash = hash_filename_from_paths(file_path, train_path, test_path)
+        filename = f"{user_id}_best_{model_type}_{dataset_hash}.pkl"
+        local_path = Path(model_dir) / filename
+        remote_path = f"{user_id}/{filename}"
 
-        local_path, remote_path = model_paths[selected_model_type]
-
+        # Download if not already available locally
         try:
             if not local_path.exists():
                 model_bytes = download_file_from_supabase(remote_path)
@@ -4679,11 +4724,13 @@ def do_what_if(
                     f.write(model_bytes)
 
             model = joblib.load(local_path)
-            logging.info(f"✅ Successfully loaded {selected_model_type} model from Supabase: {remote_path}")
+            logging.info(f"✅ Successfully loaded {model_type} model from Supabase: {remote_path}")
             return model
 
         except Exception as e:
-            raise ValueError(f"❌ Failed to load {selected_model_type} model: {str(e)}")
+            logging.error(f"❌ Failed to load {model_type} model from Supabase: {e}")
+            raise ValueError(f"Model for dataset not found: {remote_path}")
+
     def sanitize_for_json(obj):
         """Recursively sanitize data for JSON serialization."""
         if isinstance(obj, dict):
@@ -5507,7 +5554,7 @@ def do_what_if(
             modified_df, applied_changes = apply_feature_changes(df, changes)
 
             # ───────── Extract feature columns ─────────
-            feature_cols = [col for col in df.columns if col in training_columns]
+            feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
             if not feature_cols:
                 return {"status": "error", "errors": ["No feature columns found for prediction"]}
 
@@ -5747,27 +5794,6 @@ def do_risk_analysis(
             model_path = None
             classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
             regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
-            
-            # Try to download model from Supabase if it exists
-            try:
-                if not classifier_path.exists():
-                    # Try to download classifier model from Supabase
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
-                    with open(classifier_path, 'wb') as f:
-                        f.write(model_bytes)
-                    model_path = classifier_path
-            except:
-                pass
-            
-            try:
-                if not model_path and not regressor_path.exists():
-                    # Try to download regressor model from Supabase
-                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
-                    with open(regressor_path, 'wb') as f:
-                        f.write(model_bytes)
-                    model_path = regressor_path
-            except:
-                pass
             
             # Use whichever model exists
             if not model_path:
