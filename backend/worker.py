@@ -331,7 +331,11 @@ def do_classification(
                 json.dump(training_columns, f)
 
             # ✅ Upload to Supabase so prediction can access it
-            upload_file_to_supabase(user_id, str(training_columns_path), training_columns_path.name)
+            upload_file_to_supabase(
+                user_id=user_id,
+                file_path=str(training_columns_path),
+                filename="training_columns.json"
+            )
 
 
             # Pick Best Model
@@ -438,7 +442,6 @@ def do_classification(
 
             # Save the data used for SHAP (full processed dataset)
             data_path = user_dir / data_filename
-            
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
             # Attempt to generate customer-level summary stats
@@ -610,7 +613,7 @@ def do_classification(
 
                 # Upload processed dataset
                 
-                data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
+                data_filename = PathL(data_path).name
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
                 # Generate signed URLs for access (e.g., for frontend or gallery)
@@ -752,7 +755,6 @@ def do_classification_predict(
 
     # Consistent and unique filenames for this dataset
     model_filename            = f"{user_id}_best_classifier_{dataset_hash}.pkl"
-    preprocessor_filename     = f"{user_id}_preprocessor_classifier_{dataset_hash}.pkl"
     training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
     data_filename             = f"{user_id}_processed_data_{dataset_hash}.csv"
 
@@ -2156,9 +2158,7 @@ def do_regression(
     local_test_path = None
     temp_files = []
     dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
-    # ───────────── Save Model & Preprocessor ─────────────
     model_filename         = f"{user_id}_best_regressor_{dataset_hash}.pkl"
-    preprocessor_filename  = f"{user_id}_preprocessor_regressor_{dataset_hash}.pkl"
     training_columns_filename = f"regressor_training_columns_{dataset_hash}.json"
 
     try:
@@ -2269,13 +2269,9 @@ def do_regression(
 
             # Save paths
             model_path = PathL(model_dir) / model_filename
-            preprocessor_path = PathL(model_dir) / preprocessor_filename
 
 
             joblib.dump(results["final_model"], model_path)
-            joblib.dump(results["preprocessor"], preprocessor_path)
-            print(f"[💾] Models saved to: {model_path} and {preprocessor_path}")
-
             # ───────────── Generate Visualizations & Process Data ─────────────
             try:
                 # Prepare full dataset for processing
@@ -2307,17 +2303,14 @@ def do_regression(
 
 
                 X_full_raw = full_df.drop(columns=["ID", target_column], errors="ignore")
-                X_full_processed = results["preprocessor"].transform(X_full_raw)
 
-                if hasattr(results["preprocessor"], "get_feature_names_out"):
-                    feature_names = results["preprocessor"].get_feature_names_out()
-                else:
-                    feature_names = results.get("feature_names")
 
-                X_full_df = pd.DataFrame(X_full_processed, columns=feature_names)
+                feature_names = results.get("feature_names")
+
+                X_full_df = pd.DataFrame(X_full_raw)
                 
                 # ───────────── Predictions on Full Data ─────────────
-                preds_full = results["final_model"].predict(X_full_processed)
+                preds_full = results["final_model"].predict(X_full_df)
 
                 # ───────────── Compute Prediction Stats ─────────────
                 pred_stats = {
@@ -2352,26 +2345,21 @@ def do_regression(
 
                 # ───────────── Upload to Supabase (AFTER creating processed data) ─────────────
                 try:
-
-                    # Upload model, preprocessor, and processed dataset
                     model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
-                    preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
+            
                     data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
 
                     # Get signed URLs for frontend access (1-hour expiration)
                     model_url = get_file_url(model_supabase_path, expires_in=3600)
-                    preprocessor_url = get_file_url(preprocessor_supabase_path, expires_in=3600)
                     data_url = get_file_url(data_supabase_path, expires_in=3600)
 
                     print(f"[✅] Uploaded model: {model_url}")
-                    print(f"[✅] Uploaded preprocessor: {preprocessor_url}")
                     print(f"[✅] Uploaded processed data: {data_url}")
 
                 except Exception as upload_error:
                     print(f"[⚠️] Failed to upload regression artifacts to Supabase: {upload_error}")
                     # Set default values if upload fails
                     model_url = ""
-                    preprocessor_url = ""
                     data_url = ""
 
                # Create request JSON for SHAP
@@ -2577,7 +2565,6 @@ def do_regression(
                         "pred_stats": pred_stats,
                         "insights": insights,
                         "model_url": model_url,
-                        "preprocessor_url": preprocessor_url,
                         "data_url": data_url,
                         "summary_stats": summary_stats
                     }
@@ -2609,7 +2596,6 @@ def do_regression(
                         "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
                     },
                     "model_url": model_url,
-                    "preprocessor_url": preprocessor_url,
                     "data_url": data_url,
                     "summary_stats": summary_stats
                 }
@@ -2636,7 +2622,6 @@ def do_regression_predict(
 
     # Construct consistent hashed filenames
     model_filename         = f"{user_id}_best_regressor_{dataset_hash}.pkl"
-    preprocessor_filename  = f"{user_id}_preprocessor_regressor_{dataset_hash}.pkl"
     training_columns_filename = f"regressor_training_columns_{dataset_hash}.json"
     def convert_numpy_types(obj):
         """Convert numpy types to native Python types for JSON serialization"""
@@ -2661,7 +2646,6 @@ def do_regression_predict(
 
         # Supabase paths
         model_supabase_path = f"{user_id}/{model_filename}"
-        preprocessor_supabase_path = f"{user_id}/{preprocessor_filename}"
         training_columns_supabase_path = f"{user_id}/{training_columns_filename}"
 
         # ───── Download training columns ─────
@@ -2681,25 +2665,6 @@ def do_regression_predict(
         except Exception as e:
             raise FileNotFoundError(f"Failed to download/load model: {e}")
 
-        try:
-            print(f"[📦] Downloading preprocessor from Supabase: {preprocessor_supabase_path}")
-            preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
-
-            print(f"[DEBUG] Preprocessor data type: {type(preprocessor_data)}")
-            print(f"[DEBUG] Preprocessor data length: {len(preprocessor_data)} bytes")
-
-            if not preprocessor_data:
-                raise ValueError("Downloaded preprocessor file is empty")
-
-            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, mode="wb") as tmp:
-                tmp.write(preprocessor_data)
-                tmp.flush()
-                print(f"[DEBUG] Written preprocessor to temp file: {tmp.name}")
-                preprocessor = joblib.load(tmp.name)
-                print(f"[✅] Preprocessor loaded successfully")
-
-        except Exception as e:
-            raise FileNotFoundError(f"Failed to download/load preprocessor: {e}")
 
         # ───── Download prediction CSV ─────
         try:
@@ -2767,10 +2732,8 @@ def do_regression_predict(
         
         print(f"[] Feature alignment complete: {len(training_columns)} features")
         
-        # Transform and predict
-        X_transformed = preprocessor.transform(df_processed)
         
-        predictions = model.predict(X_transformed)
+        predictions = model.predict(df_processed)
         
         # Create output dataframe by adding predictions to original data
         output_df = original_df.copy()
@@ -4716,10 +4679,12 @@ def do_what_if(
         # 2) Compute your dataset_hash
         ds_hash = hash_filename_from_paths(file_path, train_path, test_path)
 
-        # 3) Build the three Supabase keys
-        model_key       = f"{user_id}/best_{model_type}_{ds_hash}.pkl"
-        preproc_key    = f"{user_id}/preprocessor_{model_type}_{ds_hash}.pkl"
-        cols_key       = f"{user_id}/{model_type}_training_columns_{ds_hash}.json"
+        # 3) Build the three Supabase keys (with the same filenames you uploaded)
+        model_filename      = f"{user_id}_best_{model_type}_{dataset_hash}.pkl"
+        cols_filename       = f"{model_type}_training_columns_{dataset_hash}.json"
+
+        model_key    = f"{user_id}/{model_filename}"
+        cols_key     = f"{user_id}/{cols_filename}"
 
         def fetch_bytes(key: str) -> bytes:
             logging.info(f"⬇️ Downloading {key}")
@@ -4734,21 +4699,12 @@ def do_what_if(
             logging.error(f"❌ Failed to load model: {e}")
             raise
 
-        # 5) Load preprocessor (optional, if you need it downstream)
-        try:
-            raw_pp     = fetch_bytes(preproc_key)
-            preprocessor = joblib.load(io.BytesIO(raw_pp))
-            logging.info(f"✅ Preprocessor loaded from {preproc_key}")
-        except Exception:
-            preprocessor = None
-            logging.warning(f"⚠️ No preprocessor at {preproc_key}, continuing without it")
-
         # 6) Load training_columns
         raw_cols       = fetch_bytes(cols_key)
         training_cols  = json.loads(raw_cols.decode("utf-8"))
         logging.info(f"✅ Training columns loaded from {cols_key}")
 
-        return model, training_cols, preprocessor
+        return model, training_cols
     def sanitize_for_json(obj):
         """Recursively sanitize data for JSON serialization."""
         if isinstance(obj, dict):
@@ -5568,7 +5524,7 @@ def do_what_if(
         with tempfile.TemporaryDirectory() as temp_dir:
             # Load data and model
             df, dataset_name = safe_download_and_load_data()
-            model, training_columns, preprocessor = load_model(
+            model, training_columns = load_model(
                 df,
                 target_column,
                 user_id=user_id,
@@ -5595,27 +5551,37 @@ def do_what_if(
                 return {"status": "error", "errors": ["No feature columns found for prediction"]}
 
 
-            # ───────── Transform with saved preprocessor ─────────
+            # ───────── Preprocess both original and modified dataframes ─────────
             try:
-                # preprocessor was returned by load_model()
-                X_orig_arr = preprocessor.transform(df[feature_cols])
-                X_mod_arr  = preprocessor.transform(modified_df[feature_cols])
+                X_original, _, _ = preprocess_data(df[feature_cols])
+                X_modified, _, _ = preprocess_data(modified_df[feature_cols])
             except Exception as e:
-                return {"status": "error", "errors": [f"Preprocessor transform failed: {str(e)}"]}
+                return {"status": "error", "errors": [f"Preprocessing failed: {str(e)}"]}
 
-            # ───────── Rebuild DataFrames with correct column names ─────────
-            X_original = pd.DataFrame(X_orig_arr, columns=training_columns, index=df.index)
-            X_modified = pd.DataFrame(X_mod_arr,  columns=training_columns, index=modified_df.index)
+            # ───────── Align features to training columns if needed ─────────
+            missing_cols = set(training_columns) - set(X_original.columns)
+            extra_cols = set(X_original.columns) - set(training_columns)
 
-            # ───────── Sanity check ─────────
-            if X_original.shape[1] != len(training_columns) or X_modified.shape[1] != len(training_columns):
-                logger.error("Shape mismatch after transform: "
-                            f"got {X_original.shape[1]}/{X_modified.shape[1]} cols but expected {len(training_columns)}")
-                return {"status": "error", 
-                        "errors": [f"Feature shape mismatch: "
-                                f"{X_original.shape[1]}/{X_modified.shape[1]} vs {len(training_columns)}"]}
+            for col in missing_cols:
+                X_original[col] = 0
+                X_modified[col] = 0
 
-            logger.info("Features successfully transformed. Shape: %s", X_original.shape)
+            X_original.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+            X_modified.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+
+            X_original = X_original.reindex(columns=training_columns, fill_value=0)
+            X_modified = X_modified.reindex(columns=training_columns, fill_value=0)
+            logger.info("Expected features (%d): %s",
+                        len(training_columns), training_columns)
+            logger.info("Actual features (%d): %s",
+                        X_modified.shape[1], list(X_modified.columns))
+
+            missing = set(training_columns) - set(X_modified.columns)
+            extra   = set(X_modified.columns) - set(training_columns)
+            if missing:
+                logger.warning("Missing cols: %s", missing)
+            if extra:
+                logger.warning("Extra cols: %s", extra)
 
             # ───────── Run predictions ─────────
             try:
