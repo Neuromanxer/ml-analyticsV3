@@ -5507,7 +5507,7 @@ def do_what_if(
             modified_df, applied_changes = apply_feature_changes(df, changes)
 
             # ───────── Extract feature columns ─────────
-            feature_cols = [col for col in df.columns if col not in [target_column, 'ID']]
+            feature_cols = [col for col in df.columns if col in training_columns]
             if not feature_cols:
                 return {"status": "error", "errors": ["No feature columns found for prediction"]}
 
