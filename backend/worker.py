@@ -57,6 +57,12 @@ from sklearn.metrics import confusion_matrix, classification_report
 # from .feature_importance import safe_generate_feature_importance
 # from .clustering import run_kmeans, find_optimal_k, label_clusters_general
 # from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
+# from .regression import (
+#     get_confidence_interval,
+#     get_percentile_summary,
+#     get_risk_shift_summary,
+#     get_class_distribution_change
+# )
 
 
 
@@ -74,6 +80,12 @@ from preprocessing import preprocess_data
 from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
 from feature_importance import safe_generate_feature_importance
 from clustering import run_kmeans, find_optimal_k, label_clusters_general
+from regression import (
+    get_confidence_interval,
+    get_percentile_summary,
+    get_risk_shift_summary,
+    get_class_distribution_change
+)
 
 # OAuth2 scheme
 # Configure logging
@@ -5293,54 +5305,149 @@ def do_what_if(
         plt.close(fig)
         
         return visualizations
-    
-    def generate_insights(metrics: Dict[str, Any], applied_changes: Dict[str, Any]) -> List[str]:
-        """Generate actionable business insights for mass scenario simulation"""
+    from scipy import stats
+    import numpy as np
+
+
+    import logging
+
+
+    def generate_insights(
+        metrics: Dict[str, Any],
+        applied_changes: Dict[str, Any],
+        df: pd.DataFrame,
+        target_column: str,
+        original_preds: Optional[np.ndarray] = None,
+        modified_preds: Optional[np.ndarray] = None
+    ) -> List[str]:
+        """Generate business-facing insights from scenario simulation metrics."""
         insights = []
-        
-        # Statistical significance insight
-        if metrics.get("is_significant"):
-            insights.append(f"📊 **Statistically Significant Impact**: The mass changes show significant effect (p-value: {metrics['p_value']:.4f})")
+
+        # --- Auto-detect task type ---
+        target_values = df[target_column].dropna()
+        num_unique = target_values.nunique()
+        total = len(target_values)
+
+        is_classification = (
+            pd.api.types.is_object_dtype(target_values) or
+            pd.api.types.is_bool_dtype(target_values) or
+            (num_unique < 0.05 * total and num_unique <= 20)
+        )
+        task_type = "classification" if is_classification else "regression"
+        task_subtype = "binary" if task_type == "classification" and num_unique == 2 else "multiclass" if is_classification else "continuous"
+
+        logging.info(f"🧠 Auto-detected task: {task_type.upper()} ({task_subtype})")
+
+        # --- Statistical significance ---
+        if metrics.get("is_significant") is True:
+            insights.append(f"📊 **Statistically Significant Impact** (p = {metrics['p_value']:.4f})")
         elif metrics.get("is_significant") is False:
-            insights.append(f"⚠️ **Not Statistically Significant**: Mass changes may not have meaningful impact (p-value: {metrics['p_value']:.4f})")
-        
-        # Effect size interpretation
+            insights.append(f"⚠️ **Not Statistically Significant** (p = {metrics['p_value']:.4f})")
+
+        # --- Confidence interval ---
+        if "confidence_interval" in metrics:
+            ci = metrics["confidence_interval"]
+        elif original_preds is not None and modified_preds is not None:
+            ci = get_confidence_interval(original_preds, modified_preds)
+        else:
+            ci = None
+
+        if ci:
+            insights.append(f"📉 **95% Confidence Interval**: Prediction change lies between {ci[0]:.4f} and {ci[1]:.4f}")
+
+        # --- Effect size ---
         effect_size = metrics.get("effect_size", 0)
         if effect_size:
             if abs(effect_size) < 0.2:
-                insights.append("📏 **Small Effect**: Mass changes have minimal practical impact")
+                insights.append("📏 **Small Effect**: Minimal practical impact")
             elif abs(effect_size) < 0.5:
-                insights.append("📈 **Medium Effect**: Mass changes show moderate practical significance")
+                insights.append("📈 **Medium Effect**: Moderate practical impact")
             else:
-                insights.append("🚀 **Large Effect**: Mass changes demonstrate substantial practical impact")
-        
-        # Direction and magnitude insights
-        direction = metrics["direction"]
+                insights.append("🚀 **Large Effect**: Substantial impact on predictions")
+
+        # --- Classification-specific ---
+        if task_type == "classification":
+            orig = metrics.get("original_conversion_rate")
+            mod = metrics.get("modified_conversion_rate")
+            if orig is not None and mod is not None:
+                delta = mod - orig
+                if abs(delta) > 0.001:
+                    symbol = "🔼" if delta > 0 else "🔽"
+                    direction = "increase" if delta > 0 else "decrease"
+                    insights.append(f"{symbol} **{direction.title()} in Conversion Rate**: {orig:.2%} → {mod:.2%} ({delta:+.2%})")
+
+            if "class_distribution_change" in metrics:
+                class_dist = metrics["class_distribution_change"]
+            elif original_preds is not None and modified_preds is not None:
+                class_dist = get_class_distribution_change(original_preds, modified_preds)
+            else:
+                class_dist = {}
+
+            if class_dist:
+                insights.append("📊 **Class Distribution Shift:**")
+                for label, pct in class_dist.items():
+                    symbol = "🔼" if pct > 0 else "🔽"
+                    insights.append(f"  - {symbol} Class '{label}': {pct:+.2f}%")
+
+            if "risk_shift_summary" in metrics:
+                risk_summary = metrics["risk_shift_summary"]
+            elif original_preds is not None and modified_preds is not None:
+                risk_summary = get_risk_shift_summary(original_preds, modified_preds)
+            else:
+                risk_summary = {}
+
+            if risk_summary:
+                insights.append("⚠️ **Risk Profile Change:**")
+                for group, stats in risk_summary.items():
+                    orig = stats.get("original_pct", 0)
+                    mod = stats.get("modified_pct", 0)
+                    shift = mod - orig
+                    symbol = "🔼" if shift > 0 else "🔽"
+                    insights.append(f"  - {symbol} {group}: {orig:.1%} → {mod:.1%} ({shift:+.1%})")
+
+        # --- Regression-specific ---
+        if task_type == "regression":
+            if "original_mean" in metrics and "modified_mean" in metrics:
+                delta = metrics["modified_mean"] - metrics["original_mean"]
+                symbol = "🔼" if delta > 0 else "🔽"
+                direction = "increase" if delta > 0 else "decrease"
+                insights.append(f"{symbol} **{direction.title()} in Mean Prediction**: {metrics['original_mean']:.4f} → {metrics['modified_mean']:.4f} ({delta:+.4f})")
+
+            if "percentile_summary" in metrics:
+                p = metrics["percentile_summary"]
+            elif original_preds is not None and modified_preds is not None:
+                p = get_percentile_summary(original_preds, modified_preds)
+            else:
+                p = {}
+
+            if p:
+                insights.append("📐 **Percentile Changes:**")
+                insights.append(f"  - 25th percentile: {p['orig_25']:.2f} → {p['mod_25']:.2f}")
+                insights.append(f"  - Median: {p['orig_50']:.2f} → {p['mod_50']:.2f}")
+                insights.append(f"  - 75th percentile: {p['orig_75']:.2f} → {p['mod_75']:.2f}")
+
+        # --- Direction summary ---
+        direction = metrics.get("direction")
         percent_change = metrics.get("percent_change")
-        
-        if direction == "increase" and percent_change:
-            if percent_change > 10:
-                insights.append(f"📈 **Strong Positive Impact**: {percent_change:.1f}% increase in predictions across all records")
-            else:
-                insights.append(f"🔼 **Modest Improvement**: {percent_change:.1f}% increase observed")
-        elif direction == "decrease" and percent_change:
-            if abs(percent_change) > 10:
-                insights.append(f"📉 **Significant Decline**: {abs(percent_change):.1f}% decrease in predictions across all records")
-            else:
-                insights.append(f"🔽 **Minor Decrease**: {abs(percent_change):.1f}% reduction observed")
-        
-        # Feature-specific insights for mass changes
+        if direction and percent_change is not None:
+            symbol = "📈" if direction == "increase" else "📉"
+            label = "Strong" if abs(percent_change) > 10 else "Modest"
+            insights.append(f"{symbol} **{label} {direction.title()}**: {percent_change:.1f}% change in average prediction")
+
+        # --- Feature insights ---
         for feature, change in applied_changes.items():
             description = change.get("description", "")
             insights.append(f"🔧 **{feature.title()}**: {description}")
-        
-        # Revenue impact insight
+
+        # --- Revenue impact ---
         revenue_impact = metrics.get("estimated_revenue_impact", 0)
         if abs(revenue_impact) > 1000:
-            insights.append(f"💰 **Mass Revenue Impact**: Estimated ${revenue_impact:,.2f} {'gain' if revenue_impact > 0 else 'loss'} from scenario changes")
-        
+            insights.append(f"💰 **Estimated Revenue {'Gain' if revenue_impact > 0 else 'Loss'}**: ${revenue_impact:,.2f}")
+
+        if not insights:
+            insights.append("ℹ️ No measurable business impact detected from the applied changes.")
+
         return insights
-    
     # Main execution starts here
     try:
         # Initialize configuration
@@ -5478,12 +5585,14 @@ def do_what_if(
             
             # Create visualizations
             visualizations = create_enhanced_visualizations(
-                original_preds, modified_preds, df, modified_df, feature_cols
+                original_preds, modified_preds, df, modified_df, feature_cols, applied_changes
             )
             
             # Generate insights
-            insights = generate_insights(metrics, applied_changes)
-            
+            insights = generate_insights(metrics, applied_changes, df=df, target_column=target_column)
+
+            if not insights:
+                insights.append("ℹ️ No measurable impact detected from the applied changes.")
             # Prepare response
             response_data = {
                 "status": "success",

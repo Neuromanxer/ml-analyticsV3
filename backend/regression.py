@@ -461,3 +461,64 @@ def generate_visualizations_improved(results, train_df, user_dir, user_id):
         except Exception as fallback_error:
             print(f"Fallback visualization also failed: {fallback_error}")
             return None, None, pd.DataFrame()
+    # Compute 95% confidence interval for the difference in predictions
+
+def risk_bucket(p: float) -> str:
+    if p >= 0.8:
+        return "High Risk"
+    elif p >= 0.4:
+        return "Medium Risk"
+    else:
+        return "Low Risk"
+
+
+def get_confidence_interval(original_preds, modified_preds):
+    diffs = np.array(modified_preds) - np.array(original_preds)
+    if len(diffs) < 2 or np.allclose(diffs, 0):
+        return (0.0, 0.0)
+    
+    mean_diff = np.mean(diffs)
+    sem = stats.sem(diffs)
+    margin = 1.96 * sem
+    return (mean_diff - margin, mean_diff + margin)
+
+def get_percentile_summary(original_preds, modified_preds):
+    return {
+        "orig_25": np.percentile(original_preds, 25),
+        "mod_25": np.percentile(modified_preds, 25),
+        "orig_50": np.percentile(original_preds, 50),
+        "mod_50": np.percentile(modified_preds, 50),
+        "orig_75": np.percentile(original_preds, 75),
+        "mod_75": np.percentile(modified_preds, 75),
+    }
+def get_risk_shift_summary(original_preds, modified_preds):
+    import pandas as pd
+
+    buckets_orig = pd.Series([risk_bucket(p) for p in original_preds])
+    buckets_mod = pd.Series([risk_bucket(p) for p in modified_preds])
+    
+    summary = {}
+    for group in ["High Risk", "Medium Risk", "Low Risk"]:
+        summary[group] = {
+            "original_pct": (buckets_orig == group).mean(),
+            "modified_pct": (buckets_mod == group).mean()
+        }
+    return summary
+
+from collections import Counter
+
+def get_class_distribution_change(original_preds, modified_preds):
+    orig_counts = Counter(original_preds)
+    mod_counts = Counter(modified_preds)
+
+    all_labels = set(orig_counts.keys()).union(mod_counts.keys())
+    total_orig = sum(orig_counts.values())
+    total_mod = sum(mod_counts.values())
+
+    changes = {}
+    for label in all_labels:
+        orig_pct = orig_counts[label] / total_orig if total_orig > 0 else 0
+        mod_pct = mod_counts[label] / total_mod if total_mod > 0 else 0
+        changes[label] = (mod_pct - orig_pct) * 100  # as percent
+    return changes
+
