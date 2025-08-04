@@ -3328,31 +3328,53 @@ function displayResults(endpoint, data) {
         }
       }
   break;
-  case 'what_if':
-    metricsDetails.innerHTML = buildMetricsHtml(data);
+case 'what_if':
+  metricsDetails.innerHTML = buildMetricsHtml(data);
 
-    // Add distribution visualization
-    if (data.visualizations?.distribution_plot) {
-      addVisualization('📈 Prediction Distribution Shift', data.visualizations.distribution_plot);
-    }
+  // 🌐 Handle all enhanced visualizations
+  const viz = data.visualizations || {};
 
-    // Add correlation shift visualization
-    if (data.visualizations?.correlation_shift) {
-      addVisualization('🔀 Correlation Shift', data.visualizations.correlation_shift);
-    }
+  if (viz.distribution_plot) {
+    addVisualization('📈 Prediction Distribution Shift', viz.distribution_plot);
+  }
 
-    // Show cluster summary if available
-    if (data.cluster_summary) {
-      addTextBlock('📊 Cluster Summary', `<pre>${data.cluster_summary}</pre>`);
-    }
+  if (viz.correlation_shift) {
+    addVisualization('🔀 Correlation Shift', viz.correlation_shift);
+  }
 
-    // Show AI-generated insights
-    if (data.insights && data.insights.length) {
-      const insightsHtml = data.insights.map(insight => `<li>${insight}</li>`).join('');
-      addTextBlock('🧠 Insights', `<ul>${insightsHtml}</ul>`);
-    }
+  if (viz.distribution_analysis) {
+    addVisualization('📊 Distribution Analysis', viz.distribution_analysis);
+  }
+
+  if (viz.feature_impact_analysis) {
+    addVisualization('📌 Feature Impact Analysis', viz.feature_impact_analysis);
+  }
+
+  if (viz.statistical_analysis) {
+    addVisualization('📐 Statistical Analysis', viz.statistical_analysis);
+  }
+
+  if (viz.prediction_impact_summary) {
+    addVisualization('📉 Prediction Impact Summary', viz.prediction_impact_summary);
+  }
+
+  if (viz.magnitude_analysis) {
+    addVisualization('📊 Magnitude Analysis', viz.magnitude_analysis);
+  }
+
+  // 🧬 Cluster Summary
+  if (data.cluster_summary) {
+    addTextBlock('📊 Cluster Summary', `<pre>${data.cluster_summary}</pre>`);
+  }
+
+  // 🧠 Insights
+  if (data.insights && data.insights.length) {
+    const insightsHtml = data.insights.map(insight => `<li>${insight}</li>`).join('');
+    addTextBlock('🧠 Insights', `<ul>${insightsHtml}</ul>`);
+  }
 
   break;
+
 
 
     default:
