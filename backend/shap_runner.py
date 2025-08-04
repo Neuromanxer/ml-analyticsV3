@@ -110,7 +110,8 @@ def main():
             raise
 
         # Load training columns
-        training_columns_path = output_dir / "training_columns.json"
+        training_columns_filename = req.get("training_columns_filename", "training_columns.json")
+        training_columns_path = output_dir / training_columns_filename
         flush_print(f"[SHAP DEBUG] Loading training columns from: {training_columns_path}")
         
         if not training_columns_path.exists():

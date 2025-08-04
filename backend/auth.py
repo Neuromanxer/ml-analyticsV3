@@ -1088,7 +1088,8 @@ def register_user(
             db_password=db_password,
             agreed_to_terms=agreed_to_terms,
             agreed_at=datetime.utcnow(),
-            policy_version=policy_version
+            policy_version=policy_version,
+            tokens=10  # 🎁 Give 10 tokens on registration
         )
         db.add(user)
         db.flush()

@@ -2870,6 +2870,9 @@ function renderFlatTable(headers, rows) {
 
       ${typeof data.test_scores === "object" && data.test_scores !== null ? `<div>🧪 Test Scores: ${formatKeyValObject(data.test_scores)}</div>` : ""}
       ${typeof data.pred_stats === "object" && data.pred_stats !== null ? `<div>📊 Prediction Stats: ${formatKeyValObject(data.pred_stats)}</div>` : ""}
+      ${typeof data.metrics === "object" && data.metrics !== null
+    ? `<div>⚙️ Metrics: ${formatKeyValObject(data.metrics)}</div>`
+    : ""}
       ${typeof data.cv_scores === "object" && data.cv_scores !== null ? `<div>🔁 CV Scores: ${formatKeyValObject(data.cv_scores)}</div>` : ""}
       ${typeof data.cluster_stats === "object" && data.cluster_stats !== null ? `<div>📦 Cluster Stats: ${formatKeyValObject(data.cluster_stats)}</div>` : ""}
       ${typeof data.cluster_feature_differences === "object" && data.cluster_feature_differences !== null ? `<div>🧠 Feature Differences: ${formatKeyValObject(data.cluster_feature_differences)}</div>` : ""}
