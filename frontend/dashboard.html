@@ -1224,7 +1224,7 @@
                 <span>Visualize</span>
                 <small>Explore relationships</small>
               </button>
-              <button id="btn-feature-impact" class="btn analysis-btn" data-category="exploratory">
+              <button id="btn-feature_impact" class="btn analysis-btn" data-category="exploratory">
                 <i class="fas fa-chart-pie"></i>
                 <span>Feature Impact</span>
                 <small>Understand importance</small>
@@ -1250,7 +1250,7 @@
                 <span>Customer Segments</span>
                 <small>Identify user groups</small>
               </button>
-              <button id="btn-decision-paths" class="btn analysis-btn" data-category="advanced">
+              <button id="btn-decision_paths" class="btn analysis-btn" data-category="advanced">
                 <i class="fas fa-project-diagram"></i>
                 <span>Decision Paths</span>
                 <small>Optimal strategies</small>
@@ -1261,12 +1261,12 @@
           <div class="analysis-category">
             <h3>Predictions</h3>
             <div class="btn-group">
-              <button id="btn-classification-predict" class="btn analysis-btn" data-category="prediction">
+              <button id="btn-classification_predict" class="btn analysis-btn" data-category="prediction">
                 <i class="fas fa-magic"></i>
                 <span>Predict (Classification)</span>
                 <small>Make categorical predictions</small>
               </button>
-              <button id="btn-regression-predict" class="btn analysis-btn" data-category="prediction">
+              <button id="btn-regression_predict" class="btn analysis-btn" data-category="prediction">
                 <i class="fas fa-chart-bar"></i>
                 <span>Predict (Regression)</span>
                 <small>Make numerical predictions</small>
@@ -1353,15 +1353,15 @@
       classification:         '/classification/',
       clustering:             '/cluster/',
       visualize:              '/visualize/',
-      'feature-impact':       '/feature_impact/',
+      'feature_impact':      '/feature_impact/',
       counterfactual:         '/counterfactual/',
       segments:               '/segment_analysis/',
       risk:                   '/risk_analysis/',
-      'decision-paths':       '/decision_paths/',
-      'time-series-analysis': '/forecast/',
+      'decision_paths':      '/decision_paths/',
+      'time-series_analysis': '/forecast/',
       survival:               '/survival/',
-      'classification-predict': '/classification/predict/',
-      'regression-predict':     '/regression/predict/',
+      'classification_predict': '/classification/predict/',
+      'regression_predict':     '/regression/predict/',
       'what_if':                '/what_if/'    
     };
 
@@ -1562,13 +1562,24 @@ document.getElementById('btn-visualize').addEventListener('click', () => selectA
 document.getElementById('btn-feature-impact').addEventListener('click', () => selectAnalysisMethod('feature-impact'));
 document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
 document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
-document.getElementById('btn-decision-paths').addEventListener('click', () => selectAnalysisMethod('decision-paths'));
-document.getElementById('btn-time-series-analysis').addEventListener('click', () => selectAnalysisMethod('time-series-analysis'));
-document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
-document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
-document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
-document.getElementById('btn-what_if').addEventListener('click', () => selectAnalysisMethod('what_if'));
-  
+document.getElementById('btn_decision_paths')
+  .addEventListener('click', () => selectAnalysisMethod('decision_paths'));
+
+document.getElementById('btn-decision_paths')
+  .addEventListener('click', () => selectAnalysisMethod('decision_paths'));
+
+document.getElementById('btn-time_series_analysis')
+  .addEventListener('click', () => selectAnalysisMethod('time_series_analysis'));
+
+document.getElementById('btn-survival')
+  .addEventListener('click', () => selectAnalysisMethod('survival'));
+
+document.getElementById('btn-classification_predict')
+  .addEventListener('click', () => selectAnalysisMethod('classification_predict'));
+
+document.getElementById('btn-regression_predict')
+  .addEventListener('click', () => selectAnalysisMethod('regression_predict'));
+
 fullInput.addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;

@@ -323,7 +323,7 @@ def do_classification(
             dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
             model_filename         = f"{user_id}_best_classifier_{dataset_hash}.pkl"
             training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
-
+            data_filename = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
             # Save training columns for SHAP alignment
             training_columns = list(X_train.columns)
             training_columns_path = user_dir / training_columns_filename
@@ -613,7 +613,7 @@ def do_classification(
 
                 # Upload processed dataset
                 
-                data_filename = PathL(data_path).name
+
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
                 # Generate signed URLs for access (e.g., for frontend or gallery)
@@ -753,10 +753,11 @@ def do_classification_predict(
             return obj
     dataset_hash = hash_filename(file_path)
 
-    # Consistent and unique filenames for this dataset
+    # now build your consistent filenames
     model_filename            = f"{user_id}_best_classifier_{dataset_hash}.pkl"
     training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
-    data_filename             = f"{user_id}_processed_data_{dataset_hash}.csv"
+    data_filename             = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
+
 
     try:
         # Setup paths - models are still stored locally, but data files are in Supabase
@@ -4734,89 +4735,114 @@ def do_what_if(
         changes: Dict[str, Any]
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
-        Apply feature changes with comprehensive validation for mass scenario simulation.
-        Always works on a deep copy and uses .loc to avoid SettingWithCopyWarning.
+        Apply bulk feature changes across all records of a DataFrame.
+
+        - Supports operations: percentage (alias for percent increase/decrease),
+        percent_increase, percent_decrease, additive, multiplicative, set_value,
+        categorical_replace, categorical_boost.
+        - Ignores extra keys (e.g. 'original_mean') in the operation dict.
+        - For "percentage", positive values increase, negative values decrease by abs(value)%.
+        - Returns (modified_df, applied_changes), where applied_changes maps feature names
+        to details of what was done.
         """
-        # 1) Start with a deep copy
         modified_df = df.copy(deep=True)
         applied_changes: Dict[str, Any] = {}
 
         for feature, operation in changes.items():
             if feature not in modified_df.columns:
-                logging.warning(f"Feature '{feature}' not found in dataset, skipping")
+                logging.warning(f"Feature '{feature}' not found, skipping")
                 continue
 
             try:
-                # uniformly address numeric coercion
-                def to_num(col):
-                    return pd.to_numeric(modified_df.loc[:, col], errors="coerce")
+                to_num = lambda col: pd.to_numeric(modified_df.loc[:, col], errors="coerce")
 
+                # If operation is a dict with a "type", dispatch accordingly
                 if isinstance(operation, dict) and "type" in operation:
                     op_type = operation["type"]
-                    value   = operation.get("value", 0)
+                    # Only the 'value' key matters for computation
+                    raw_value = operation.get("value", 0)
+                    pct_or_val = float(raw_value)
 
-                    if op_type == "percent_increase":
-                        pct = float(value)
+                    # 1) Legacy "percentage" alias: +ve → increase, -ve → decrease
+                    if op_type == "percentage":
+                        pct = abs(pct_or_val)
+                        if pct_or_val >= 0:
+                            modified_df.loc[:, feature] = to_num(feature) * (1 + pct / 100)
+                            desc = f"Increased {feature} by {pct}% across all records"
+                        else:
+                            modified_df.loc[:, feature] = to_num(feature) * (1 - pct / 100)
+                            desc = f"Decreased {feature} by {pct}% across all records"
+
+                    # 2) Explicit percent increase
+                    elif op_type == "percent_increase":
+                        pct = pct_or_val
                         if pct < -100:
                             raise ValueError(f"Percent increase < -100% for {feature}")
                         modified_df.loc[:, feature] = to_num(feature) * (1 + pct / 100)
                         desc = f"Increased {feature} by {pct}% across all records"
 
+                    # 3) Explicit percent decrease
                     elif op_type == "percent_decrease":
-                        pct = float(value)
+                        pct = pct_or_val
                         if not 0 <= pct <= 100:
                             raise ValueError(f"Percent decrease must be 0–100% for {feature}")
                         modified_df.loc[:, feature] = to_num(feature) * (1 - pct / 100)
                         desc = f"Decreased {feature} by {pct}% across all records"
 
+                    # 4) Additive change
                     elif op_type == "additive":
-                        delta = float(value)
+                        delta = pct_or_val
                         modified_df.loc[:, feature] = to_num(feature) + delta
                         desc = f"Added {delta} to {feature} across all records"
 
+                    # 5) Multiplicative change
                     elif op_type == "multiplicative":
-                        mul = float(value)
+                        mul = pct_or_val
                         modified_df.loc[:, feature] = to_num(feature) * mul
                         desc = f"Multiplied {feature} by {mul} across all records"
 
+                    # 6) Set all values to a constant
                     elif op_type == "set_value":
-                        modified_df.loc[:, feature] = value
-                        desc = f"Set {feature} to {value} across all records"
+                        const = operation.get("value")
+                        modified_df.loc[:, feature] = const
+                        desc = f"Set {feature} to {const} across all records"
 
+                    # 7) Categorical replace
                     elif op_type == "categorical_replace":
                         old = operation.get("old_value", "all")
-                        new = value
+                        new = operation.get("value")
                         if old == "all":
                             modified_df.loc[:, feature] = new
                             desc = f"Replaced all {feature} values with {new}"
                         else:
                             mask = modified_df.loc[:, feature] == old
+                            cnt  = mask.sum()
                             modified_df.loc[mask, feature] = new
-                            cnt = mask.sum()
                             desc = f"Replaced {cnt} records where {feature} == {old} with {new}"
 
+                    # 8) Categorical boost
                     elif op_type == "categorical_boost":
                         target = operation.get("value")
                         prop   = min(max(operation.get("proportion", 0.1), 0), 1)
                         n      = int(len(modified_df) * prop)
-                        if n > 0:
+                        if n:
                             idx = modified_df.sample(n=n, random_state=42).index
                             modified_df.loc[idx, feature] = target
                         desc = f"Set {prop*100:.1f}% ({n}) records of {feature} to {target}"
 
                     else:
-                        # Unknown op_type falls back to no change
-                        logging.warning(f"Unknown operation '{op_type}' for {feature}")
+                        logging.warning(f"Unknown operation '{op_type}' for {feature}, skipping")
                         continue
 
+                    # Record what was applied
                     applied_changes[feature] = {
                         "type": op_type,
-                        "value": operation.get("value"),
+                        "value": raw_value,
                         "description": desc
                     }
 
                 else:
-                    # simple scalar assignment
+                    # If not a dict or no "type", just assign the literal value
                     modified_df.loc[:, feature] = operation
                     applied_changes[feature] = {
                         "type": "set_value",
@@ -4829,6 +4855,7 @@ def do_what_if(
                 continue
 
         return modified_df, applied_changes
+
 
     
     def calculate_advanced_metrics(original_preds: np.ndarray, modified_preds: np.ndarray) -> Dict[str, Any]:
