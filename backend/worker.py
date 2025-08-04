@@ -5336,7 +5336,7 @@ def do_what_if(
         task_type = "classification" if is_classification else "regression"
         task_subtype = "binary" if task_type == "classification" and num_unique == 2 else "multiclass" if is_classification else "continuous"
 
-        logging.info(f"🧠 Auto-detected task: {task_type.upper()} ({task_subtype})")
+        logging.info(f"Auto-detected task: {task_type.upper()} ({task_subtype})")
 
         # --- Statistical significance ---
         if metrics.get("is_significant") is True:
@@ -5352,18 +5352,17 @@ def do_what_if(
         else:
             ci = None
 
-        if ci:
+        if ci and ci[0] is not None and ci[1] is not None:
             insights.append(f"📉 **95% Confidence Interval**: Prediction change lies between {ci[0]:.4f} and {ci[1]:.4f}")
-
         # --- Effect size ---
         effect_size = metrics.get("effect_size", 0)
-        if effect_size:
+        if effect_size is not None:
             if abs(effect_size) < 0.2:
-                insights.append("📏 **Small Effect**: Minimal practical impact")
+                insights.append("**Small Effect**: Minimal practical impact")
             elif abs(effect_size) < 0.5:
-                insights.append("📈 **Medium Effect**: Moderate practical impact")
+                insights.append("**Medium Effect**: Moderate practical impact")
             else:
-                insights.append("🚀 **Large Effect**: Substantial impact on predictions")
+                insights.append("**Large Effect**: Substantial impact on predictions")
 
         # --- Classification-specific ---
         if task_type == "classification":

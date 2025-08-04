@@ -1156,63 +1156,6 @@ async def get_bulk_editable_features(req: WhatIfInputRequest):
         logger.error(f"Error processing what-if inputs: {str(e)}")
         raise HTTPException(status_code=500, detail={"error": "Failed to process features", "details": str(e)})
 
-@router.post("/what_if/predict/")
-async def process_what_if_prediction(req: WhatIfPredictionRequest):
-    """
-    Process what-if prediction request with mass changes.
-    
-    This endpoint applies mass changes to features and returns prediction results.
-    Note: You'll need to integrate your actual model predictor.
-    """
-    try:
-        # Convert original data to DataFrame
-        original_df = pd.DataFrame(req.original_data)
-        
-        # Apply mass changes
-        processor = WhatIfProcessor()
-        modified_df = processor.apply_mass_changes(original_df, req.feature_changes)
-        
-        # Remove target and drop columns for prediction
-        prediction_df = modified_df.copy()
-        columns_to_drop = [req.target_column] + (req.drop_columns or [])
-        prediction_df = prediction_df.drop(columns=[col for col in columns_to_drop if col in prediction_df.columns])
-        
-        # TODO: Replace this with your actual model predictor
-        # For now, returning dummy predictions
-        predictions = np.random.rand(len(prediction_df))  # Replace with: model_predictor.predict(prediction_df)
-        
-        # Generate change summary
-        change_summary = processor.generate_change_summary(
-            original_df, modified_df, req.feature_changes
-        )
-        
-        # Calculate prediction statistics
-        original_target = original_df[req.target_column] if req.target_column in original_df.columns else None
-        
-        prediction_stats = {
-            'mean_prediction': float(np.mean(predictions)),
-            'median_prediction': float(np.median(predictions)),
-            'std_prediction': float(np.std(predictions)),
-            'min_prediction': float(np.min(predictions)),
-            'max_prediction': float(np.max(predictions))
-        }
-        
-        if original_target is not None:
-            prediction_stats['original_mean'] = float(original_target.mean())
-            prediction_stats['mean_change'] = prediction_stats['mean_prediction'] - prediction_stats['original_mean']
-            prediction_stats['percent_change'] = (prediction_stats['mean_change'] / prediction_stats['original_mean']) * 100
-        
-        return {
-            'success': True,
-            'predictions': predictions.tolist(),
-            'prediction_stats': prediction_stats,
-            'change_summary': change_summary,
-            'scenario_description': _generate_scenario_description(req.feature_changes)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error processing what-if prediction: {str(e)}")
-        raise HTTPException(status_code=500, detail={"error": "Failed to process prediction", "details": str(e)})
 
 @router.get("/what_if/health")
 async def health_check():
