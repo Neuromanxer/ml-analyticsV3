@@ -331,11 +331,7 @@ def do_classification(
                 json.dump(training_columns, f)
 
             # ✅ Upload to Supabase so prediction can access it
-            upload_file_to_supabase(
-                user_id=user_id,
-                file_path=str(training_columns_path),
-                filename="training_columns.json"
-            )
+            upload_file_to_supabase(user_id, str(training_columns_path), training_columns_path.name)
 
 
             # Pick Best Model
@@ -442,6 +438,7 @@ def do_classification(
 
             # Save the data used for SHAP (full processed dataset)
             data_path = user_dir / data_filename
+            
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
             # Attempt to generate customer-level summary stats
@@ -613,7 +610,7 @@ def do_classification(
 
                 # Upload processed dataset
                 
-                data_filename = PathL(data_path).name
+                data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
                 # Generate signed URLs for access (e.g., for frontend or gallery)
