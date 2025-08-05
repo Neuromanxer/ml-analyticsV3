@@ -2820,6 +2820,18 @@ function selectAnalysisMethod(analysisType) {
     .join("<br>");
 }
 
+function addTextBlock(title, htmlContent) {
+  const container = document.getElementById('metricsDetails'); // or wherever you display blocks
+  if (!container) return;
+
+  const section = document.createElement('section');
+  section.className = 'text-block-section';
+  section.innerHTML = `
+    <h3 style="margin-top: 20px;">${title}</h3>
+    <div class="text-content" style="margin-bottom: 10px;">${htmlContent}</div>
+  `;
+  container.appendChild(section);
+}
 
 function formatArray(arr) {
   return Array.isArray(arr) ? arr.map(v => `<code>${v}</code>`).join(", ") : "N/A";
