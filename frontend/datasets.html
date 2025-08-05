@@ -2031,7 +2031,7 @@ async function fetchWithTokenRefresh(url, options = {}) {
     setTimeout(() => {
       window.location.href =
         `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
-    }, 2000);
+    }, 10000);
     throw new Error('No refresh token available');
   }
 
