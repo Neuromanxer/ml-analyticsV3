@@ -753,15 +753,13 @@ def do_classification_predict(
             return obj
     dataset_hash = hash_filename(file_path)
 
-    # now build your consistent filenames
-    model_filename            = f"{user_id}_best_classifier_{dataset_hash}.pkl"
+    # Build consistent filenames
+    model_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
     training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
-    data_filename             = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
+    data_filename = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
 
 
     try:
-        # Setup paths - models are still stored locally, but data files are in Supabase
-        
         model_supabase_path = f"{user_id}/{model_filename}"
 
         try:
