@@ -2009,70 +2009,77 @@ function runDatasetQuery() {
     });
 }
 
-
-// Function to handle fetch requests with token refresh capability
 async function fetchWithTokenRefresh(url, options = {}) {
-    try {
-        // Attempt the original request
-        const response = await fetch(url, options);
-        
-        // If response is successful or not an auth error, return it
-        if (response.ok || (response.status !== 401 && response.status !== 403)) {
-            return response;
-        }
-        
-        // If we got a 401/403, try to refresh the token
-        console.log('Authentication failed, attempting token refresh');
-        
-        const refreshToken = safeStorageGet('refresh_token');
-        if (!refreshToken) {
-            throw new Error('No refresh token available');
-        }
+    // First attempt
+    let response = await fetch(url, {
+        ...options,
+        credentials: options.credentials || 'include'
+    });
 
-        const refreshResponse = await fetch('${API_BASE_URL}/api/auth/refresh-token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                refresh_token: refreshToken
-            })
-        });
-        
-        if (!refreshResponse.ok) {
-            throw new Error('Token refresh failed');
-        }
-        
-        // Get the new tokens
-        const tokenData = await refreshResponse.json();
-        
-        // Save the new tokens
-        safeStorageSet('access_token', tokenData.access_token);
-        if (tokenData.refresh_token) {
-            safeStorageSet('refresh_token', tokenData.refresh_token);
-        }
-        
-        // Retry the original request with the new token
-        const newOptions = {
-            ...options,
-            headers: {
-                ...options.headers,
-                'Authorization': `Bearer ${tokenData.access_token}`
-            }
-        };
-        
-        return fetch(url, newOptions);
-    } catch (error) {
-        console.error('Error in fetchWithTokenRefresh:', error);
-        
-        // If token refresh fails, redirect to login
-        if (error.message === 'Token refresh failed' || error.message === 'No refresh token available') {
-            window.location.href = 'login.html?next=' + encodeURIComponent(window.location.pathname) + '&reason=Your session has expired';
-        }
-        
-        throw error;
+    // If not an auth error, just return it
+    if (response.ok || (response.status !== 401 && response.status !== 403)) {
+        return response;
     }
+
+    console.log('Authentication failed, attempting token refresh');
+
+    // Grab and validate our refresh token
+    const refreshToken = safeStorageGet('refresh_token');
+    if (!refreshToken) {
+        console.error('No refresh token available');
+        window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+        throw new Error('No refresh token available');
+    }
+
+    // Call the real refresh endpoint
+    const refreshUrl = `${API_BASE_URL}/api/auth/refresh-token`;
+    const refreshResponse = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: 'include'
+    });
+
+    if (!refreshResponse.ok) {
+        console.error('Token refresh failed:', refreshResponse.status, await refreshResponse.text());
+        window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+        throw new Error('Token refresh failed');
+    }
+
+    // Only parse JSON if there is a non-empty JSON body
+    let tokenData;
+    const contentType = refreshResponse.headers.get('content-type') || '';
+    const text = await refreshResponse.text();
+    if (contentType.includes('application/json') && text.trim()) {
+        try {
+            tokenData = JSON.parse(text);
+        } catch (e) {
+            console.error('Failed to parse refresh JSON:', text);
+            throw new Error('Invalid JSON from refresh endpoint');
+        }
+    } else {
+        console.error('Refresh endpoint returned no JSON');
+        throw new Error('Empty refresh response');
+    }
+
+    // Save new tokens
+    safeStorageSet('access_token', tokenData.access_token);
+    if (tokenData.refresh_token) {
+        safeStorageSet('refresh_token', tokenData.refresh_token);
+    }
+
+    // Retry the original request, with updated header + credentials
+    const retryOptions = {
+        ...options,
+        headers: {
+            ...(options.headers || {}),
+            'Authorization': `Bearer ${tokenData.access_token}`,
+        },
+        credentials: 'include'
+    };
+    return fetch(url, retryOptions);
 }
+
 function showUploadStatus(message, type = 'success') {
     const statusDiv = document.getElementById('uploadStatus');
     
