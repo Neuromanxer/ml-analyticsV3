@@ -2011,26 +2011,31 @@ function runDatasetQuery() {
 
 
 async function fetchWithTokenRefresh(url, options = {}) {
-  // Always send cookies
-  const opts = { ...options, credentials: options.credentials || 'include' };
+  const opts = {
+    ...options,
+    credentials: options.credentials || 'include'
+  };
 
-  // 1) Try the original request
+  // 1) Try original request
   let response = await fetch(url, opts);
   if (response.ok || (response.status !== 401 && response.status !== 403)) {
     return response;
   }
-
   console.log('Authentication failed, attempting token refresh');
 
-  // 2) Grab the refresh token
+  // 2) Grab refresh token
   const refreshToken = safeStorageGet('refresh_token');
   if (!refreshToken) {
-    window.location.href =
-      `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    console.error('No refresh token available');
+    // delay then redirect
+    setTimeout(() => {
+      window.location.href =
+        `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    }, 2000);
     throw new Error('No refresh token available');
   }
 
-  // 3) Correctly interpolate the URL with backticks, and include credentials
+  // 3) Refresh endpoint (using backticks!)
   const refreshResponse = await fetch(
     `${API_BASE_URL}/api/auth/refresh-token`,
     {
@@ -2047,8 +2052,11 @@ async function fetchWithTokenRefresh(url, options = {}) {
       refreshResponse.status,
       await refreshResponse.text()
     );
-    window.location.href =
-      `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    // delay then redirect
+    setTimeout(() => {
+      window.location.href =
+        `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    }, 2000);
     throw new Error('Token refresh failed');
   }
 
@@ -2059,6 +2067,11 @@ async function fetchWithTokenRefresh(url, options = {}) {
     tokenData = JSON.parse(text);
   } catch (e) {
     console.error('Failed to parse refresh JSON:', text);
+    // delay then redirect
+    setTimeout(() => {
+      window.location.href =
+        `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    }, 2000);
     throw new Error('Invalid JSON from refresh endpoint');
   }
 
@@ -2068,7 +2081,7 @@ async function fetchWithTokenRefresh(url, options = {}) {
     safeStorageSet('refresh_token', tokenData.refresh_token);
   }
 
-  // 6) Retry the original request with updated header + cookies
+  // 6) Retry original request
   const retryOpts = {
     ...opts,
     headers: {
@@ -2079,6 +2092,7 @@ async function fetchWithTokenRefresh(url, options = {}) {
   };
   return fetch(url, retryOpts);
 }
+
 
 function showUploadStatus(message, type = 'success') {
     const statusDiv = document.getElementById('uploadStatus');
