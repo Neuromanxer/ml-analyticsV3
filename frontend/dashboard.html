@@ -3079,7 +3079,7 @@ function displayResults(endpoint, data) {
       }
   
       break;
-      case 'classification_predict': {
+      case 'classification-predict': {
     // Display basic metrics
     metricsDetails.innerHTML = buildMetricsHtml(data.statistics || data.metrics);
 
@@ -3172,7 +3172,7 @@ function displayResults(endpoint, data) {
     break;
   }
 
-  case 'regression_predict': {
+  case 'regression-predict': {
     // Show regression prediction statistics
     if (data.prediction_statistics) {
       metricsDetails.innerHTML = buildMetricsHtml(data.prediction_statistics);
