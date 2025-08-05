@@ -2008,30 +2008,69 @@ function runDatasetQuery() {
         console.error('Query error:', error);
     });
 }
+// ─── 1) Store tokens robustly ───
+function storeAuthTokens(tokenData) {
+  if (!tokenData) return false;
+  let success = true;
 
-// Reuse your working refreshUserToken():
+  if (tokenData.access_token) {
+    success = safeStorageSet('access_token', tokenData.access_token) && success;
+  }
+  if (tokenData.refresh_token) {
+    success = safeStorageSet('refresh_token', tokenData.refresh_token) && success;
+  }
+
+  // Mark logged-in last, so it only flips true when tokens are in place
+  success = safeStorageSet('userLoggedIn', 'true') && success;
+
+  if (tokenData.name) {
+    success = safeStorageSet('userName', tokenData.name) && success;
+  }
+  if (tokenData.email) {
+    success = safeStorageSet('userEmail', tokenData.email) && success;
+  }
+
+  // Verify storage
+  if (success) {
+    const tok = safeStorageGet('access_token');
+    const flag = safeStorageGet('userLoggedIn');
+    success = !!(tok && flag === 'true');
+  }
+  return success;
+}
+
+// ─── 2) Use it in your refreshUserToken routine ───
 async function refreshUserToken() {
   const refreshToken = safeStorageGet('refresh_token');
-  if (!refreshToken) throw new Error('No refresh token available');
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
 
-  const resp = await fetch(`${API_BASE_URL}/api/auth/refresh-token/`, {
+  const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refreshToken }),
-    // no credentials needed here if your backend uses purely the JSON body
+    credentials: 'include'
   });
 
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `HTTP ${resp.status}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${response.status}`);
   }
-  const data = await resp.json();
-  storeAuthTokens({
+
+  const data = await response.json();
+
+  // Replace direct safeStorageSet calls with storeAuthTokens:
+  const stored = storeAuthTokens({
     access_token:  data.access_token,
     refresh_token: data.refresh_token || refreshToken,
-    name:  safeStorageGet('userName'),
-    email: safeStorageGet('userEmail')
+    name:           data.name,    // if your backend returns name/email
+    email:          data.email
   });
+  if (!stored) {
+    throw new Error('Failed to store refreshed tokens');
+  }
+
   return true;
 }
 
@@ -2465,7 +2504,6 @@ function deleteDataset(datasetId) {
         })
     }
 }
-
 
     </script>
 </body>
