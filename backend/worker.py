@@ -21,7 +21,14 @@ import tempfile
 # -- replace these imports with your actual module paths --
 
 import subprocess
-
+from scipy.stats import (
+    ttest_rel,
+    wilcoxon,
+    fisher_exact,
+    sem,
+    t as student_t
+)
+from statsmodels.stats.proportion import proportions_ztest
 
 import joblib
 from datetime import datetime
@@ -451,7 +458,8 @@ def do_classification(
                     "output_dir": str(user_dir.resolve()),
                     "model_type": "classifier",
                     "target_column": target_column,
-                    "save_filename": f"{user_id}_feature_importance.png"
+                    "save_filename": f"{user_id}_feature_importance.png",
+                    "training_columns": training_columns
                 }, f)
             
             # Run SHAP Visualizations subprocess
@@ -482,7 +490,8 @@ def do_classification(
                         "output_dir": str(user_dir.resolve()),
                         "model_type": "classification",
                         "target_column": target_column,
-                        "save_filename": f"{user_id}_feature_importance.png"
+                        "save_filename": f"{user_id}_feature_importance.png",
+                        "training_columns" : training_columns
                     }, f, indent=2)
 
                 print(f"[SHAP DEBUG] Request JSON created at: {request_json}")
@@ -2266,15 +2275,10 @@ def do_regression(
                     }
 
 
-                X_full_raw = full_df.drop(columns=["ID", target_column], errors="ignore")
+                X_full_raw = full_df.drop(columns=[target_column], errors="ignore")
                 X_full_processed = results["preprocessor"].transform(X_full_raw)
 
-                if hasattr(results["preprocessor"], "get_feature_names_out"):
-                    feature_names = results["preprocessor"].get_feature_names_out()
-                else:
-                    feature_names = results.get("feature_names")
-
-                X_full_df = pd.DataFrame(X_full_processed, columns=feature_names)
+                X_full_df = pd.DataFrame(X_full_processed)
                 
                 # ───────────── Predictions on Full Data ─────────────
                 preds_full = results["final_model"].predict(X_full_processed)
@@ -2302,6 +2306,7 @@ def do_regression(
                 training_columns_path = user_dir / "training_columns.json"
                 with open(training_columns_path, "w") as f:
                     json.dump(list(X_full_df.columns), f)
+                training_columns = list(X_full_df.columns)
                 upload_file_to_supabase(
                     user_id=user_id,
                     file_path=str(training_columns_path),
@@ -2347,7 +2352,8 @@ def do_regression(
                         "output_dir": str(user_dir.resolve()),
                         "model_type": "regression",
                         "target_column": target_column,
-                        "save_filename": f"{user_id}_feature_importance.png"
+                        "save_filename": f"{user_id}_feature_importance.png",
+                        "training_columns": training_columns
                     }, f)
 
                 # Save training columns needed by SHAP
@@ -2383,7 +2389,8 @@ def do_regression(
                             "output_dir": str(user_dir.resolve()),
                             "model_type": "regression",
                             "target_column": target_column,
-                            "save_filename": f"{user_id}_feature_importance.png"
+                            "save_filename": f"{user_id}_feature_importance.png",
+                            "training_columns": training_columns
                         }, f, indent=2)
 
                     # Verify request JSON content
@@ -2578,11 +2585,11 @@ def do_regression(
                 return response_data
 
             except Exception as viz_global_error:
-                print(f"[⚠️] Visualization pipeline error: {viz_global_error}")
+                print(f"[] Visualization pipeline error: {viz_global_error}")
                 return {"status": "failed", "error": str(viz_global_error)}
 
     except Exception as e:
-        print(f"[⚠️] Regression error: {e}")
+        print(f"[] Regression error: {e}")
         return {"status": "failed", "error": str(e)}
 def do_regression_predict(
     user_id: str,
@@ -4542,7 +4549,8 @@ def do_what_if(
         top_features_count: int = 5
         significance_threshold: float = 0.05
         sample_size_limit: int = 100000
-        
+        min_count_for_ztest: int = 5
+
     @dataclass
     class ValidationResult:
         """Result of input validation"""
@@ -4657,7 +4665,7 @@ def do_what_if(
 
         selected_model_type = "classifier" if is_classification else "regressor"
         logging.info(f"🔍 Target column '{target_column}' detected as: {selected_model_type.upper()}")
-
+        task_type = "classification" if is_classification else "regression"
         # Choose the correct model path
         model_paths = {
             "classifier": (
@@ -4680,7 +4688,7 @@ def do_what_if(
 
             model = joblib.load(local_path)
             logging.info(f"✅ Successfully loaded {selected_model_type} model from Supabase: {remote_path}")
-            return model
+            return model, task_type
 
         except Exception as e:
             raise ValueError(f"❌ Failed to load {selected_model_type} model: {str(e)}")
@@ -4707,611 +4715,626 @@ def do_what_if(
                 return None
             return obj
         return obj
+    import logging
+    from typing import Dict, Any, Tuple, Optional
+    import pandas as pd
+    import numpy as np
+    from sklearn.preprocessing import LabelEncoder
 
-    def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Apply feature changes with comprehensive validation for mass scenario simulation"""
-        modified_df = df.copy()
-        applied_changes = {}
-       
+    def apply_feature_changes(
+        df: pd.DataFrame,
+        changes: Dict[str, Any],
+        encoders: Optional[Dict[str, LabelEncoder]] = None
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Apply bulk feature changes even if some features are label-encoded or one-hot–encoded.
+
+        - encoders: optional mapping from column → LabelEncoder
+        - One-hot dummies detected by prefix "<feature>_<category>"
+        """
+        modified_df = df.copy(deep=True)
+        applied_changes: Dict[str, Any] = {}
+
+        numeric_cols = set(modified_df.select_dtypes(include=[np.number]).columns)
+
+        def safe_to_num(s: pd.Series) -> pd.Series:
+            return pd.to_numeric(s, errors="coerce")
+
         for feature, operation in changes.items():
-            if feature not in modified_df.columns:
-                logging.warning(f"Feature '{feature}' not found in dataset, skipping")
+            # ——— 1) Label-encoded? ———
+            if encoders and feature in encoders:
+                le = encoders[feature]
+                codes = modified_df.loc[:, feature].astype(int)
+                orig_lbl = pd.Series(le.inverse_transform(codes), index=modified_df.index)
+
+                # Recurse on the string labels
+                tmp_df = pd.DataFrame({feature: orig_lbl})
+                new_df, tmp_changes = apply_feature_changes(tmp_df, {feature: operation}, encoders=None)
+                new_lbl = new_df[feature].astype(str)
+
+                # Re-encode
+                new_codes = pd.Series(le.transform(new_lbl), index=modified_df.index)
+                modified_df.loc[:, feature] = new_codes
+                applied_changes[feature] = {**tmp_changes[feature], "encoded_with": "label"}
                 continue
-               
+
+            # ——— 2) One-hot–encoded? ———
+            dummy_cols = [c for c in modified_df.columns if c.startswith(feature + "_")]
+            if dummy_cols:
+                dummies = modified_df[dummy_cols].fillna(0).astype(int)
+                orig_lbl = dummies.idxmax(axis=1).str[len(feature) + 1:]
+                tmp_df = pd.DataFrame({feature: orig_lbl})
+                new_df, tmp_changes = apply_feature_changes(tmp_df, {feature: operation}, encoders=None)
+                new_lbl = new_df[feature].astype(str)
+
+                # Rebuild dummies
+                new_d = pd.get_dummies(new_lbl, prefix=feature)
+                for col in dummy_cols:
+                    modified_df.loc[:, col] = new_d.get(col, 0).astype(int)
+                # Add any brand-new category columns
+                for col in new_d.columns:
+                    if col not in dummy_cols:
+                        modified_df.loc[:, col] = new_d[col].astype(int)
+
+                applied_changes[feature] = {
+                    **tmp_changes[feature],
+                    "encoded_with": "one-hot",
+                    "dummy_columns": dummy_cols
+                }
+                continue
+
+            # ——— 3) Regular numeric vs categorical ———
             try:
-                if isinstance(operation, dict) and 'type' in operation:
-                    op_type = operation['type']
-                    value = operation.get('value', 0)
-                   
-                    if op_type == 'percent_increase':
-                        pct = float(value)
-                        if pct < -100:
-                            raise ValueError(f"Percent increase cannot be less than -100% for {feature}")
-                        # Apply to ALL rows - mass scenario simulation
-                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 + pct / 100.0)
-                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Increased {feature} by {pct}% across all records"}
-                       
-                    elif op_type == 'percent_decrease':
-                        pct = float(value)
-                        if pct < 0 or pct > 100:
-                            raise ValueError(f"Percent decrease must be between 0-100% for {feature}")
-                        # Apply to ALL rows
-                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 - pct / 100.0)
-                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Decreased {feature} by {pct}% across all records"}
-                       
-                    elif op_type == 'additive':
-                        delta = float(value)
-                        # Apply to ALL rows
-                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') + delta
-                        applied_changes[feature] = {'type': op_type, 'value': delta, 'description': f"Added {delta} to {feature} across all records"}
-                       
-                    elif op_type == 'multiplicative':
-                        multiplier = float(value)
-                        # Apply to ALL rows
-                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * multiplier
-                        applied_changes[feature] = {'type': op_type, 'value': multiplier, 'description': f"Multiplied {feature} by {multiplier} across all records"}
-                       
-                    elif op_type == 'set_value':
-                        # Set ALL rows to this value
-                        modified_df.loc[:, feature] = value
-                        applied_changes[feature] = {'type': op_type, 'value': value, 'description': f"Set {feature} to {value} across all records"}
-                       
-                    elif op_type == 'categorical_replace':
-                        # Replace ALL occurrences
-                        old_value = operation.get('old_value', 'all')
-                        new_value = value
-                        if old_value == 'all':
-                            modified_df.loc[:, feature] = new_value
-                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
-                                                      'description': f"Replaced all {feature} values with {new_value}"}
-                        else:
-                            modified_df.loc[modified_df.loc[:, feature] == old_value, feature] = new_value
-                            affected_count = (df[feature] == old_value).sum()
-                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
-                                                      'description': f"Replaced {feature} '{old_value}' with '{new_value}' ({affected_count} records)"}
-                       
-                    elif op_type == 'categorical_boost':
-                        # Boost proportion of records to target value
-                        target_value = operation.get('value')
-                        proportion = min(max(operation.get('proportion', 0.1), 0), 1)  # Clamp between 0-1
-                        n_samples = int(len(modified_df) * proportion)
-                        if n_samples > 0:
-                            idx = modified_df.sample(n=n_samples, random_state=42).index
-                            modified_df.loc[idx, feature] = target_value
-                            applied_changes[feature] = {'type': op_type, 'value': target_value, 'proportion': proportion,
-                                                      'description': f"Set {proportion*100:.1f}% of records ({n_samples}) to have {feature} = {target_value}"}
-                   
+                col_series = modified_df.loc[:, feature].copy()
+                is_numeric = feature in numeric_cols
+
+                if isinstance(operation, dict) and "type" in operation:
+                    op = operation["type"]
+                    raw = operation.get("value", 0)
+
+                    # —— Numeric ops ——
+                    if is_numeric and op in {
+                        "percentage", "percent_increase", "percent_decrease",
+                        "additive", "multiplicative", "set_value"
+                    }:
+                        pct = float(raw)
+                        if op == "percentage":
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                factor = 1 + pct/100
+                                col_series = safe_to_num(col_series) * factor
+                            desc = f"{'Increased' if pct>=0 else 'Decreased'} {feature} by {abs(pct)}%"
+                        elif op == "percent_increase":
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                col_series = safe_to_num(col_series) * (1 + pct/100)
+                            desc = f"Increased {feature} by {pct}%"
+                        elif op == "percent_decrease":
+                            with np.errstate(divide='ignore', invalid='ignore'):
+                                col_series = safe_to_num(col_series) * (1 - pct/100)
+                            desc = f"Decreased {feature} by {pct}%"
+                        elif op == "additive":
+                            col_series = safe_to_num(col_series) + pct
+                            desc = f"Added {pct} to {feature}"
+                        elif op == "multiplicative":
+                            col_series = safe_to_num(col_series) * pct
+                            desc = f"Multiplied {feature} by {pct}"
+                        else:  # set_value
+                            col_series = raw
+                            desc = f"Set {feature} to {raw}"
+
+                        # clean up any NaNs/Infs
+                        col_series = col_series.fillna(0)
+
+                    # —— Categorical ops ——
+                    elif not is_numeric and op in {
+                        "set_value", "categorical_replace", "categorical_boost"
+                    }:
+                        if op == "set_value":
+                            col_series = raw
+                            desc = f"Set {feature} to {raw}"
+
+                        elif op == "categorical_replace":
+                            old = operation.get("old_value", "all")
+                            new = raw
+                            if old == "all":
+                                col_series = new
+                                desc = f"Replaced all {feature} with {new}"
+                            else:
+                                mask = col_series == old
+                                cnt = mask.sum()
+                                col_series.loc[mask] = new
+                                desc = f"Replaced {cnt} rows where {feature}=={old} with {new}"
+
+                        else:  # categorical_boost
+                            target = raw
+                            prop = min(max(operation.get("proportion", 0.1), 0), 1)
+                            non_mask = col_series != target
+                            non_idx = col_series.index[non_mask]
+                            n = int(len(non_idx) * prop)
+                            col_series = col_series.copy()
+                            if n:
+                                chosen = np.random.choice(non_idx, size=n, replace=False)
+                                col_series.loc[chosen] = target
+                            desc = (
+                                f"Boosted {prop*100:.1f}% of non-{target} "
+                                f"records ({n} rows) of {feature} to {target}"
+                            )
+                    else:
+                        logging.warning(f"Op '{op}' not valid for '{feature}'")
+                        continue
+
+                    modified_df.loc[:, feature] = col_series
+                    applied_changes[feature] = {"type": op, "value": raw, "description": desc}
+
                 else:
-                    # Handle simple value assignments - apply to ALL rows
+                    # literal assignment
                     modified_df.loc[:, feature] = operation
-                    applied_changes[feature] = {'type': 'set_value', 'value': operation,
-                                              'description': f"Set {feature} to {operation} across all records"}
-                   
+                    applied_changes[feature] = {
+                        "type": "set_value",
+                        "value": operation,
+                        "description": f"Set {feature} to {operation}"
+                    }
+
             except Exception as e:
                 logging.error(f"Failed to apply change to {feature}: {e}")
-                continue
-       
+
         return modified_df, applied_changes
-    
-    def calculate_advanced_metrics(original_preds: np.ndarray, modified_preds: np.ndarray) -> Dict[str, Any]:
-        from scipy import stats
-        import math
+        
+    def calculate_advanced_metrics(
+        original_preds: np.ndarray,
+        modified_preds: np.ndarray,
+        task_type: str = "regression",
+        confidence_level: float = 0.95
+    ) -> Dict[str, Any]:
+        """
+        Compute paired metrics for regression or classification,
+        using z-test/Fisher for binary classification and paired t-test for regression.
+        """
+        # 1) Clean inputs
+        orig = np.nan_to_num(original_preds, nan=0.0, posinf=0.0, neginf=0.0)
+        mod  = np.nan_to_num(modified_preds, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Replace NaNs or infs in predictions before math
-        original_preds = np.nan_to_num(original_preds, nan=0.0, posinf=0.0, neginf=0.0)
-        modified_preds = np.nan_to_num(modified_preds, nan=0.0, posinf=0.0, neginf=0.0)
+        metrics: Dict[str, Any] = {}
 
-        metrics = {
-            "original_mean": float(np.mean(original_preds)),
-            "modified_mean": float(np.mean(modified_preds)),
-            "original_std": float(np.std(original_preds)),
-            "modified_std": float(np.std(modified_preds)),
-            "original_median": float(np.median(original_preds)),
-            "modified_median": float(np.median(modified_preds))
-        }
+        if task_type == "classification":
+            # Binarize if necessary
+            if orig.dtype.kind == "f":
+                orig_cls = (orig >= 0.5).astype(int)
+                mod_cls  = (mod  >= 0.5).astype(int)
+            else:
+                orig_cls = orig.astype(int)
+                mod_cls  = mod.astype(int)
 
-        # Change calculations
-        absolute_change = metrics["modified_mean"] - metrics["original_mean"]
-        percent_change = (absolute_change / metrics["original_mean"] * 100) if metrics["original_mean"] != 0 else None
+            # Rates & percent change
+            orig_rate = orig_cls.mean()
+            mod_rate  = mod_cls.mean()
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pct_chg = ((mod_rate - orig_rate)/orig_rate*100) if orig_rate else 0.0
 
-        metrics.update({
-            "absolute_change": round(absolute_change, 4),
-            "percent_change": round(percent_change, 2) if percent_change is not None else None,
-            "direction": "increase" if absolute_change > 0 else "decrease" if absolute_change < 0 else "no_change"
-        })
-
-        # Statistical tests
-        try:
-            t_stat, p_value = stats.ttest_rel(modified_preds, original_preds)
-
-            pooled_std = np.sqrt((metrics["original_std"] ** 2 + metrics["modified_std"] ** 2) / 2)
-            cohens_d = absolute_change / pooled_std if pooled_std > 0 else 0
-
-            diff = modified_preds - original_preds
-            ci = stats.t.interval(0.95, len(diff) - 1, loc=np.mean(diff), scale=stats.sem(diff))
+            # Choose z-test vs Fisher
+            count = np.array([mod_cls.sum(), orig_cls.sum()])
+            nobs  = np.array([len(mod_cls),    len(orig_cls)])
+            min_n = 5
+            if all(count >= min_n) and all(nobs - count >= min_n):
+                stat, pval = proportions_ztest(count, nobs)
+                test_name = "z-test"
+            else:
+                a, c = count
+                b, d = nobs - count
+                _, pval = fisher_exact([[a, b], [c, d]])
+                test_name = "fisher"
 
             metrics.update({
-                "t_statistic": float(t_stat) if not math.isnan(t_stat) else None,
-                "p_value": float(p_value) if not math.isnan(p_value) else None,
-                "is_significant": bool(p_value < 0.05) if not math.isnan(p_value) else None,
-                "confidence_level": 0.95,
-                "effect_size": float(cohens_d),
-                "confidence_interval": [float(ci[0]), float(ci[1])] if not any(math.isnan(i) for i in ci) else [None, None]
+                "original_rate": round(orig_rate, 4),
+                "modified_rate": round(mod_rate, 4),
+                "percent_change": round(pct_chg, 2),
+                "test": test_name,
+                "p_value": float(pval),
+                "is_significant": bool(pval < (1 - confidence_level)),
+                "confidence_level": confidence_level
             })
 
-        except Exception as e:
-            logging.warning(f"Statistical test failed: {e}")
+        else:
+            # Regression (paired)
+            orig_mean = float(orig.mean())
+            mod_mean  = float(mod.mean())
+            orig_std  = float(orig.std())
+            mod_std   = float(mod.std())
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pct_chg = ((mod_mean - orig_mean)/orig_mean*100) if orig_mean else 0.0
+
+            # Paired t-test
+            try:
+                stat, pval = ttest_rel(mod, orig, nan_policy="omit")
+            except Exception as e:
+                logging.warning(f"Paired t-test failed: {e}")
+                stat, pval = None, None
+
+            # 95% CI on difference
+            diff = mod - orig
+            try:
+                ci_low, ci_high = t.interval(
+                    confidence_level, len(diff)-1,
+                    loc=diff.mean(), scale=sem(diff)
+                )
+                ci = [float(ci_low), float(ci_high)]
+            except Exception:
+                ci = [None, None]
+
+            # Cohen's d
+            pooled = np.sqrt((orig_std**2 + mod_std**2)/2) if (orig_std or mod_std) else 0
+            d = ((mod_mean - orig_mean)/pooled) if pooled else 0
+
             metrics.update({
-                "is_significant": None,
-                "p_value": None,
-                "effect_size": None,
-                "confidence_interval": [None, None]
+                "original_mean": round(orig_mean, 4),
+                "modified_mean": round(mod_mean, 4),
+                "percent_change": round(pct_chg, 2),
+                "t_statistic": stat,
+                "p_value": pval,
+                "is_significant": bool(pval < (1 - confidence_level)) if pval is not None else None,
+                "confidence_interval": ci,
+                "effect_size": round(d, 4),
+                "confidence_level": confidence_level
             })
 
-        revenue_impact = absolute_change * len(original_preds) * 20.0
-        metrics["estimated_revenue_impact"] = round(revenue_impact, 2)
-
-        variance_change = metrics["modified_std"] - metrics["original_std"]
-        metrics.update({
-            "variance_change": round(variance_change, 4),
-            "risk_assessment": "higher_risk" if variance_change > 0 else "lower_risk" if variance_change < 0 else "similar_risk"
-        })
+        # Shared metrics
+        var_chg = round(float(mod.std() - orig.std()), 4)
+        metrics["variance_change"] = var_chg
+        metrics["risk_assessment"] = (
+            "higher_risk" if var_chg > 0 else
+            "lower_risk"  if var_chg < 0 else
+            "similar_risk"
+        )
+        # Revenue impact (example $20/unit)
+        rev_imp = (metrics.get("modified_mean", 0) - metrics.get("original_mean", 0)) \
+                * len(orig) * 20.0
+        metrics["estimated_revenue_impact"] = round(rev_imp, 2)
 
         return metrics
+    def create_enhanced_visualizations(
+        original_preds: np.ndarray,
+        modified_preds: np.ndarray,
+        df: pd.DataFrame,
+        modified_df: pd.DataFrame,
+        feature_cols: List[str],
+        applied_changes: Dict[str, Any],
+        metrics: Dict[str, Any],
+        task_type: str
+    ) -> Dict[str, str]:
+        """
+        Create comprehensive visualizations for what-if analysis.
 
-    
-    def create_enhanced_visualizations(original_preds: np.ndarray, modified_preds: np.ndarray, 
-                                     df: pd.DataFrame, modified_df: pd.DataFrame, 
-                                     feature_cols: List[str], applied_changes: Dict[str, Any]) -> Dict[str, str]:
-        """Create comprehensive visualizations for what-if analysis"""
-        visualizations = {}
-        
-        # ========== 1. MAIN DISTRIBUTION ANALYSIS ==========
+        Parameters:
+        - original_preds, modified_preds: arrays of model outputs
+        - df, modified_df: before/after feature DataFrames
+        - feature_cols: list of feature names considered
+        - applied_changes: record of what was changed
+        - metrics: computed metrics (rate or mean, p_value, etc.)
+        - task_type: either "classification" or "regression"
+        """
+        import io, base64
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from scipy import stats
+
+        visualizations: Dict[str, str] = {}
+
+        # ─── 1. MAIN DISTRIBUTION ANALYSIS ───
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # Distribution plot
-        sns.histplot(original_preds, alpha=0.7, label="Original", ax=axes[0,0], stat="density")
-        sns.histplot(modified_preds, alpha=0.7, label="Modified", ax=axes[0,0], stat="density")
+        # distribution
+        sns.histplot(original_preds, alpha=0.7, label="Original",
+                    ax=axes[0,0], stat="density")
+        sns.histplot(modified_preds, alpha=0.7, label="Modified",
+                    ax=axes[0,0], stat="density")
         axes[0,0].set_title("Prediction Distributions")
-        axes[0,0].set_xlabel("Predicted Value")
-        axes[0,0].set_ylabel("Density")
         axes[0,0].legend()
-        
-        # Box plot comparison
-        data_for_box = np.concatenate([original_preds, modified_preds])
-        labels_for_box = ['Original'] * len(original_preds) + ['Modified'] * len(modified_preds)
-        box_df = pd.DataFrame({'Predictions': data_for_box, 'Type': labels_for_box})
+
+        # boxplot
+        combined = np.concatenate([original_preds, modified_preds])
+        labels = ['Original'] * len(original_preds) + ['Modified'] * len(modified_preds)
+        box_df = pd.DataFrame({'Predictions': combined, 'Type': labels})
         sns.boxplot(data=box_df, x='Type', y='Predictions', ax=axes[0,1])
         axes[0,1].set_title("Prediction Box Plot Comparison")
-        
-        # Scatter plot of original vs modified
+
+        # scatter
         axes[1,0].scatter(original_preds, modified_preds, alpha=0.6)
-        axes[1,0].plot([min(original_preds), max(original_preds)], 
-                    [min(original_preds), max(original_preds)], 'r--', alpha=0.8)
-        axes[1,0].set_xlabel("Original Predictions")
-        axes[1,0].set_ylabel("Modified Predictions")
+        mmin, mmax = min(original_preds), max(original_preds)
+        axes[1,0].plot([mmin, mmax], [mmin, mmax], 'r--', alpha=0.8)
         axes[1,0].set_title("Original vs Modified Predictions")
-        
-        # Difference histogram
-        differences = modified_preds - original_preds
-        axes[1,1].hist(differences, bins=30, alpha=0.7, edgecolor='black')
-        axes[1,1].axvline(np.mean(differences), color='red', linestyle='--', 
-                        label=f'Mean: {np.mean(differences):.3f}')
-        axes[1,1].set_xlabel("Prediction Difference")
-        axes[1,1].set_ylabel("Frequency")
-        axes[1,1].set_title("Distribution of Changes")
+
+        # diff histogram
+        diffs = modified_preds - original_preds
+        axes[1,1].hist(diffs, bins=30, alpha=0.7, edgecolor='black')
+        axes[1,1].axvline(np.mean(diffs), color='red', linestyle='--',
+                        label=f"Mean: {np.mean(diffs):.3f}")
+        axes[1,1].set_title("Distribution of Prediction Changes")
         axes[1,1].legend()
-        
+
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
         buf.seek(0)
-        visualizations["distribution_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
+        visualizations["distribution_analysis"] = (
+            "data:image/png;base64," +
+            base64.b64encode(buf.read()).decode()
+        )
         plt.close(fig)
-        
-        # ========== 2. FEATURE IMPACT ANALYSIS ==========
+
+        # ─── 2. FEATURE IMPACT ANALYSIS ───
         if applied_changes:
             fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-            
-            # Feature change magnitudes
-            change_names = []
-            change_values = []
-            change_types = []
-            
-            for feature, change in applied_changes.items():
-                change_names.append(feature)
-                if change['type'] in ['percent_increase', 'percent_decrease']:
-                    change_values.append(abs(change['value']))
-                    change_types.append(f"{change['type'].replace('_', ' ').title()}")
-                elif change['type'] == 'additive':
-                    change_values.append(abs(change['value']))
-                    change_types.append("Additive Change")
-                elif change['type'] == 'multiplicative':
-                    change_values.append(abs(change['value'] - 1) * 100)  # Convert to percentage
-                    change_types.append("Multiplicative Change")
+
+            # magnitude bar
+            names, vals, types = [], [], []
+            for feat, ch in applied_changes.items():
+                names.append(feat)
+                t = ch['type']
+                if t in ('percent_increase', 'percent_decrease'):
+                    vals.append(abs(ch['value']))
+                elif t == 'additive':
+                    vals.append(abs(ch['value']))
+                elif t == 'multiplicative':
+                    vals.append(abs(ch['value'] - 1) * 100)
                 else:
-                    change_values.append(1)
-                    change_types.append(change['type'].replace('_', ' ').title())
-            
-            # Bar chart of feature changes
-            bars = axes[0,0].bar(range(len(change_names)), change_values, 
-                                color=plt.cm.Set3(np.linspace(0, 1, len(change_names))))
-            axes[0,0].set_xticks(range(len(change_names)))
-            axes[0,0].set_xticklabels(change_names, rotation=45, ha='right')
+                    vals.append(1)
+                types.append(t.replace('_',' ').title())
+            bars = axes[0,0].bar(range(len(names)), vals,
+                                color=plt.cm.Set3(np.linspace(0,1,len(names))))
+            axes[0,0].set_xticks(range(len(names)))
+            axes[0,0].set_xticklabels(names, rotation=45, ha='right')
             axes[0,0].set_title("Magnitude of Feature Changes")
-            axes[0,0].set_ylabel("Change Magnitude")
-            
-            # Add value labels on bars
-            for i, (bar, val, type_) in enumerate(zip(bars, change_values, change_types)):
-                axes[0,0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(change_values)*0.01,
-                            f'{val:.1f}', ha='center', va='bottom', fontsize=9)
-            
-            # Feature correlation with prediction changes (if multiple features changed)
+            for b,v in zip(bars, vals):
+                axes[0,0].text(b.get_x()+b.get_width()/2, v+max(vals)*0.01,
+                            f"{v:.1f}", ha='center', va='bottom', fontsize=9)
+
+            # correlation
             if len(applied_changes) > 1:
-                feature_correlations = []
-                for feature in applied_changes.keys():
-                    if feature in df.columns and feature in modified_df.columns:
-                        original_vals = df[feature].fillna(0)
-                        modified_vals = modified_df[feature].fillna(0)
-                        feature_change = modified_vals - original_vals
-                        
-                        # Calculate correlation between feature change and prediction change
-                        if len(feature_change) == len(differences):
-                            corr = np.corrcoef(feature_change, differences)[0,1]
-                            if not np.isnan(corr):
-                                feature_correlations.append((feature, corr))
-                
-                if feature_correlations:
-                    features, corrs = zip(*feature_correlations)
-                    colors = ['red' if c < 0 else 'green' for c in corrs]
-                    bars = axes[0,1].barh(range(len(features)), corrs, color=colors, alpha=0.7)
-                    axes[0,1].set_yticks(range(len(features)))
-                    axes[0,1].set_yticklabels(features)
-                    axes[0,1].set_title("Feature Change Correlation with Prediction Change")
-                    axes[0,1].set_xlabel("Correlation Coefficient")
-                    axes[0,1].axvline(x=0, color='black', linestyle='-', alpha=0.3)
+                corr_data = []
+                for feat in applied_changes:
+                    if feat in df and feat in modified_df:
+                        orig_vals = df[feat].fillna(0)
+                        mod_vals = modified_df[feat].fillna(0)
+                        change = mod_vals - orig_vals
+                        if len(change)==len(diffs):
+                            c = np.corrcoef(change, diffs)[0,1]
+                            if not np.isnan(c):
+                                corr_data.append((feat, c))
+                if corr_data:
+                    feats, corrs = zip(*corr_data)
+                    cols = ['red' if c<0 else 'green' for c in corrs]
+                    axes[0,1].barh(range(len(feats)), corrs, color=cols, alpha=0.7)
+                    axes[0,1].set_yticks(range(len(feats)))
+                    axes[0,1].set_yticklabels(feats)
+                    axes[0,1].set_title("Feature–Prediction Change Correlation")
+                else:
+                    axes[0,1].text(0.5,0.5,"No valid correlations",
+                                ha='center',va='center',fontsize=12)
             else:
-                axes[0,1].text(0.5, 0.5, 'Multiple features needed\nfor correlation analysis', 
-                            ha='center', va='center', transform=axes[0,1].transAxes, fontsize=12)
-                axes[0,1].set_title("Feature Correlation Analysis")
-            
-            # Change impact ranking (based on absolute difference in means)
-            impact_scores = []
-            for feature in applied_changes.keys():
-                if feature in df.columns and feature in modified_df.columns:
-                    try:
-                        original_vals = pd.to_numeric(df[feature], errors='coerce').fillna(0)
-                        modified_vals = pd.to_numeric(modified_df[feature], errors='coerce').fillna(0)
-                        impact = abs(modified_vals.mean() - original_vals.mean())
-                        impact_scores.append((feature, impact))
-                    except:
-                        impact_scores.append((feature, 0))
-            
-            if impact_scores:
-                impact_scores.sort(key=lambda x: x[1], reverse=True)
-                features, impacts = zip(*impact_scores[:5])  # Top 5
-                
-                bars = axes[1,0].bar(range(len(features)), impacts, 
-                                color=plt.cm.viridis(np.linspace(0, 1, len(features))))
-                axes[1,0].set_xticks(range(len(features)))
-                axes[1,0].set_xticklabels(features, rotation=45, ha='right')
-                axes[1,0].set_title("Feature Change Impact Ranking")
-                axes[1,0].set_ylabel("Impact Score (Mean Difference)")
-                
-                # Add value labels
-                for bar, impact in zip(bars, impacts):
-                    axes[1,0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(impacts)*0.01,
-                                f'{impact:.3f}', ha='center', va='bottom', fontsize=9)
+                axes[0,1].text(0.5,0.5,"Multiple features needed\nfor correlation",
+                            ha='center',va='center',fontsize=12)
+                axes[0,1].set_title("Correlation Analysis")
+
+            # impact ranking
+            impacts = []
+            for feat in applied_changes:
+                if feat in df and feat in modified_df:
+                    o = pd.to_numeric(df[feat],errors='coerce').fillna(0)
+                    m = pd.to_numeric(modified_df[feat],errors='coerce').fillna(0)
+                    impacts.append((feat, abs(m.mean()-o.mean())))
+            if impacts:
+                impacts.sort(key=lambda x: x[1], reverse=True)
+                top_feats, top_vals = zip(*impacts[:5])
+                bars = axes[1,0].bar(range(len(top_feats)), top_vals,
+                                    color=plt.cm.viridis(np.linspace(0,1,len(top_feats))))
+                axes[1,0].set_xticks(range(len(top_feats)))
+                axes[1,0].set_xticklabels(top_feats,rotation=45,ha='right')
+                axes[1,0].set_title("Top 5 Feature Impact")
+                for b,v in zip(bars, top_vals):
+                    axes[1,0].text(b.get_x()+b.get_width()/2, v+max(top_vals)*0.01,
+                                f"{v:.3f}",ha='center',va='bottom',fontsize=9)
             else:
-                axes[1,0].text(0.5, 0.5, 'No numerical features\nfor impact analysis', 
-                            ha='center', va='center', transform=axes[1,0].transAxes, fontsize=12)
-                axes[1,0].set_title("Feature Impact Ranking")
-            
-            # Change type distribution
-            type_counts = {}
-            for change in applied_changes.values():
-                change_type = change['type']
-                type_counts[change_type] = type_counts.get(change_type, 0) + 1
-            
-            if type_counts:
-                types, counts = zip(*type_counts.items())
-                colors = plt.cm.Set2(np.linspace(0, 1, len(types)))
-                
-                axes[1,1].pie(counts, labels=types, autopct='%1.1f%%', colors=colors, startangle=90)
-                axes[1,1].set_title("Distribution of Change Types")
-            else:
-                axes[1,1].text(0.5, 0.5, 'No change types\nto display', 
-                            ha='center', va='center', transform=axes[1,1].transAxes, fontsize=12)
+                axes[1,0].text(0.5,0.5,"No numerical features",ha='center',va='center',fontsize=12)
+                axes[1,0].set_title("Impact Ranking")
+
+            # change type distribution
+            counts = {}
+            for ch in applied_changes.values():
+                counts[ch['type']] = counts.get(ch['type'],0) + 1
+            if counts:
+                types, ct = zip(*counts.items())
+                axes[1,1].pie(ct, labels=types, autopct='%1.1f%%', startangle=90)
                 axes[1,1].set_title("Change Types Distribution")
-            
+            else:
+                axes[1,1].text(0.5,0.5,"No change types to display",
+                            ha='center',va='center',fontsize=12)
+                axes[1,1].set_title("Change Types")
+
             plt.tight_layout()
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
+            plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
             buf.seek(0)
-            visualizations["feature_impact_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
+            visualizations["feature_impact_analysis"] = (
+                "data:image/png;base64," +
+                base64.b64encode(buf.read()).decode()
+            )
             plt.close(fig)
-        
-        # ========== 3. STATISTICAL SIGNIFICANCE VISUALIZATION ==========
+
+        # ─── 3. STATISTICAL SIGNIFICANCE VISUALIZATION ───
+        diffs = modified_preds - original_preds
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        
-        # Q-Q plot for normality check
-        from scipy import stats
-        stats.probplot(differences, dist="norm", plot=axes[0,0])
-        axes[0,0].set_title("Q-Q Plot: Normality of Differences")
-        
-        # Confidence intervals visualization
-        n_samples = len(differences)
-        mean_diff = np.mean(differences)
-        se_diff = stats.sem(differences)
-        
-        # Different confidence levels
-        confidence_levels = [0.80, 0.90, 0.95, 0.99]
-        ci_data = []
-        
-        for conf in confidence_levels:
-            t_val = stats.t.ppf((1 + conf) / 2, n_samples - 1)
-            margin = t_val * se_diff
-            ci_lower = mean_diff - margin
-            ci_upper = mean_diff + margin
-            ci_data.append((conf, ci_lower, ci_upper, margin))
-        
-        # Plot confidence intervals
-        y_pos = range(len(confidence_levels))
-        ci_lowers = [ci[1] for ci in ci_data]
-        ci_uppers = [ci[2] for ci in ci_data]
-        margins = [ci[3] for ci in ci_data]
-        
-        axes[0,1].barh(y_pos, [2*m for m in margins], left=[mean_diff - m for m in margins], 
-                    alpha=0.6, color='skyblue')
-        axes[0,1].axvline(mean_diff, color='red', linestyle='--', label=f'Mean: {mean_diff:.3f}')
-        axes[0,1].axvline(0, color='black', linestyle='-', alpha=0.3, label='No Change')
-        axes[0,1].set_yticks(y_pos)
-        axes[0,1].set_yticklabels([f'{c*100:.0f}%' for c in confidence_levels])
-        axes[0,1].set_title("Confidence Intervals for Mean Difference")
-        axes[0,1].set_xlabel("Prediction Difference")
-        axes[0,1].set_ylabel("Confidence Level")
-        axes[0,1].legend()
-        
-        # Effect size visualization
-        cohens_d = mean_diff / np.std(differences) if np.std(differences) > 0 else 0
-        effect_categories = ['Negligible\n(0-0.2)', 'Small\n(0.2-0.5)', 'Medium\n(0.5-0.8)', 'Large\n(0.8+)']
-        effect_boundaries = [0, 0.2, 0.5, 0.8, float('inf')]
-        
-        # Determine which category our effect falls into
-        effect_category_idx = 0
-        for i, boundary in enumerate(effect_boundaries[1:]):
-            if abs(cohens_d) <= boundary:
-                effect_category_idx = i
-                break
-        
-        colors = ['lightgray'] * len(effect_categories)
-        colors[effect_category_idx] = 'orange'
-        
-        bars = axes[1,0].bar(range(len(effect_categories)), 
-                            [0.2, 0.3, 0.3, 0.5], color=colors, alpha=0.7)
-        axes[1,0].axhline(abs(cohens_d), color='red', linestyle='--', 
-                        label=f"Our Effect Size: {cohens_d:.3f}")
-        axes[1,0].set_xticks(range(len(effect_categories)))
-        axes[1,0].set_xticklabels(effect_categories)
-        axes[1,0].set_title("Effect Size Interpretation")
-        axes[1,0].set_ylabel("Cohen's d")
-        axes[1,0].legend()
-        
-        # Statistical test results visualization
-        from scipy.stats import ttest_rel, wilcoxon
-        
-        # Paired t-test
-        try:
-            t_stat, t_pval = ttest_rel(original_preds, modified_preds)
-            # Wilcoxon signed-rank test (non-parametric alternative)
-            w_stat, w_pval = wilcoxon(original_preds, modified_preds, alternative='two-sided')
-            
-            test_names = ['Paired t-test', 'Wilcoxon test']
-            p_values = [t_pval, w_pval]
-            
-            # Create significance visualization
-            colors = ['green' if p < 0.05 else 'red' for p in p_values]
-            bars = axes[1,1].bar(range(len(test_names)), [-np.log10(p) for p in p_values], 
-                                color=colors, alpha=0.7)
-            axes[1,1].axhline(-np.log10(0.05), color='black', linestyle='--', 
-                            label='p = 0.05 threshold')
-            axes[1,1].set_xticks(range(len(test_names)))
-            axes[1,1].set_xticklabels(test_names)
-            axes[1,1].set_title("Statistical Significance Tests")
-            axes[1,1].set_ylabel("-log10(p-value)")
-            axes[1,1].legend()
-            
-            # Add p-value labels
-            for bar, p_val in zip(bars, p_values):
-                axes[1,1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
-                            f'p = {p_val:.4f}', ha='center', va='bottom', fontsize=9)
-        except:
-            axes[1,1].text(0.5, 0.5, 'Statistical tests\ncould not be computed', 
-                        ha='center', va='center', transform=axes[1,1].transAxes, fontsize=12)
-            axes[1,1].set_title("Statistical Tests")
-        
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
-        buf.seek(0)
-        visualizations["statistical_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
-        plt.close(fig)
-        
-        # ========== 4. PREDICTION IMPACT SUMMARY ==========
-        fig = plt.figure(figsize=(16, 10))
-        gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 1], width_ratios=[1, 1, 1])
-        
-        # Percentile comparison
-        ax1 = fig.add_subplot(gs[0, :2])
-        percentiles = [5, 10, 25, 50, 75, 90, 95]
-        orig_percentiles = np.percentile(original_preds, percentiles)
-        mod_percentiles = np.percentile(modified_preds, percentiles)
-        
-        x = np.arange(len(percentiles))
-        width = 0.35
-        
-        bars1 = ax1.bar(x - width/2, orig_percentiles, width, label='Original', alpha=0.7)
-        bars2 = ax1.bar(x + width/2, mod_percentiles, width, label='Modified', alpha=0.7)
-        
-        ax1.set_xlabel('Percentile')
-        ax1.set_ylabel('Prediction Value')
-        ax1.set_title('Prediction Percentiles Comparison')
-        ax1.set_xticks(x)
-        ax1.set_xticklabels([f'{p}th' for p in percentiles])
-        ax1.legend()
-        
-        # Risk assessment based on variance
-        ax2 = fig.add_subplot(gs[0, 2])
-        variance_change = np.var(modified_preds) - np.var(original_preds)
-        risk_score = (variance_change / np.var(original_preds)) * 100 if np.var(original_preds) > 0 else 0
-        
-        # Create a simple risk gauge
-        if abs(risk_score) < 5:
-            color = 'green'
-            risk_level = 'Low Risk'
-        elif abs(risk_score) < 15:
-            color = 'yellow' 
-            risk_level = 'Medium Risk'
+
+        orig_r = metrics.get("original_rate",
+                 float((original_preds >= 0.5).mean()))
+        mod_r  = metrics.get("modified_rate",
+                 float((modified_preds  >= 0.5).mean()))
+        test_name = metrics.get("test", "n/a")
+        p_val     = metrics.get("p_value", None)
+
+        axes[0,0].bar([0,1], [orig_r, mod_r], alpha=0.7)
+        axes[0,0].set_xticks([0,1])
+        axes[0,0].set_xticklabels(["Original rate","Modified rate"])
+        axes[0,0].set_ylabel("Proportion")
+        if p_val is not None:
+            axes[0,0].set_title(
+                f"Positive‐Rate Change ({test_name} p={p_val:.3f})"
+            )
         else:
-            color = 'red'
-            risk_level = 'High Risk'
-        
-        # Simple bar showing risk level
-        ax2.bar(['Risk Level'], [abs(risk_score)], color=color, alpha=0.7)
-        ax2.set_title(f'Variance Change\n{risk_level}\n({risk_score:.1f}%)')
-        ax2.set_ylabel('% Change in Variance')
-        
-        # Direction of change analysis
-        ax3 = fig.add_subplot(gs[1, :])
-        
-        # Count increases, decreases, and no change
-        increases = np.sum(differences > 0)
-        decreases = np.sum(differences < 0)
-        no_change = np.sum(differences == 0)
-        
-        categories = ['Increases', 'Decreases', 'No Change']
-        counts = [increases, decreases, no_change]
-        colors = ['green', 'red', 'gray']
-        
-        bars = ax3.bar(categories, counts, color=colors, alpha=0.7)
-        ax3.set_title('Direction of Prediction Changes')
-        ax3.set_ylabel('Number of Predictions')
-        
-        # Add percentage labels
-        total = len(differences)
-        for bar, count in zip(bars, counts):
-            percentage = (count / total) * 100
-            ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + total*0.01,
-                    f'{count}\n({percentage:.1f}%)', ha='center', va='bottom')
-        
-        # Summary statistics table
-        ax4 = fig.add_subplot(gs[2, :])
-        ax4.axis('off')
-        
-        # Calculate key metrics
-        mean_change = np.mean(differences)
-        median_change = np.median(differences)
-        std_change = np.std(differences)
-        max_increase = np.max(differences)
-        max_decrease = np.min(differences)
-        
-        summary_data = [
-            ['Metric', 'Original', 'Modified', 'Change'],
-            ['Mean', f'{np.mean(original_preds):.4f}', f'{np.mean(modified_preds):.4f}', f'{mean_change:.4f}'],
-            ['Median', f'{np.median(original_preds):.4f}', f'{np.median(modified_preds):.4f}', f'{median_change:.4f}'],
-            ['Std Dev', f'{np.std(original_preds):.4f}', f'{np.std(modified_preds):.4f}', f'{std_change:.4f}'],
-            ['Min', f'{np.min(original_preds):.4f}', f'{np.min(modified_preds):.4f}', f'{max_decrease:.4f}'],
-            ['Max', f'{np.max(original_preds):.4f}', f'{np.max(modified_preds):.4f}', f'{max_increase:.4f}'],
-        ]
-        
-        # Create table
-        table = ax4.table(cellText=summary_data[1:], colLabels=summary_data[0],
-                        cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
-        table.auto_set_font_size(False)
-        table.set_fontsize(11)
-        table.scale(1, 2)
-        
-        # Style the table
-        for i in range(len(summary_data[0])):
-            table[(0, i)].set_facecolor('#4CAF50')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-        
+            axes[0,0].set_title("Positive‐Rate Change")
+            # CI for rate difference
+            n = len(original_preds)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                # approximate se
+                se = np.sqrt((orig_r*(1-orig_r) + mod_r*(1-mod_r)) / n)
+                z = stats.norm.ppf(1 - (1-metrics.get("confidence_level",0.95))/2)
+                margin = se * z
+            diff = mod_r - orig_r
+            axes[0,1].barh([0], [diff], xerr=[margin], alpha=0.7)
+            axes[0,1].axvline(0, color='black', linestyle='--')
+            axes[0,1].set_yticks([0])
+            axes[0,1].set_yticklabels([f"{int(metrics.get('confidence_level',0.95)*100)}% CI"])
+            axes[0,1].set_title("Proportion Difference CI")
+
+            # blank out regression‐only plots
+            axes[1,0].axis('off')
+            axes[1,1].axis('off')
+
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
         buf.seek(0)
-        visualizations["prediction_impact_summary"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
+        visualizations["statistical_analysis"] = (
+            "data:image/png;base64," +
+            base64.b64encode(buf.read()).decode()
+        )
         plt.close(fig)
-        
-        # ========== 5. MAGNITUDE ANALYSIS ==========
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        
-        # Change magnitude distribution
-        change_magnitudes = np.abs(differences)
-        axes[0,0].hist(change_magnitudes, bins=30, alpha=0.7, edgecolor='black')
-        axes[0,0].axvline(np.mean(change_magnitudes), color='red', linestyle='--', 
-                        label=f'Mean: {np.mean(change_magnitudes):.3f}')
-        axes[0,0].set_xlabel('Absolute Change Magnitude')
-        axes[0,0].set_ylabel('Frequency')
-        axes[0,0].set_title('Distribution of Change Magnitudes')
-        axes[0,0].legend()
-        
-        # Relative change (percentage) distribution
-        relative_changes = np.where(original_preds != 0, 
-                                (differences / original_preds) * 100, 
-                                0)
-        axes[0,1].hist(relative_changes, bins=30, alpha=0.7, edgecolor='black')
-        axes[0,1].axvline(np.mean(relative_changes), color='red', linestyle='--',
-                        label=f'Mean: {np.mean(relative_changes):.1f}%')
-        axes[0,1].set_xlabel('Relative Change (%)')
-        axes[0,1].set_ylabel('Frequency')
-        axes[0,1].set_title('Distribution of Relative Changes')
-        axes[0,1].legend()
-        
-        # Prediction range analysis
-        orig_range = np.max(original_preds) - np.min(original_preds)
-        mod_range = np.max(modified_preds) - np.min(modified_preds)
-        
-        range_data = ['Original Range', 'Modified Range']
-        range_values = [orig_range, mod_range]
-        colors = ['blue', 'orange']
-        
-        bars = axes[1,0].bar(range_data, range_values, color=colors, alpha=0.7)
-        axes[1,0].set_title('Prediction Range Comparison')
-        axes[1,0].set_ylabel('Range (Max - Min)')
-        
-        # Add value labels
-        for bar, val in zip(bars, range_values):
-            axes[1,0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(range_values)*0.01,
-                        f'{val:.3f}', ha='center', va='bottom')
-        
-        # Cumulative distribution of changes
-        sorted_diffs = np.sort(differences)
-        cumulative_pct = np.arange(1, len(sorted_diffs) + 1) / len(sorted_diffs) * 100
-        
-        axes[1,1].plot(sorted_diffs, cumulative_pct, 'b-', linewidth=2)
-        axes[1,1].axvline(0, color='red', linestyle='--', alpha=0.7, label='No Change')
-        axes[1,1].set_xlabel('Prediction Change')
-        axes[1,1].set_ylabel('Cumulative Percentage')
-        axes[1,1].set_title('Cumulative Distribution of Changes')
-        axes[1,1].grid(True, alpha=0.3)
-        axes[1,1].legend()
-        
+
+       # ===== 4. PREDICTION IMPACT SUMMARY =====
+        fig = plt.figure(figsize=(16, 10))
+        gs = fig.add_gridspec(3, 3,
+                            height_ratios=[1, 1, 1],
+                            width_ratios=[1, 1, 1])
+
+        if task_type == "regression":
+            # 4.1 Percentile comparison
+            ax1 = fig.add_subplot(gs[0, :2])
+            pctiles = [5, 10, 25, 50, 75, 90, 95]
+            orig_pct = np.percentile(original_preds, pctiles)
+            mod_pct  = np.percentile(modified_preds, pctiles)
+            x = np.arange(len(pctiles))
+            w = 0.35
+            ax1.bar(x - w/2, orig_pct, w, label="Original", alpha=0.7)
+            ax1.bar(x + w/2, mod_pct, w, label="Modified", alpha=0.7)
+            ax1.set_xticks(x)
+            ax1.set_xticklabels([f"{p}th" for p in pctiles])
+            ax1.set_title("Prediction Percentiles Comparison")
+            ax1.set_ylabel("Prediction Value")
+            ax1.legend()
+
+            # 4.2 Variance gauge
+            ax2 = fig.add_subplot(gs[0, 2])
+            var_ch = np.var(modified_preds) - np.var(original_preds)
+            base_var = np.var(original_preds)
+            score = (var_ch / base_var * 100) if base_var > 0 else 0
+            # define risk levels
+            if abs(score) < 5:
+                lvl, col = "Low Risk", "#66c2a5"
+            elif abs(score) < 15:
+                lvl, col = "Medium Risk", "#fc8d62"
+            else:
+                lvl, col = "High Risk", "#e78ac3"
+            ax2.barh([0], [abs(score)], color=col, alpha=0.8)
+            ax2.set_xlim(0, max(abs(score)*1.2, 5))
+            ax2.set_yticks([0]); ax2.set_yticklabels([lvl])
+            ax2.set_xlabel("% Change in Variance")
+            ax2.set_title("Variance Change Risk")
+
+            # 4.3 Direction of change
+            ax3 = fig.add_subplot(gs[1, :])
+            diffs = modified_preds - original_preds
+            counts = {
+                "Increase": np.sum(diffs > 0),
+                "Decrease": np.sum(diffs < 0),
+                "No Change": np.sum(diffs == 0)
+            }
+            colors = ["#66c2a5", "#fc8d62", "#8da0cb"]
+            ax3.bar(counts.keys(), counts.values(), color=colors, alpha=0.8)
+            ax3.set_title("Direction of Prediction Changes")
+            for i,(k,v) in enumerate(counts.items()):
+                pct = v / len(diffs) * 100
+                ax3.text(i, v + len(diffs)*0.01, f"{v}\n({pct:.1f}%)",
+                        ha="center", va="bottom")
+
+            # 4.4 Summary table
+            ax4 = fig.add_subplot(gs[2, :])
+            ax4.axis("off")
+            summary = [
+                ["Metric", "Original", "Modified", "Δ"],
+                ["Mean",
+                f"{original_preds.mean():.4f}",
+                f"{modified_preds.mean():.4f}",
+                f"{modified_preds.mean() - original_preds.mean():.4f}"],
+                ["Std Dev",
+                f"{original_preds.std():.4f}",
+                f"{modified_preds.std():.4f}",
+                f"{modified_preds.std() - original_preds.std():.4f}"],
+                ["Min",
+                f"{original_preds.min():.4f}",
+                f"{modified_preds.min():.4f}",
+                f"{modified_preds.min() - original_preds.min():.4f}"],
+                ["Max",
+                f"{original_preds.max():.4f}",
+                f"{modified_preds.max():.4f}",
+                f"{modified_preds.max() - original_preds.max():.4f}"]
+            ]
+            table = ax4.table(cellText=summary[1:],
+                            colLabels=summary[0],
+                            cellLoc="center", loc="center")
+            table.auto_set_font_size(False)
+            table.set_fontsize(11)
+            table.scale(1, 1.5)
+
+        else:
+            # classification flip pie + counts
+            ax1 = fig.add_subplot(gs[0, :2])
+            oc = (original_preds >= 0.5).astype(int)
+            mc = (modified_preds  >= 0.5).astype(int)
+            same  = np.sum(oc == mc)
+            flips = len(oc) - same
+            labels = [f"Same\n{same} ({same/len(oc)*100:.1f}%)",
+                    f"Flipped\n{flips} ({flips/len(oc)*100:.1f}%)"]
+            colors = ["#8da0cb", "#fc8d62"]
+            wedges, texts = ax1.pie([same, flips],
+                                    labels=labels,
+                                    colors=colors,
+                                    startangle=90,
+                                    textprops={"va":"center"},
+                                    wedgeprops={"linewidth":1, "edgecolor":"white"})
+            ax1.set_title("Label Persistence vs Flip", pad=20)
+
+            # collapse remaining subplots
+            for pos in [(0,2),(1,0),(1,1),(1,2),(2,0),(2,1),(2,2)]:
+                fig.add_subplot(gs[pos]).axis("off")
+
+        # finalize
         plt.tight_layout()
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches="tight")
+        plt.savefig(buf, format="png", dpi=300, bbox_inches="tight")
         buf.seek(0)
-        visualizations["magnitude_analysis"] = f"data:image/png;base64,{base64.b64encode(buf.read()).decode()}"
+        visualizations["prediction_impact_summary"] = (
+            "data:image/png;base64," + base64.b64encode(buf.read()).decode()
+        )
         plt.close(fig)
-        
+
+
         return visualizations
+
     from scipy import stats
     import numpy as np
 
 
     import logging
-
-
     def generate_insights(
         metrics: Dict[str, Any],
         applied_changes: Dict[str, Any],
@@ -5339,24 +5362,25 @@ def do_what_if(
         logging.info(f"Auto-detected task: {task_type.upper()} ({task_subtype})")
 
         # --- Statistical significance ---
-        if metrics.get("is_significant") is True:
-            insights.append(f"📊 **Statistically Significant Impact** (p = {metrics['p_value']:.4f})")
-        elif metrics.get("is_significant") is False:
-            insights.append(f"⚠️ **Not Statistically Significant** (p = {metrics['p_value']:.4f})")
+        if "is_significant" in metrics:
+            significance = metrics["is_significant"]
+            p_value = metrics.get("p_value", "N/A")
+            if significance:
+                insights.append(f"📊 **Statistically Significant Impact** (p = {p_value:.4f})")
+            else:
+                insights.append(f"⚠️ **Not Statistically Significant** (p = {p_value:.4f})")
 
         # --- Confidence interval ---
-        if "confidence_interval" in metrics:
-            ci = metrics["confidence_interval"]
-        elif original_preds is not None and modified_preds is not None:
+        ci = metrics.get("confidence_interval", None)
+        if ci is None and original_preds is not None and modified_preds is not None:
             ci = get_confidence_interval(original_preds, modified_preds)
-        else:
-            ci = None
 
-        if ci and ci[0] is not None and ci[1] is not None:
+        if ci and len(ci) == 2 and ci[0] is not None and ci[1] is not None:
             insights.append(f"📉 **95% Confidence Interval**: Prediction change lies between {ci[0]:.4f} and {ci[1]:.4f}")
+
         # --- Effect size ---
         effect_size = metrics.get("effect_size", 0)
-        if effect_size is not None:
+        if effect_size != 0:
             if abs(effect_size) < 0.2:
                 insights.append("**Small Effect**: Minimal practical impact")
             elif abs(effect_size) < 0.5:
@@ -5375,12 +5399,10 @@ def do_what_if(
                     direction = "increase" if delta > 0 else "decrease"
                     insights.append(f"{symbol} **{direction.title()} in Conversion Rate**: {orig:.2%} → {mod:.2%} ({delta:+.2%})")
 
-            if "class_distribution_change" in metrics:
-                class_dist = metrics["class_distribution_change"]
-            elif original_preds is not None and modified_preds is not None:
+            # Check class distribution changes
+            class_dist = metrics.get("class_distribution_change", {})
+            if not class_dist and original_preds is not None and modified_preds is not None:
                 class_dist = get_class_distribution_change(original_preds, modified_preds)
-            else:
-                class_dist = {}
 
             if class_dist:
                 insights.append("📊 **Class Distribution Shift:**")
@@ -5388,12 +5410,10 @@ def do_what_if(
                     symbol = "🔼" if pct > 0 else "🔽"
                     insights.append(f"  - {symbol} Class '{label}': {pct:+.2f}%")
 
-            if "risk_shift_summary" in metrics:
-                risk_summary = metrics["risk_shift_summary"]
-            elif original_preds is not None and modified_preds is not None:
+            # Check risk shift summary
+            risk_summary = metrics.get("risk_shift_summary", {})
+            if not risk_summary and original_preds is not None and modified_preds is not None:
                 risk_summary = get_risk_shift_summary(original_preds, modified_preds)
-            else:
-                risk_summary = {}
 
             if risk_summary:
                 insights.append("⚠️ **Risk Profile Change:**")
@@ -5412,12 +5432,10 @@ def do_what_if(
                 direction = "increase" if delta > 0 else "decrease"
                 insights.append(f"{symbol} **{direction.title()} in Mean Prediction**: {metrics['original_mean']:.4f} → {metrics['modified_mean']:.4f} ({delta:+.4f})")
 
-            if "percentile_summary" in metrics:
-                p = metrics["percentile_summary"]
-            elif original_preds is not None and modified_preds is not None:
+            # Percentile changes
+            p = metrics.get("percentile_summary", {})
+            if not p and original_preds is not None and modified_preds is not None:
                 p = get_percentile_summary(original_preds, modified_preds)
-            else:
-                p = {}
 
             if p:
                 insights.append("📐 **Percentile Changes:**")
@@ -5447,6 +5465,7 @@ def do_what_if(
             insights.append("ℹ️ No measurable business impact detected from the applied changes.")
 
         return insights
+
     # Main execution starts here
     try:
         # Initialize configuration
@@ -5483,7 +5502,7 @@ def do_what_if(
         with tempfile.TemporaryDirectory() as temp_dir:
             # Load data and model
             df, dataset_name = safe_download_and_load_data()
-            model = load_model(df, target_column)
+            model, task_type = load_model(df, target_column)
             training_columns_supabase_path = f"{user_id}/training_columns.json"
 
             # ───── Download training columns ─────
@@ -5584,11 +5603,26 @@ def do_what_if(
             
             # Create visualizations
             visualizations = create_enhanced_visualizations(
-                original_preds, modified_preds, df, modified_df, feature_cols, applied_changes
+                original_preds,
+                modified_preds,
+                df,
+                modified_df,
+                feature_cols,
+                applied_changes,
+                metrics,
+                task_type
             )
             
             # Generate insights
-            insights = generate_insights(metrics, applied_changes, df=df, target_column=target_column)
+            insights = generate_insights(
+                metrics,
+                applied_changes,
+                df=df,
+                target_column=target_column,
+                original_preds=original_preds,
+                modified_preds=modified_preds
+            )
+
 
             if not insights:
                 insights.append("ℹ️ No measurable impact detected from the applied changes.")

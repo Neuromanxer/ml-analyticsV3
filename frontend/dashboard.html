@@ -2707,7 +2707,7 @@ function prepareAndRunAnalysis() {
       
     case 'classification-predict':
       if (!targetCol) return showError('Please specify the target column for classification prediction.');
-      callRealAPI('classification_predict', {
+      callRealAPI('classification-predict', {
         target_column: targetCol,
         drop_columns: dropCols
       });
@@ -2715,7 +2715,7 @@ function prepareAndRunAnalysis() {
       
     case 'regression-predict':
       if (!targetCol) return showError('Please specify the target column for regression prediction.');
-      callRealAPI('regression_predict', {
+      callRealAPI('regression-predict', {
         target_column: targetCol,
         drop_columns: dropCols
       });

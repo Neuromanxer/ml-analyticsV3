@@ -110,21 +110,7 @@ def main():
             raise
 
         # Load training columns
-        training_columns_filename = req.get("training_columns_filename", "training_columns.json")
-        training_columns_path = output_dir / training_columns_filename
-        flush_print(f"[SHAP DEBUG] Loading training columns from: {training_columns_path}")
-        
-        if not training_columns_path.exists():
-            raise FileNotFoundError(f"Training columns file not found: {training_columns_path}")
-
-        try:
-            with training_columns_path.open("r") as f:
-                training_columns = json.load(f)
-            flush_print(f"[SHAP DEBUG] Training columns loaded: {len(training_columns)} columns")
-        except Exception as e:
-            flush_print(f"[SHAP ERROR] Failed to load training columns: {e}")
-            raise
-
+        training_columns = req.get("training_columns")
         # Prepare features
         try:
             X = full_df[training_columns]
