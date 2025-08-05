@@ -2708,7 +2708,7 @@ function prepareAndRunAnalysis() {
       });
       break;
       
-    case 'classification-predict':
+    case 'classification_predict':
       if (!targetCol) return showError('Please specify the target column for classification prediction.');
       callRealAPI('classification_predict', {
         target_column: targetCol,
@@ -2716,7 +2716,7 @@ function prepareAndRunAnalysis() {
       });
       break;
       
-    case 'regression-predict':
+    case 'regression_predict':
       if (!targetCol) return showError('Please specify the target column for regression prediction.');
       callRealAPI('regression_predict', {
         target_column: targetCol,
