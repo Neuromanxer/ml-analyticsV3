@@ -132,7 +132,6 @@ def ensure_json_serializable(obj):
 import base64
 from io import BytesIO
 import seaborn as sns  # Add this import since it was missing but needed
-import hashlib
 def plot_to_base64(fig):
     from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
     fig.tight_layout()
@@ -145,19 +144,7 @@ def plot_to_base64(fig):
     img_base64 = base64.b64encode(buf.read()).decode("utf-8")
     plt.close(fig)  # ✅ Close the figure properly
     return img_base64
-def hash_filename(file_path: str) -> str:
-    return hashlib.md5(PathL(file_path).name.encode()).hexdigest()[:10]
-def hash_filename_from_paths(file_path: str = None, train_path: str = None, test_path: str = None) -> str:
-    """
-    Generate a consistent hash based on dataset file names.
-    """
-    if file_path:
-        base_name = PathL(file_path).name
-    elif train_path and test_path:
-        base_name = PathL(train_path).name + "+" + PathL(test_path).name
-    else:
-        base_name = "unknown.csv"
-    return hashlib.md5(base_name.encode()).hexdigest()[:10]
+
 from fastapi.responses import FileResponse, StreamingResponse
 # Assuming you have these imports for your auth system
 # from your_auth_module import get_current_active_user, User
@@ -320,13 +307,10 @@ def do_classification(
                     "recall": recall_score(y_train, preds, average="weighted")
                 } for name, preds in zip(["LightGBM", "CatBoost", "XGBoost"], [lgb_oof, ctb_oof, xgb_oof])
             }
-            dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
-            model_filename         = f"{user_id}_best_classifier_{dataset_hash}.pkl"
-            training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
-            data_filename = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
+            
             # Save training columns for SHAP alignment
             training_columns = list(X_train.columns)
-            training_columns_path = user_dir / training_columns_filename
+            training_columns_path = user_dir / "training_columns.json"
             with open(training_columns_path, "w") as f:
                 json.dump(training_columns, f)
 
@@ -433,15 +417,12 @@ def do_classification(
             except Exception as e:
                 print(f"[⚠️] Classification report plot failed: {e}")
                 classification_report_base64 = ""
-            
 
-
-
-            model_path = PathL(model_dir) / model_filename
+            model_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
             joblib.dump(final_model, model_path)
 
             # Save the data used for SHAP (full processed dataset)
-            data_path = user_dir / data_filename
+            data_path = user_dir / "data.csv"
             full_df_model_data = pd.concat([X_full, y_full.rename(target_column)], axis=1)
             full_df_model_data.to_csv(data_path, index=False)
             # Attempt to generate customer-level summary stats
@@ -461,7 +442,6 @@ def do_classification(
                 }
 
             # Create request JSON for SHAP runner
-            # After defining `training_columns_filename`
             request_json = user_dir / "request.json"
             with open(request_json, "w") as f:
                 json.dump({
@@ -471,9 +451,9 @@ def do_classification(
                     "output_dir": str(user_dir.resolve()),
                     "model_type": "classifier",
                     "target_column": target_column,
-                    "save_filename": f"{user_id}_feature_importance.png",
-                    "training_columns_filename": training_columns_filename  # 👈 INCLUDE THIS
-                }, f, indent=2)
+                    "save_filename": f"{user_id}_feature_importance.png"
+                }, f)
+            
             # Run SHAP Visualizations subprocess
             try:
                 import sys
@@ -502,8 +482,7 @@ def do_classification(
                         "output_dir": str(user_dir.resolve()),
                         "model_type": "classification",
                         "target_column": target_column,
-                        "save_filename": f"{user_id}_feature_importance.png",
-                        "training_columns_filename": training_columns_filename  # 👈 INCLUDE THIS
+                        "save_filename": f"{user_id}_feature_importance.png"
                     }, f, indent=2)
 
                 print(f"[SHAP DEBUG] Request JSON created at: {request_json}")
@@ -613,7 +592,7 @@ def do_classification(
 
                 # Upload processed dataset
                 
-
+                data_filename = PathL(data_path).name
                 data_supabase_path = upload_file_to_supabase(user_id, str(data_path), data_filename)
 
                 # Generate signed URLs for access (e.g., for frontend or gallery)
@@ -751,16 +730,11 @@ def do_classification_predict(
             return [convert_numpy_types(item) for item in obj]
         else:
             return obj
-    dataset_hash = hash_filename(file_path)
-
-    # Build consistent filenames
-    model_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
-    training_columns_filename = f"classifier_training_columns_{dataset_hash}.json"
-    data_filename = f"{user_id}_processed_classifier_data_{dataset_hash}.csv"
-
 
     try:
-        model_supabase_path = f"{user_id}/{model_filename}"
+        # Setup paths - models are still stored locally, but data files are in Supabase
+        
+        model_supabase_path = f"{user_id}/{user_id}_best_classifier.pkl"
 
         try:
             print(f"[📦] Downloading model from Supabase: {model_supabase_path}")
@@ -778,8 +752,7 @@ def do_classification_predict(
             raise FileNotFoundError(f"Failed to load model from Supabase for user {user_id}: {str(e)}")
 
         # For training columns, we'll also store this in Supabase
-        training_columns_supabase_path = f"{user_id}/{training_columns_filename}"
-        data_supabase_path = f"{user_id}/{data_filename}"
+        training_columns_supabase_path = f"{user_id}/training_columns.json"
         # Download training columns from Supabase
         try:
             training_columns_data = download_file_from_supabase(training_columns_supabase_path)
@@ -789,7 +762,7 @@ def do_classification_predict(
         
         # Download prediction data from Supabase
         try:
-            prediction_data = download_file_from_supabase(data_supabase_path)
+            prediction_data = download_file_from_supabase(file_path)
             dataset_name = os.path.basename(file_path)
         except Exception as e:
             raise FileNotFoundError(f"Prediction file not found in Supabase: {file_path}. Error: {str(e)}")
@@ -1093,7 +1066,6 @@ def do_clustering(
     import logging
     
     try:
-        dataset_hash = hash_filename_from_paths(file_path, train_path, test_path)
         # Validate upload mode
         if file_path and (train_path or test_path):
             raise ValueError("Provide either file_path or both train_path+test_path, not both.")
@@ -1308,13 +1280,14 @@ def do_clustering(
                 elbow_base64 = ""
                         
                         # ─────── Save clustered data and model locally ───────
-            clustered_data_filename = f"{user_id}_clustered_data_{dataset_hash}.csv"
-            clustered_data_path = user_dir / clustered_data_filename
+            clustered_data_path = PathL(model_dir) / f"{user_id}_clustered_data.csv"
             df.to_csv(clustered_data_path, index=False)
 
-            model_filename = f"{user_id}_kmeans_model_{dataset_hash}.pkl"
-            model_path = PathL(model_dir) / model_filename
+            model_path = PathL(model_dir) / f"{user_id}_kmeans_model.pkl"
             joblib.dump(kmeans, model_path)
+
+            # ─────── Upload model + data to Supabase ───────
+            model_filename = model_path.name
             data_filename = clustered_data_path.name
 
             model_upload_path = upload_file_to_supabase(
@@ -1471,7 +1444,7 @@ def do_segment_analysis(
         local_train_path = None
         local_test_path = None
         temp_files = []
-        dataset_hash = hash_filename_from_paths(file_path, train_path, test_path)
+        
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             # Download files from Supabase to temporary locations
@@ -1664,11 +1637,11 @@ def do_segment_analysis(
                 ]
 
             # ───────────── Save data and model + Upload to Supabase ─────────────
-            segmented_data_path = PathL(model_dir) / f"{user_id}_segmented_data_{dataset_hash}.csv"
+            segmented_data_path = PathL(model_dir) / f"{user_id}_segmented_data.csv"
             df.to_csv(segmented_data_path, index=False)
 
-            model_path  = PathL(model_dir) / f"{user_id}_kmeans_model_{dataset_hash}.pkl"
-            scaler_path = PathL(model_dir) / f"{user_id}_scaler_{dataset_hash}.pkl"
+            model_path = PathL(model_dir) / f"{user_id}_kmeans_model.pkl"
+            scaler_path = PathL(model_dir) / f"{user_id}_scaler.pkl"
             
             joblib.dump(kmeans, model_path)
             joblib.dump(scaler, scaler_path)
@@ -1850,9 +1823,6 @@ def do_label_clusters(
     import logging
 
     try:
-        dataset_hash = hash_filename_from_paths(file_path=file_path,
-                                        train_path=train_path,
-                                        test_path=test_path)
         # ───────────── Validate upload mode (same as segmentation) ─────────────
         if file_path and (train_path or test_path):
             raise ValueError("Provide either file_path or both train_path+test_path, not both.")
@@ -1884,25 +1854,22 @@ def do_label_clusters(
             
             # Try to download clustered data
             try:
-                clustered_storage_path = f"{user_id}/{user_id}_clustered_data_{dataset_hash}.csv"
+                clustered_storage_path = f"{user_id}/{user_id}_clustered_data.csv"
                 clustered_data_bytes = download_file_from_supabase(clustered_storage_path)
-                clustered_data_path = os.path.join(temp_dir,
-                                                f"{user_id}_clustered_data_{dataset_hash}.csv")
-                with open(clustered_data_path, "wb") as f:
+                clustered_data_path = os.path.join(temp_dir, f"{user_id}_clustered_data.csv")
+                with open(clustered_data_path, 'wb') as f:
                     f.write(clustered_data_bytes)
             except Exception:
+                # If clustered data not found, try segmented data
                 try:
-                    segmented_storage_path = f"{user_id}/{user_id}_segmented_data_{dataset_hash}.csv"
+                    segmented_storage_path = f"{user_id}/{user_id}_segmented_data.csv"
                     segmented_data_bytes = download_file_from_supabase(segmented_storage_path)
-                    segmented_data_path = os.path.join(temp_dir,
-                                                    f"{user_id}_segmented_data_{dataset_hash}.csv")
-                    with open(segmented_data_path, "wb") as f:
+                    segmented_data_path = os.path.join(temp_dir, f"{user_id}_segmented_data.csv")
+                    with open(segmented_data_path, 'wb') as f:
                         f.write(segmented_data_bytes)
                 except Exception:
-                    return {
-                        "status": "error",
-                        "message": f"No clustering/segmentation data found for user ID {user_id} with hash {dataset_hash}"
-                    }
+                    return {"status": "error", "message": f"No clustering data found for user ID: {user_id}"}
+
             # Load the clustered data
             if clustered_data_path and os.path.exists(clustered_data_path):
                 df = pd.read_csv(clustered_data_path)
@@ -2156,9 +2123,6 @@ def do_regression(
     local_train_path = None
     local_test_path = None
     temp_files = []
-    dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
-    model_filename         = f"{user_id}_best_regressor_{dataset_hash}.pkl"
-    training_columns_filename = f"regressor_training_columns_{dataset_hash}.json"
 
     try:
         # Create temporary directory for processing
@@ -2194,9 +2158,8 @@ def do_regression(
             # Create user directory for outputs
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-            data_filename = f"{user_id}_processed_data_{dataset_hash}.csv"
-            processed_data_path = user_dir / data_filename
-
+            processed_data_path = user_dir / "processed_full_data.csv"
+            
             # ───────────── File processing ─────────────
             train_df = None
             test_df = None
@@ -2264,13 +2227,15 @@ def do_regression(
                 target_column=target_column,
             )
             print("Model training completed!")
-            # Construct consistent hashed filenames for regression
 
-            # Save paths
-            model_path = PathL(model_dir) / model_filename
-
+            # ───────────── Save Model & Preprocessor ─────────────
+            model_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
+            preprocessor_path = PathL(model_dir) / f"{user_id}_preprocessor.pkl"
 
             joblib.dump(results["final_model"], model_path)
+            joblib.dump(results["preprocessor"], preprocessor_path)
+            print(f"[💾] Models saved to: {model_path} and {preprocessor_path}")
+
             # ───────────── Generate Visualizations & Process Data ─────────────
             try:
                 # Prepare full dataset for processing
@@ -2302,14 +2267,17 @@ def do_regression(
 
 
                 X_full_raw = full_df.drop(columns=["ID", target_column], errors="ignore")
+                X_full_processed = results["preprocessor"].transform(X_full_raw)
 
+                if hasattr(results["preprocessor"], "get_feature_names_out"):
+                    feature_names = results["preprocessor"].get_feature_names_out()
+                else:
+                    feature_names = results.get("feature_names")
 
-                feature_names = results.get("feature_names")
-
-                X_full_df = pd.DataFrame(X_full_raw)
+                X_full_df = pd.DataFrame(X_full_processed, columns=feature_names)
                 
                 # ───────────── Predictions on Full Data ─────────────
-                preds_full = results["final_model"].predict(X_full_df)
+                preds_full = results["final_model"].predict(X_full_processed)
 
                 # ───────────── Compute Prediction Stats ─────────────
                 pred_stats = {
@@ -2329,36 +2297,44 @@ def do_regression(
                         financial_inputs = json.load(f)
                 else:
                     financial_inputs = None
-
-                training_columns_path = user_dir / training_columns_filename
-
+                    
+                # Save training columns for SHAP alignment
+                training_columns_path = user_dir / "training_columns.json"
                 with open(training_columns_path, "w") as f:
                     json.dump(list(X_full_df.columns), f)
                 upload_file_to_supabase(
                     user_id=user_id,
                     file_path=str(training_columns_path),
-                    filename=training_columns_filename
+                    filename="training_columns.json"
                 )
                 # Save processed data for SHAP - CREATE FILE BEFORE UPLOAD
                 X_full_df.to_csv(processed_data_path, index=False)
 
                 # ───────────── Upload to Supabase (AFTER creating processed data) ─────────────
                 try:
+                    model_filename = model_path.name
+                    preprocessor_filename = preprocessor_path.name
+                    data_filename = processed_data_path.name
+
+                    # Upload model, preprocessor, and processed dataset
                     model_supabase_path = upload_file_to_supabase(user_id, str(model_path), model_filename)
-            
+                    preprocessor_supabase_path = upload_file_to_supabase(user_id, str(preprocessor_path), preprocessor_filename)
                     data_supabase_path = upload_file_to_supabase(user_id, str(processed_data_path), data_filename)
 
                     # Get signed URLs for frontend access (1-hour expiration)
                     model_url = get_file_url(model_supabase_path, expires_in=3600)
+                    preprocessor_url = get_file_url(preprocessor_supabase_path, expires_in=3600)
                     data_url = get_file_url(data_supabase_path, expires_in=3600)
 
                     print(f"[✅] Uploaded model: {model_url}")
+                    print(f"[✅] Uploaded preprocessor: {preprocessor_url}")
                     print(f"[✅] Uploaded processed data: {data_url}")
 
                 except Exception as upload_error:
                     print(f"[⚠️] Failed to upload regression artifacts to Supabase: {upload_error}")
                     # Set default values if upload fails
                     model_url = ""
+                    preprocessor_url = ""
                     data_url = ""
 
                # Create request JSON for SHAP
@@ -2371,13 +2347,12 @@ def do_regression(
                         "output_dir": str(user_dir.resolve()),
                         "model_type": "regression",
                         "target_column": target_column,
-                        "save_filename": f"{user_id}_feature_importance.png",
-                        "training_columns_filename": training_columns_filename
+                        "save_filename": f"{user_id}_feature_importance.png"
                     }, f)
 
                 # Save training columns needed by SHAP
                 try:
-                    training_columns_path = user_dir / training_columns_filename
+                    training_columns_path = user_dir / "training_columns.json"
                     with open(training_columns_path, "w") as f:
                         json.dump(list(X_full_df.columns), f)
                     print(f"[✅] Saved training columns to {training_columns_path}")
@@ -2408,8 +2383,7 @@ def do_regression(
                             "output_dir": str(user_dir.resolve()),
                             "model_type": "regression",
                             "target_column": target_column,
-                            "save_filename": f"{user_id}_feature_importance.png",
-                            "training_columns_filename": training_columns_filename
+                            "save_filename": f"{user_id}_feature_importance.png"
                         }, f, indent=2)
 
                     # Verify request JSON content
@@ -2564,6 +2538,7 @@ def do_regression(
                         "pred_stats": pred_stats,
                         "insights": insights,
                         "model_url": model_url,
+                        "preprocessor_url": preprocessor_url,
                         "data_url": data_url,
                         "summary_stats": summary_stats
                     }
@@ -2595,6 +2570,7 @@ def do_regression(
                         "shap_dot": f"data:image/png;base64,{fi_shap_dot}" if fi_shap_dot else ""
                     },
                     "model_url": model_url,
+                    "preprocessor_url": preprocessor_url,
                     "data_url": data_url,
                     "summary_stats": summary_stats
                 }
@@ -2616,12 +2592,7 @@ def do_regression_predict(
     test_path: str = None,
     drop_columns: str = ""
 ) -> dict:
-    # Compute dataset hash from the uploaded file
-    dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
 
-    # Construct consistent hashed filenames
-    model_filename         = f"{user_id}_best_regressor_{dataset_hash}.pkl"
-    training_columns_filename = f"regressor_training_columns_{dataset_hash}.json"
     def convert_numpy_types(obj):
         """Convert numpy types to native Python types for JSON serialization"""
         if isinstance(obj, np.integer):
@@ -2641,11 +2612,10 @@ def do_regression_predict(
         if file_path is None:
             raise ValueError("You must provide a file_path for prediction input.")
 
-        
-
         # Supabase paths
-        model_supabase_path = f"{user_id}/{model_filename}"
-        training_columns_supabase_path = f"{user_id}/{training_columns_filename}"
+        model_supabase_path = f"{user_id}/{user_id}_best_regressor.pkl"
+        preprocessor_supabase_path = f"{user_id}/{user_id}_preprocessor.pkl"
+        training_columns_supabase_path = f"{user_id}/training_columns.json"
 
         # ───── Download training columns ─────
         try:
@@ -2664,6 +2634,25 @@ def do_regression_predict(
         except Exception as e:
             raise FileNotFoundError(f"Failed to download/load model: {e}")
 
+        try:
+            print(f"[📦] Downloading preprocessor from Supabase: {preprocessor_supabase_path}")
+            preprocessor_data = download_file_from_supabase(preprocessor_supabase_path)
+
+            print(f"[DEBUG] Preprocessor data type: {type(preprocessor_data)}")
+            print(f"[DEBUG] Preprocessor data length: {len(preprocessor_data)} bytes")
+
+            if not preprocessor_data:
+                raise ValueError("Downloaded preprocessor file is empty")
+
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False, mode="wb") as tmp:
+                tmp.write(preprocessor_data)
+                tmp.flush()
+                print(f"[DEBUG] Written preprocessor to temp file: {tmp.name}")
+                preprocessor = joblib.load(tmp.name)
+                print(f"[✅] Preprocessor loaded successfully")
+
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to download/load preprocessor: {e}")
 
         # ───── Download prediction CSV ─────
         try:
@@ -2711,11 +2700,11 @@ def do_regression_predict(
         df.drop(columns=drop_features, inplace=True, errors='ignore')
 
         # Preprocess the data using the same function as training
-        print("[] Preprocessing prediction data...")
+        print("[🔄] Preprocessing prediction data...")
         df_processed, cats, nums = preprocess_data(df)
         
         # Align columns with training data
-        print("[] Aligning features with training data...")
+        print("[🔧] Aligning features with training data...")
         missing_cols = set(training_columns) - set(df_processed.columns)
         extra_cols = set(df_processed.columns) - set(training_columns)
         
@@ -2729,10 +2718,11 @@ def do_regression_predict(
         # Reorder columns to match training
         df_processed = df_processed.reindex(columns=training_columns, fill_value=0)
         
-        print(f"[] Feature alignment complete: {len(training_columns)} features")
+        print(f"[✅] Feature alignment complete: {len(training_columns)} features")
         
-        
-        predictions = model.predict(df_processed)
+        # Transform and predict
+        X_transformed = preprocessor.transform(df_processed)
+        predictions = model.predict(X_transformed)
         
         # Create output dataframe by adding predictions to original data
         output_df = original_df.copy()
@@ -2997,9 +2987,7 @@ def do_visualization(
     local_train_path = None
     local_test_path = None
     temp_files = []
-    dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
-    classifier_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
-    regressor_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
+    
     try:
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3033,11 +3021,6 @@ def do_visualization(
             
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-
-            model_path = None
-
-            classifier_path = PathL(model_dir) / classifier_filename
-            regressor_path = PathL(model_dir) / regressor_filename
 
             # ───────────── Load data ─────────────
             if local_file_path:
@@ -3088,31 +3071,39 @@ def do_visualization(
             pdp_b64 = None
             if feature_column in NUMS:
                 try:
+                    # Try to load existing model from temp directory or download from Supabase
+                    model_path = None
+                    classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
+                    regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
+                    
+                    # Try to download model from Supabase if it exists
                     try:
                         if not classifier_path.exists():
-                            model_bytes = download_file_from_supabase(f"{user_id}/{classifier_filename}")
+                            # Try to download classifier model from Supabase
+                            model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
                             with open(classifier_path, 'wb') as f:
                                 f.write(model_bytes)
-                        model_path = classifier_path
-                    except Exception as e:
-                        print(f"[⚠️] Classifier model not found: {e}")
-
-                    # Try loading regressor model (only if classifier not found)
+                            model_path = classifier_path
+                    except:
+                        pass
+                    
                     try:
-                        if model_path is None and not regressor_path.exists():
-                            model_bytes = download_file_from_supabase(f"{user_id}/{regressor_filename}")
+                        if not model_path and not regressor_path.exists():
+                            # Try to download regressor model from Supabase
+                            model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
                             with open(regressor_path, 'wb') as f:
                                 f.write(model_bytes)
-                        if model_path is None:
                             model_path = regressor_path
-                    except Exception as e:
-                        print(f"[⚠️] Regressor model not found: {e}")
+                    except:
+                        pass
                     
+                    # Use whichever model exists
+                    if not model_path:
+                        if classifier_path.exists():
+                            model_path = classifier_path
+                        elif regressor_path.exists():
+                            model_path = regressor_path
                     
-                    if model_path is None:
-                        model_path = classifier_path if classifier_path.exists() else regressor_path if regressor_path.exists() else None
-
-                                        
                     if model_path and model_path.exists():
                         model = joblib.load(model_path)
                         estimator = model 
@@ -3265,11 +3256,7 @@ def do_counterfactual(
     local_train_path = None
     local_test_path = None
     temp_files = []
-    # Supabase paths (bucket keys)
-    dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
-
-    regressor_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
-    classifier_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
+    
     try:
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3405,28 +3392,29 @@ def do_counterfactual(
 
 
 
+            # Supabase paths (bucket keys)
+            regressor_filename = f"{user_id}/{user_id}_best_regressor.pkl"
+            classifier_filename = f"{user_id}/{user_id}_best_classifier.pkl"
 
+            # Local save filenames (no folder nesting)
+            regressor_local = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
+            classifier_local = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
 
-            regressor_supabase_path = f"{user_id}/{regressor_filename}"
-            classifier_supabase_path = f"{user_id}/{classifier_filename}"
-
-            regressor_local = PathL(model_dir) / regressor_filename
-            classifier_local = PathL(model_dir) / classifier_filename
             model_path = None
 
             try:
                 if target_is_continuous:
-                    model_bytes = download_file_from_supabase(regressor_supabase_path)
+                    model_bytes = download_file_from_supabase(regressor_filename)
                     with open(regressor_local, "wb") as f:
                         f.write(model_bytes)
                     model_path = regressor_local
-                    logger.info(f"✅ Downloaded regressor model: {regressor_supabase_path}")
+                    logger.info(f"✅ Downloaded regressor model: {regressor_filename}")
                 else:
-                    model_bytes = download_file_from_supabase(classifier_supabase_path)
+                    model_bytes = download_file_from_supabase(classifier_filename)
                     with open(classifier_local, "wb") as f:
                         f.write(model_bytes)
                     model_path = classifier_local
-                    logger.info(f"✅ Downloaded classifier model: {classifier_supabase_path}")
+                    logger.info(f"✅ Downloaded classifier model: {classifier_filename}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to download model: {e}")
                 raise ValueError("No trained model found for this user")
@@ -3437,6 +3425,8 @@ def do_counterfactual(
             # Load the model
             model = joblib.load(model_path)
             estimator = model
+
+
 
             # Store expected training feature names
             if hasattr(estimator, "feature_names_in_"):
@@ -3993,7 +3983,7 @@ def do_survival(
     local_train_path = None
     local_test_path = None
     temp_files = []
-    dataset_hash = hash_filename_from_paths(file_path=file_path, train_path=train_path, test_path=test_path)
+    
     try:
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4027,8 +4017,7 @@ def do_survival(
             
             user_dir = PathL(temp_dir) / "user_outputs"
             user_dir.mkdir(exist_ok=True)
-            base_path_for_hash = file_path or train_path
-            
+
             # ───────────── Load data ─────────────
             if local_file_path:
                 df = pd.read_csv(local_file_path)
@@ -4650,60 +4639,51 @@ def do_what_if(
         except Exception as e:
             raise ValueError(f"Failed to load data: {str(e)}")
     
-    
-    def load_model(
-        df: pd.DataFrame,
-        target_column: str,
-        user_id: str,
-        file_path: Optional[str] = None,
-        train_path: Optional[str] = None,
-        test_path: Optional[str] = None
-    ) -> tuple[Any, list[str], Any]:
-        """
-        Returns: (model, training_columns, preprocessor)
-        All loaded in-memory from Supabase, keyed by model_type and dataset_hash.
-        """
-        # 1) Detect model_type
-        tgt = df[target_column].dropna()
-        unique = tgt.nunique()
-        total  = len(tgt)
-        is_class = (
-            pd.api.types.is_object_dtype(tgt) or
-            pd.api.types.is_bool_dtype(tgt) or
-            (unique < 0.05 * total and unique <= 20)
+    def load_model(df: pd.DataFrame, target_column: str) -> Any:
+        """Load classifier or regressor based on the target column's distribution"""
+        model_dir = os.path.join(temp_dir, "models")
+        os.makedirs(model_dir, exist_ok=True)
+
+        # Determine whether the task is classification or regression
+        target_values = df[target_column].dropna()
+        num_unique = target_values.nunique()
+        total = len(target_values)
+
+        is_classification = (
+            pd.api.types.is_object_dtype(target_values) or
+            pd.api.types.is_bool_dtype(target_values) or
+            (num_unique < 0.05 * total and num_unique <= 20)
         )
-        model_type = "classifier" if is_class else "regressor"
-        logging.info(f"🔍 Detected model type: {model_type.upper()}")
 
-        # 2) Compute your dataset_hash
-        ds_hash = hash_filename_from_paths(file_path, train_path, test_path)
+        selected_model_type = "classifier" if is_classification else "regressor"
+        logging.info(f"🔍 Target column '{target_column}' detected as: {selected_model_type.upper()}")
 
-        # 3) Build the three Supabase keys (with the same filenames you uploaded)
-        model_filename      = f"{user_id}_best_{model_type}_{dataset_hash}.pkl"
-        cols_filename       = f"{model_type}_training_columns_{dataset_hash}.json"
+        # Choose the correct model path
+        model_paths = {
+            "classifier": (
+                PathL(model_dir) / f"{user_id}_best_classifier.pkl",
+                f"{user_id}/{user_id}_best_classifier.pkl"
+            ),
+            "regressor": (
+                PathL(model_dir) / f"{user_id}_best_regressor.pkl",
+                f"{user_id}/{user_id}_best_regressor.pkl"
+            )
+        }
 
-        model_key    = f"{user_id}/{model_filename}"
-        cols_key     = f"{user_id}/{cols_filename}"
+        local_path, remote_path = model_paths[selected_model_type]
 
-        def fetch_bytes(key: str) -> bytes:
-            logging.info(f"⬇️ Downloading {key}")
-            return download_file_from_supabase(key)
-
-        # 4) Load model
         try:
-            raw_model = fetch_bytes(model_key)
-            model     = joblib.load(io.BytesIO(raw_model))
-            logging.info(f"✅ Model loaded from {model_key}")
+            if not local_path.exists():
+                model_bytes = download_file_from_supabase(remote_path)
+                with open(local_path, 'wb') as f:
+                    f.write(model_bytes)
+
+            model = joblib.load(local_path)
+            logging.info(f"✅ Successfully loaded {selected_model_type} model from Supabase: {remote_path}")
+            return model
+
         except Exception as e:
-            logging.error(f"❌ Failed to load model: {e}")
-            raise
-
-        # 6) Load training_columns
-        raw_cols       = fetch_bytes(cols_key)
-        training_cols  = json.loads(raw_cols.decode("utf-8"))
-        logging.info(f"✅ Training columns loaded from {cols_key}")
-
-        return model, training_cols
+            raise ValueError(f"❌ Failed to load {selected_model_type} model: {str(e)}")
     def sanitize_for_json(obj):
         """Recursively sanitize data for JSON serialization."""
         if isinstance(obj, dict):
@@ -4728,133 +4708,90 @@ def do_what_if(
             return obj
         return obj
 
-    def apply_feature_changes(
-        df: pd.DataFrame,
-        changes: Dict[str, Any]
-    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """
-        Apply bulk feature changes across all records of a DataFrame.
-
-        - Supports operations: percentage (alias for percent increase/decrease),
-        percent_increase, percent_decrease, additive, multiplicative, set_value,
-        categorical_replace, categorical_boost.
-        - Ignores extra keys (e.g. 'original_mean') in the operation dict.
-        - For "percentage", positive values increase, negative values decrease by abs(value)%.
-        - Returns (modified_df, applied_changes), where applied_changes maps feature names
-        to details of what was done.
-        """
-        modified_df = df.copy(deep=True)
-        applied_changes: Dict[str, Any] = {}
-
+    def apply_feature_changes(df: pd.DataFrame, changes: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """Apply feature changes with comprehensive validation for mass scenario simulation"""
+        modified_df = df.copy()
+        applied_changes = {}
+       
         for feature, operation in changes.items():
             if feature not in modified_df.columns:
-                logging.warning(f"Feature '{feature}' not found, skipping")
+                logging.warning(f"Feature '{feature}' not found in dataset, skipping")
                 continue
-
+               
             try:
-                to_num = lambda col: pd.to_numeric(modified_df.loc[:, col], errors="coerce")
-
-                # If operation is a dict with a "type", dispatch accordingly
-                if isinstance(operation, dict) and "type" in operation:
-                    op_type = operation["type"]
-                    # Only the 'value' key matters for computation
-                    raw_value = operation.get("value", 0)
-                    pct_or_val = float(raw_value)
-
-                    # 1) Legacy "percentage" alias: +ve → increase, -ve → decrease
-                    if op_type == "percentage":
-                        pct = abs(pct_or_val)
-                        if pct_or_val >= 0:
-                            modified_df.loc[:, feature] = to_num(feature) * (1 + pct / 100)
-                            desc = f"Increased {feature} by {pct}% across all records"
-                        else:
-                            modified_df.loc[:, feature] = to_num(feature) * (1 - pct / 100)
-                            desc = f"Decreased {feature} by {pct}% across all records"
-
-                    # 2) Explicit percent increase
-                    elif op_type == "percent_increase":
-                        pct = pct_or_val
+                if isinstance(operation, dict) and 'type' in operation:
+                    op_type = operation['type']
+                    value = operation.get('value', 0)
+                   
+                    if op_type == 'percent_increase':
+                        pct = float(value)
                         if pct < -100:
-                            raise ValueError(f"Percent increase < -100% for {feature}")
-                        modified_df.loc[:, feature] = to_num(feature) * (1 + pct / 100)
-                        desc = f"Increased {feature} by {pct}% across all records"
-
-                    # 3) Explicit percent decrease
-                    elif op_type == "percent_decrease":
-                        pct = pct_or_val
-                        if not 0 <= pct <= 100:
-                            raise ValueError(f"Percent decrease must be 0–100% for {feature}")
-                        modified_df.loc[:, feature] = to_num(feature) * (1 - pct / 100)
-                        desc = f"Decreased {feature} by {pct}% across all records"
-
-                    # 4) Additive change
-                    elif op_type == "additive":
-                        delta = pct_or_val
-                        modified_df.loc[:, feature] = to_num(feature) + delta
-                        desc = f"Added {delta} to {feature} across all records"
-
-                    # 5) Multiplicative change
-                    elif op_type == "multiplicative":
-                        mul = pct_or_val
-                        modified_df.loc[:, feature] = to_num(feature) * mul
-                        desc = f"Multiplied {feature} by {mul} across all records"
-
-                    # 6) Set all values to a constant
-                    elif op_type == "set_value":
-                        const = operation.get("value")
-                        modified_df.loc[:, feature] = const
-                        desc = f"Set {feature} to {const} across all records"
-
-                    # 7) Categorical replace
-                    elif op_type == "categorical_replace":
-                        old = operation.get("old_value", "all")
-                        new = operation.get("value")
-                        if old == "all":
-                            modified_df.loc[:, feature] = new
-                            desc = f"Replaced all {feature} values with {new}"
+                            raise ValueError(f"Percent increase cannot be less than -100% for {feature}")
+                        # Apply to ALL rows - mass scenario simulation
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 + pct / 100.0)
+                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Increased {feature} by {pct}% across all records"}
+                       
+                    elif op_type == 'percent_decrease':
+                        pct = float(value)
+                        if pct < 0 or pct > 100:
+                            raise ValueError(f"Percent decrease must be between 0-100% for {feature}")
+                        # Apply to ALL rows
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * (1 - pct / 100.0)
+                        applied_changes[feature] = {'type': op_type, 'value': pct, 'description': f"Decreased {feature} by {pct}% across all records"}
+                       
+                    elif op_type == 'additive':
+                        delta = float(value)
+                        # Apply to ALL rows
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') + delta
+                        applied_changes[feature] = {'type': op_type, 'value': delta, 'description': f"Added {delta} to {feature} across all records"}
+                       
+                    elif op_type == 'multiplicative':
+                        multiplier = float(value)
+                        # Apply to ALL rows
+                        modified_df.loc[:, feature] = pd.to_numeric(modified_df.loc[:, feature], errors='coerce') * multiplier
+                        applied_changes[feature] = {'type': op_type, 'value': multiplier, 'description': f"Multiplied {feature} by {multiplier} across all records"}
+                       
+                    elif op_type == 'set_value':
+                        # Set ALL rows to this value
+                        modified_df.loc[:, feature] = value
+                        applied_changes[feature] = {'type': op_type, 'value': value, 'description': f"Set {feature} to {value} across all records"}
+                       
+                    elif op_type == 'categorical_replace':
+                        # Replace ALL occurrences
+                        old_value = operation.get('old_value', 'all')
+                        new_value = value
+                        if old_value == 'all':
+                            modified_df.loc[:, feature] = new_value
+                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
+                                                      'description': f"Replaced all {feature} values with {new_value}"}
                         else:
-                            mask = modified_df.loc[:, feature] == old
-                            cnt  = mask.sum()
-                            modified_df.loc[mask, feature] = new
-                            desc = f"Replaced {cnt} records where {feature} == {old} with {new}"
-
-                    # 8) Categorical boost
-                    elif op_type == "categorical_boost":
-                        target = operation.get("value")
-                        prop   = min(max(operation.get("proportion", 0.1), 0), 1)
-                        n      = int(len(modified_df) * prop)
-                        if n:
-                            idx = modified_df.sample(n=n, random_state=42).index
-                            modified_df.loc[idx, feature] = target
-                        desc = f"Set {prop*100:.1f}% ({n}) records of {feature} to {target}"
-
-                    else:
-                        logging.warning(f"Unknown operation '{op_type}' for {feature}, skipping")
-                        continue
-
-                    # Record what was applied
-                    applied_changes[feature] = {
-                        "type": op_type,
-                        "value": raw_value,
-                        "description": desc
-                    }
-
+                            modified_df.loc[modified_df.loc[:, feature] == old_value, feature] = new_value
+                            affected_count = (df[feature] == old_value).sum()
+                            applied_changes[feature] = {'type': op_type, 'old_value': old_value, 'new_value': new_value,
+                                                      'description': f"Replaced {feature} '{old_value}' with '{new_value}' ({affected_count} records)"}
+                       
+                    elif op_type == 'categorical_boost':
+                        # Boost proportion of records to target value
+                        target_value = operation.get('value')
+                        proportion = min(max(operation.get('proportion', 0.1), 0), 1)  # Clamp between 0-1
+                        n_samples = int(len(modified_df) * proportion)
+                        if n_samples > 0:
+                            idx = modified_df.sample(n=n_samples, random_state=42).index
+                            modified_df.loc[idx, feature] = target_value
+                            applied_changes[feature] = {'type': op_type, 'value': target_value, 'proportion': proportion,
+                                                      'description': f"Set {proportion*100:.1f}% of records ({n_samples}) to have {feature} = {target_value}"}
+                   
                 else:
-                    # If not a dict or no "type", just assign the literal value
+                    # Handle simple value assignments - apply to ALL rows
                     modified_df.loc[:, feature] = operation
-                    applied_changes[feature] = {
-                        "type": "set_value",
-                        "value": operation,
-                        "description": f"Set {feature} to {operation} across all records"
-                    }
-
+                    applied_changes[feature] = {'type': 'set_value', 'value': operation,
+                                              'description': f"Set {feature} to {operation} across all records"}
+                   
             except Exception as e:
                 logging.error(f"Failed to apply change to {feature}: {e}")
                 continue
-
+       
         return modified_df, applied_changes
-
-
     
     def calculate_advanced_metrics(original_preds: np.ndarray, modified_preds: np.ndarray) -> Dict[str, Any]:
         from scipy import stats
@@ -5512,9 +5449,6 @@ def do_what_if(
         return insights
     # Main execution starts here
     try:
-        dataset_hash = hash_filename_from_paths(file_path, train_path, test_path)
-        training_columns_filename = f"{user_id}_training_columns_{dataset_hash}.json"
-
         # Initialize configuration
         config = AnalysisConfig(**(analysis_config or {}))
         
@@ -5549,15 +5483,16 @@ def do_what_if(
         with tempfile.TemporaryDirectory() as temp_dir:
             # Load data and model
             df, dataset_name = safe_download_and_load_data()
-            model, training_columns = load_model(
-                df,
-                target_column,
-                user_id=user_id,
-                file_path=file_path,
-                train_path=train_path,
-                test_path=test_path
-            )
-            
+            model = load_model(df, target_column)
+            training_columns_supabase_path = f"{user_id}/training_columns.json"
+
+            # ───── Download training columns ─────
+            try:
+                training_columns_data = download_file_from_supabase(training_columns_supabase_path)
+                training_columns = json.loads(training_columns_data.decode('utf-8'))
+            except Exception as e:
+                raise FileNotFoundError(f"Training columns metadata not found in Supabase: {str(e)}")
+
             # Validate sample selection (optional)
             if sample_id is not None:
                 if 'ID' in df.columns:
@@ -5571,10 +5506,10 @@ def do_what_if(
             # ───────── Apply mass changes ─────────
             modified_df, applied_changes = apply_feature_changes(df, changes)
 
-            feature_cols = [c for c in df.columns if c not in (["ID", target_column])]
+            # ───────── Extract feature columns ─────────
+            feature_cols = [col for col in df.columns if col in training_columns]
             if not feature_cols:
                 return {"status": "error", "errors": ["No feature columns found for prediction"]}
-
 
             # ───────── Preprocess both original and modified dataframes ─────────
             try:
@@ -5596,17 +5531,6 @@ def do_what_if(
 
             X_original = X_original.reindex(columns=training_columns, fill_value=0)
             X_modified = X_modified.reindex(columns=training_columns, fill_value=0)
-            logger.info("Expected features (%d): %s",
-                        len(training_columns), training_columns)
-            logger.info("Actual features (%d): %s",
-                        X_modified.shape[1], list(X_modified.columns))
-
-            missing = set(training_columns) - set(X_modified.columns)
-            extra   = set(X_modified.columns) - set(training_columns)
-            if missing:
-                logger.warning("Missing cols: %s", missing)
-            if extra:
-                logger.warning("Extra cols: %s", extra)
 
             # ───────── Run predictions ─────────
             try:
@@ -5777,14 +5701,7 @@ def do_risk_analysis(
                     f.write(test_bytes)
                     
                 temp_files.extend([local_train_path, local_test_path])
-            dataset_hash = hash_filename_from_paths(
-                file_path=file_path,
-                train_path=train_path,
-                test_path=test_path
-            )
-            # 2) Build hashed model filenames
-            classifier_filename = f"{user_id}_best_classifier_{dataset_hash}.pkl"
-            regressor_filename = f"{user_id}_best_regressor_{dataset_hash}.pkl"
+            
             # Create temporary directories for models and outputs
             model_dir = os.path.join(temp_dir, "models")
             os.makedirs(model_dir, exist_ok=True)
@@ -5828,9 +5745,30 @@ def do_risk_analysis(
 
             # ───────────── Load user model from Supabase ─────────────
             model_path = None
-            classifier_path = PathL(model_dir) / classifier_filename
-            regressor_path  = PathL(model_dir) / regressor_filename
-                        
+            classifier_path = PathL(model_dir) / f"{user_id}_best_classifier.pkl"
+            regressor_path = PathL(model_dir) / f"{user_id}_best_regressor.pkl"
+            
+            # Try to download model from Supabase if it exists
+            try:
+                if not classifier_path.exists():
+                    # Try to download classifier model from Supabase
+                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_classifier.pkl")
+                    with open(classifier_path, 'wb') as f:
+                        f.write(model_bytes)
+                    model_path = classifier_path
+            except:
+                pass
+            
+            try:
+                if not model_path and not regressor_path.exists():
+                    # Try to download regressor model from Supabase
+                    model_bytes = download_file_from_supabase(f"models/{user_id}_best_regressor.pkl")
+                    with open(regressor_path, 'wb') as f:
+                        f.write(model_bytes)
+                    model_path = regressor_path
+            except:
+                pass
+            
             # Use whichever model exists
             if not model_path:
                 if classifier_path.exists():
@@ -6401,7 +6339,6 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
         print(f"[⚠️] Forecast subprocess error: {e}")
         traceback.print_exc()
         return False
-from scipy.stats import chi2_contingency
 
 def run_ab_test(
     user_id: str,
@@ -6464,7 +6401,8 @@ def run_ab_test(
 
             entry = ensure_json_serializable(entry)
 
-
+            # Save metadata
+            from db.session import master_db_cm
             with master_db_cm() as db:
                 _append_limited_metadata(user_id, entry, db=db, max_entries=5)
 
