@@ -1562,23 +1562,14 @@ document.getElementById('btn-visualize').addEventListener('click', () => selectA
 document.getElementById('btn-feature_impact').addEventListener('click', () => selectAnalysisMethod('feature_impact'));
 document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
 document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
-document.getElementById('btn_decision_paths')
-  .addEventListener('click', () => selectAnalysisMethod('decision_paths'));
+document.getElementById('btn-decision_paths').addEventListener('click', () => selectAnalysisMethod('decision_paths'));
+document.getElementById('btn-time_series_analysis').addEventListener('click', () => selectAnalysisMethod('time_series_analysis'));
 
-document.getElementById('btn-decision_paths')
-  .addEventListener('click', () => selectAnalysisMethod('decision_paths'));
+document.getElementById('btn-survival').addEventListener('click', () => selectAnalysisMethod('survival'));
 
-document.getElementById('btn-time_series_analysis')
-  .addEventListener('click', () => selectAnalysisMethod('time_series_analysis'));
+document.getElementById('btn-classification_predict').addEventListener('click', () => selectAnalysisMethod('classification_predict'));
+document.getElementById('btn-regression_predict').addEventListener('click', () => selectAnalysisMethod('regression_predict'));
 
-document.getElementById('btn-survival')
-  .addEventListener('click', () => selectAnalysisMethod('survival'));
-
-document.getElementById('btn-classification_predict')
-  .addEventListener('click', () => selectAnalysisMethod('classification_predict'));
-
-document.getElementById('btn-regression_predict')
-  .addEventListener('click', () => selectAnalysisMethod('regression_predict'));
 
 fullInput.addEventListener('change', function() {
     const file = this.files[0];
