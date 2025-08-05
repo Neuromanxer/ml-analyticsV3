@@ -6311,68 +6311,95 @@ def do_forecast(
 def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
     """
     Run forecast visualization subprocess.
-    Saves request.json and executes forecast_runner.py
+    - Sanitizes forecast_result to native Python types.
+    - Writes a request.json file.
+    - Invokes forecast_runner.py in a subprocess.
+    Returns True on success, False on any failure.
     """
+    import subprocess
+    import sys
+    import json
+    import traceback
+    import numpy as np
+    from pathlib import Path as PathL
+
+    # Ensure output directory exists
     output_dir = PathL(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # ─── Sanitize forecast_result ───
+    clean_result = {}
+    for key, val in forecast_result.items():
+        # NumPy array → Python list
+        if isinstance(val, np.ndarray):
+            clean_result[key] = val.tolist()
+        # List possibly containing NumPy scalars
+        elif isinstance(val, list) and any(isinstance(x, np.generic) for x in val):
+            lst = []
+            for item in val:
+                lst.append(item.item() if isinstance(item, np.generic) else item)
+            clean_result[key] = lst
+        # NumPy scalar → native Python
+        elif isinstance(val, np.generic):
+            clean_result[key] = val.item()
+        else:
+            clean_result[key] = val
+
+    # Build request payload
     request_data = {
         "user_id": str(user_id),
         "file_path": str(file_path),
-        "forecast_result": forecast_result,
+        "forecast_result": clean_result,
         "output_dir": str(output_dir)
     }
-    
+
     try:
-        # Save request.json into the output directory
+        # Write request.json
         request_path = output_dir / "request.json"
         with request_path.open("w", encoding="utf-8") as f:
-            json.dump(request_data, f, indent=2, default=str)  # Added default=str for serialization
-        
-        # Locate forecast_runner.py
-        current_dir = PathL(__file__).parent
-        runner_script = current_dir / "forecast_runner.py"
-        
+            json.dump(request_data, f, indent=2)
+
+        # Locate the runner script
+        runner_script = PathL(__file__).parent / "forecast_runner.py"
         if not runner_script.exists():
-            print(f"[⚠️] Forecast runner not found at: {runner_script}")
+            print(f"[⚠️] Forecast runner not found at: {runner_script}", file=sys.stderr)
             raise FileNotFoundError(f"Forecast runner script not found: {runner_script}")
-        
-        # Run the subprocess using the Python interpreter currently running the script
+
+        # Execute subprocess
         result = subprocess.run(
             [sys.executable, str(runner_script.resolve()), str(request_path.resolve())],
             check=True,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            timeout=300  # seconds
         )
-        
-        # Log output for debugging
+
+        # Log stdout/stderr for debugging
         if result.stdout:
             print(f"[FORECAST STDOUT]:\n{result.stdout}")
         if result.stderr:
-            print(f"[FORECAST STDERR]:\n{result.stderr}")
-        
-        if result.returncode != 0:
-            print(f"[⚠️] Forecast subprocess failed with return code {result.returncode}")
-            print(f"[⚠️] STDERR: {result.stderr}")
-            print(f"[⚠️] STDOUT: {result.stdout}")
-            raise subprocess.CalledProcessError(result.returncode, result.args)
-        
+            print(f"[FORECAST STDERR]:\n{result.stderr}", file=sys.stderr)
+
         print(f"[✅] Forecast subprocess ran successfully for user {user_id}")
         return True
-    
+
     except subprocess.TimeoutExpired:
-        print(f"[⚠️] Forecast subprocess timed out after 5 minutes for user {user_id}")
+        print(f"[⚠️] Forecast subprocess timed out after 5 minutes for user {user_id}", file=sys.stderr)
         return False
-    
+
     except subprocess.CalledProcessError as e:
-        print(f"[⚠️] Forecast subprocess failed: {e}")
+        print(f"[⚠️] Forecast subprocess failed (exit {e.returncode}):", file=sys.stderr)
+        if e.stdout:
+            print(f"STDOUT:\n{e.stdout}", file=sys.stderr)
+        if e.stderr:
+            print(f"STDERR:\n{e.stderr}", file=sys.stderr)
         return False
-    
+
     except Exception as e:
-        print(f"[⚠️] Forecast subprocess error: {e}")
+        print(f"[⚠️] Forecast subprocess error: {e}", file=sys.stderr)
         traceback.print_exc()
         return False
+
 
 def run_ab_test(
     user_id: str,
