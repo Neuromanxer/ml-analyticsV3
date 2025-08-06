@@ -1311,6 +1311,7 @@
       </div>
     </div>
   </div>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 
   <script>
 
@@ -1674,7 +1675,6 @@ function signOutUser() {
     // Redirect to login page
     window.location.href = "/index.html"; // Adjust the path if needed
 }
-
 function parseAndPreview(file, nameEl, previewEl, tableEl) {
   const reader = new FileReader();
 
@@ -1683,23 +1683,11 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
 
   reader.onload = function(e) {
     const text = e.target.result;
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
-    if (!lines.length) {
-      nameEl.textContent = 'File is empty';
-      nameEl.style.color = 'red';
-      previewEl.style.display = 'none';
-      return;
-    }
 
-    // choose delimiter
-    let delim = ',';
-    if (file.name.toLowerCase().endsWith('.txt')) {
-      delim = lines[0].includes('\t') ? '\t' : /\s+/;
-    }
-
-    const headers = lines[0].split(delim).map(h => h.trim());
-    const dataRows = lines.slice(1).map(line => line.split(delim).map(c => c.trim()));
-    const validRows = dataRows.filter(row => row.length === headers.length);
+    // Parse CSV with PapaParse
+    const parsed = Papa.parse(text, { skipEmptyLines: true });
+    const headers = parsed.data[0];
+    const validRows = parsed.data.slice(1);
 
     if (!validRows.length) {
       nameEl.textContent = 'No valid data rows found';
@@ -1713,11 +1701,10 @@ function parseAndPreview(file, nameEl, previewEl, tableEl) {
     lastHeaders = headers;
     lastValidRows = validRows;
 
-    // build table
+    // Build table preview
     let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
     for (let i = 0; i < Math.min(validRows.length, 5); i++) {
-      const cells = validRows[i];
-      html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+      html += '<tr>' + validRows[i].map(c => `<td>${c}</td>`).join('') + '</tr>';
     }
     html += '</tbody>';
 
