@@ -14,7 +14,7 @@ import numpy as np
 from sqlalchemy import MetaData, Table, text
 import tempfile
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, Request, Path, Depends, APIRouter, HTTPException, Depends, status, Query
+from fastapi import FastAPI, UploadFile, File, Form, Request, Path, Depends, APIRouter, HTTPException, Depends, status, Query, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -328,6 +328,15 @@ async def try_get_current_user(request: Request) -> User | None:
             next(db_gen)  # commit and close
         except Exception:
             pass
+        
+import math
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request, Response, HTTPException
+import math
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request, Response, HTTPException
+
 class UsageTrackerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.monotonic()
@@ -349,23 +358,26 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
             "/classification/predict/",
             "/regression/predict/",
         ]
-
         if request.url.path not in tracked_paths:
             return response
 
-        # Pricing
-        PRICE_PER_MB = 0.25     # $0.25 per megabyte
-        PRICE_PER_SECOND = 0.50 # $0.50 per second of compute time
-        OVERDRAFT_LIMIT = -1.0
+        # --- concave-down pricing parameters ---
+        DATA_PRICE_SCALE = 17.0      # updated scale factor
+        PRICE_PER_SECOND = 0.50      # compute time still billed per second
 
-        # Estimate or pull actual size
-        content_length = request.headers.get("content-length")
-        bytes_estimated = int(content_length) if content_length and content_length.isdigit() else 0
+        # Estimate data volume
+        content_length = request.headers.get("content-length", "0")
+        bytes_estimated = int(content_length) if content_length.isdigit() else 0
         bytes_processed = getattr(request.state, "file_bytes", bytes_estimated)
         mb_used = bytes_processed / (1024 * 1024)
 
-        cost_for_request = round(mb_used * PRICE_PER_MB + duration * PRICE_PER_SECOND, 2)
+        # Logarithmic (concave) data cost + linear compute cost
+        cost_data = DATA_PRICE_SCALE * math.log1p(mb_used)
+        cost_time = PRICE_PER_SECOND * duration
+        cost_for_request = round(cost_data + cost_time, 2)
 
+        # Billing update
+        OVERDRAFT_LIMIT = -1.0
         db_gen = get_master_db_session()
         try:
             db = next(db_gen)
@@ -374,45 +386,36 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
                 if not payload:
                     return response
 
-                user_email = payload.get("sub")  # Or user_id, depending on what you encoded
+                user_email = payload.get("sub")
                 user = db.query(User).filter(User.email == user_email).first()
-
-
                 if user:
-                    if user.tokens is None:
-                        user.tokens = 0.0
-
-                    user.tokens -= cost_for_request
-
+                    user.tokens = (user.tokens or 0.0) - cost_for_request
                     if user.tokens < OVERDRAFT_LIMIT:
                         db.rollback()
                         raise HTTPException(
                             status_code=403,
-                            detail=f"You have exceeded your usage limit. Token balance is {user.tokens:.2f}. Please top up."
+                            detail=f"You have exceeded your usage limit. Token balance is {user.tokens:.2f}."
                         )
-
                     user.total_bytes_processed += bytes_processed
                     user.total_compute_seconds += duration
                     user.total_cost_dollars += cost_for_request
-
                     db.commit()
             except Exception as billing_err:
                 print(f"Billing error: {billing_err}")
-
             finally:
                 try:
                     next(db_gen)
                 except StopIteration:
                     pass
-
         except Exception as db_err:
             print(f"DB session error: {db_err}")
 
         return response
+
 from fastapi import Request, HTTPException
 import time
 import openai
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, Response
 import time
 
 class AITokenBillingMiddleware(BaseHTTPMiddleware):
