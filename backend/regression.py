@@ -72,8 +72,6 @@ class DataPreprocessor:
         df = df.copy()
         
         for col in df.columns:
-            if col in ['ID']:  # Skip ID columns
-                continue
                 
             print(f"Processing column: {col} (dtype: {df[col].dtype})")
             
@@ -111,8 +109,6 @@ class DataPreprocessor:
         df = df.copy()
         
         for col in df.columns:
-            if col in ['ID']:  # Skip ID columns
-                continue
                 
             if col in self.categorical_mappings:
                 # Handle categorical data
@@ -173,7 +169,7 @@ class ModelTrainer:
         # Preprocess the data
         df_processed = self.preprocessor.fit_transform(df)
         
-        X = df_processed.drop(columns=['ID', target_column], errors='ignore')
+        X = df_processed.drop(columns=[target_column], errors='ignore')
         y = df_processed[target_column]
         
         print(f"Dataset shape: {X.shape}")
@@ -304,7 +300,7 @@ def train_regression_models(
     preprocessor = DataPreprocessor()
     train_processed = preprocessor.fit_transform(train_df)
     
-    X_train = train_processed.drop(columns=['ID', target_column], errors='ignore')
+    X_train = train_processed.drop(columns=[target_column], errors='ignore')
     y_train = train_processed[target_column]
     
     # Prepare test data if available
@@ -313,10 +309,10 @@ def train_regression_models(
         test_processed = preprocessor.transform(test_df)
         
         if has_test_target:
-            X_test = test_processed.drop(columns=['ID', target_column], errors='ignore')
+            X_test = test_processed.drop(columns=[ target_column], errors='ignore')
             y_test = test_processed[target_column]
         else:
-            X_test = test_processed.drop(columns=['ID'], errors='ignore')
+            X_test = test_processed.drop(columns=[], errors='ignore')
         
         # Align datasets
         X_train, X_test = align_datasets(X_train, X_test)
@@ -390,7 +386,7 @@ def train_regression_models(
         full_df = train_df
     
     full_processed = preprocessor.fit_transform(full_df)
-    X_full = full_processed.drop(columns=['ID', target_column], errors='ignore')
+    X_full = full_processed.drop(columns=[target_column], errors='ignore')
     y_full = full_processed[target_column]
     
     # Train final model (use first model from best performing algorithm)

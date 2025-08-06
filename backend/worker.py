@@ -240,14 +240,22 @@ def do_classification(
                     y, _ = y.astype(str).factorize()
                     y = pd.Series(y, name=target_column).astype("int32")  # keep name for later
                 X, _, _ = preprocess_data(X)
+                print("→ Post-preprocess X NaNs:", X.isna().sum().sum())
+
                 X = X.select_dtypes(include=["int", "float", "bool"])
 
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
+                
                 X_train = X_train.select_dtypes(include=["int", "float", "bool"])
                 X_test = X_test.select_dtypes(include=["int", "float", "bool"])
-
+                print("→ X_train NaNs:", X_train.isna().sum().sum())
+                print("→ y_train NaNs:", y_train.isna().sum())
                 train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
                 test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
                 dataset_name = os.path.basename(file_path)
@@ -290,12 +298,20 @@ def do_classification(
                 # Now preprocess
                 X_train, _, _ = preprocess_data(X_train)
                 X_test, _, _ = preprocess_data(X_test)
+                print("→ X_train NaNs:", X_train.isna().sum().sum())
+                print("→ y_train NaNs:", y_train.isna().sum())
+
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
 
                 common_columns = list(set(X_train.columns) & set(X_test.columns))
                 X_train = X_train[common_columns]
                 X_test = X_test[common_columns]
 
                 train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
+                train_df = train_df.reset_index(drop=True)
                 test_df = pd.concat([X_test, y_test.rename(target_column)], axis=1)
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
             
@@ -515,7 +531,13 @@ def do_classification(
                     env=env,
                     universal_newlines=True
                 )
+                # Read and print every line from the child process
+                for line in process.stdout:
+                    print("SHAP RUNNER:", line.rstrip())
 
+                process.wait()
+                if process.returncode != 0:
+                    raise RuntimeError(f"SHAP runner failed with exit code {process.returncode}")
                 # Stream output
                 output_lines = []
                 timeout_seconds = 300
@@ -825,7 +847,8 @@ def do_classification_predict(
             # Preprocess the data using the same function as training
             print("[🔄] Preprocessing prediction data...")
             X_pred, _, _ = preprocess_data(pred_df)
-            
+            X_pred = X_pred.reset_index(drop=True)
+
             # Align columns with training data
             print("[🔧] Aligning features with training data...")
             missing_cols = set(training_columns) - set(X_pred.columns)
@@ -2198,14 +2221,17 @@ def do_regression(
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42
                 )
-
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
                 # Filter to numerical and boolean dtypes
                 X_train = X_train.select_dtypes(include=["int", "float", "bool"])
                 X_test = X_test.select_dtypes(include=["int", "float", "bool"])
 
                 # Reconstruct train/test DataFrames for downstream use
-                train_df = pd.concat([X_train, y_train.reset_index(drop=True)], axis=1)
-                test_df = pd.concat([X_test, y_test.reset_index(drop=True)], axis=1)
+                train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
+                test_df  = pd.concat([X_test,  y_test.rename(target_column)], axis=1)
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
@@ -2220,6 +2246,11 @@ def do_regression(
 
                 train_df, train_cats, train_nums = preprocess_data(train_df)
                 test_df, test_cats, test_nums = preprocess_data(test_df)
+                train_df = train_df.reset_index(drop=True)
+
+                test_df = test_df.dropna(subset=[target_column])
+                test_df, test_cats, test_nums = preprocess_data(test_df)
+                test_df = test_df.reset_index(drop=True)
 
             if target_column not in train_df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in training dataset.")
@@ -2245,6 +2276,12 @@ def do_regression(
             joblib.dump(results["preprocessor"], preprocessor_path)
             print(f"[💾] Models saved to: {model_path} and {preprocessor_path}")
 
+            # train_df has shape (n_samples, n_features+1) with the last column = target
+            training_features = [
+                c for c in train_df.columns
+                if c != target_column
+            ]
+
             # ───────────── Generate Visualizations & Process Data ─────────────
             try:
                 # Prepare full dataset for processing
@@ -2255,7 +2292,6 @@ def do_regression(
                         drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in full_df.columns]
                         if drops:
                             full_df.drop(columns=drops, inplace=True)
-                    full_df, _, _ = preprocess_data(full_df)
                 else:
                     full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
                 # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
@@ -2275,13 +2311,14 @@ def do_regression(
                     }
 
 
+                X_full_raw = full_df.reindex(columns=training_features, fill_value=0)
                 X_full_raw = full_df.drop(columns=[target_column], errors="ignore")
-                X_full_processed = results["preprocessor"].transform(X_full_raw)
+                X_full_processed, _, _ = preprocess_data(X_full_raw)
 
                 X_full_df = pd.DataFrame(X_full_processed)
                 
                 # ───────────── Predictions on Full Data ─────────────
-                preds_full = results["final_model"].predict(X_full_processed)
+                preds_full             = results["final_model"].predict(X_full_processed)
 
                 # ───────────── Compute Prediction Stats ─────────────
                 pred_stats = {
@@ -3057,7 +3094,7 @@ def do_visualization(
                     "error": f"Failed to generate summary stats: {str(e)}",
                     "tip": "Add missing customer-level features to enable summary reporting."
                 }
-
+            df = df.reset_index(drop=True)
             if target_column not in df.columns or feature_column not in df.columns:
                 raise ValueError("Specified target or feature column not found in dataset.")
 
@@ -3325,10 +3362,14 @@ def do_counterfactual(
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
 
                 # Reattach target column
-                train_df = pd.concat([X_train, y_train.rename(target_column).reset_index(drop=True)], axis=1)
-                test_df = pd.concat([X_test, y_test.rename(target_column).reset_index(drop=True)], axis=1)
+                train_df = pd.concat([X_train, y_train.rename(target_column)], axis=1)
+                test_df  = pd.concat([X_test,  y_test.rename(target_column)], axis=1)
 
                 # Optional: Reconstruct full dataset (if needed for export or model-wide stats)
                 full_df = pd.concat([train_df, test_df], ignore_index=True)
@@ -3357,6 +3398,11 @@ def do_counterfactual(
 
                 X_train, _, _ = preprocess_data(X_train)
                 X_test, _, _ = preprocess_data(X_test)
+
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
 
                 # Align columns between train and test after preprocessing
                 common_columns = list(set(X_train.columns) & set(X_test.columns))
@@ -4060,6 +4106,7 @@ def do_survival(
                     time_col = "__duration_months__"
 
                 df, cats, nums = preprocess_data(df, RMV=[time_col, event_col])
+                df = df.reset_index(drop=True)
                 from sklearn.model_selection import train_test_split
                 train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
@@ -4119,7 +4166,8 @@ def do_survival(
                     test_df, test_cats, test_nums = preprocess_data(test_df, RMV=[time_col, event_col])
                 else:
                     test_df, test_cats, test_nums = preprocess_data(test_df, RMV=[])
-
+            train_df = train_df.reset_index(drop=True)
+            test_df  = test_df.reset_index(drop=True)
             # ───────────── Clean DataFrame ─────────────
             def clean_dataframe_for_cox(df, time_col=None, event_col=None):
                 df_clean = df.copy()
@@ -5533,7 +5581,9 @@ def do_what_if(
             # ───────── Preprocess both original and modified dataframes ─────────
             try:
                 X_original, _, _ = preprocess_data(df[feature_cols])
+                X_original = X_original.reset_index(drop=True)
                 X_modified, _, _ = preprocess_data(modified_df[feature_cols])
+                X_modified = X_modified.reset_index(drop=True)
             except Exception as e:
                 return {"status": "error", "errors": [f"Preprocessing failed: {str(e)}"]}
 
@@ -6009,13 +6059,18 @@ def do_decision_paths(
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=0.2, random_state=42, stratify=y
                 )
+                X_train = X_train.reset_index(drop=True)
+                X_test  = X_test.reset_index(drop=True)
+                y_train = y_train.reset_index(drop=True)
+                y_test  = y_test.reset_index(drop=True)
+
                 dataset_name = os.path.basename(file_path)
 
             else:
                 train_df = pd.read_csv(local_train_path)
                 test_df = pd.read_csv(local_test_path)
-                train_df = train_df.dropna(subset=[target_column])
-                test_df = test_df.dropna(subset=[target_column])
+                train_df = train_df.dropna(subset=[target_column]).reset_index(drop=True)
+                test_df  = test_df.dropna(subset=[target_column]).reset_index(drop=True)
                 if drop_columns:
                     drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
                     train_df.drop(columns=[c for c in drops if c in train_df.columns], inplace=True)
@@ -6031,7 +6086,10 @@ def do_decision_paths(
                 X_test = test_df.drop(columns=[target_column, 'ID'], errors='ignore')
 
                 X_train, _, _ = preprocess_data(X_train)
+                X_train = X_train.reset_index(drop=True)
+
                 X_test, _, _ = preprocess_data(X_test)
+                X_test  = X_test.reset_index(drop=True)
 
                 common_columns = list(set(X_train.columns) & set(X_test.columns))
                 X_train = X_train[common_columns]

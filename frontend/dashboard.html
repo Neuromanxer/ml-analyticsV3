@@ -2845,9 +2845,17 @@ function renderFlatTable(headers, rows) {
   return html;
 }
   function buildMetricsHtml(data) {
+    const metricsRows = data.metrics
+    ? Object.entries(data.metrics)
+    : [];
   return `
     <div class="gallery-metrics">
-      ${data.metrics ? `<div>📈 Metrics: ${renderFlatTable(data.metrics_headers || ["Metric", "Value"], data.metrics)}</div>` : ""}
+      ${metricsRows.length
+        ? `<div>📈 Metrics: ${renderFlatTable(
+            data.metrics_headers || ["Metric", "Value"],
+            metricsRows
+          )}</div>`
+        : ""}
       ${typeof data.parameters === "object" && data.parameters !== null ? `<div>⚙️ Parameters: ${formatKeyValObject(data.parameters)}</div>` : ""}
       ${data.summary_stats ? `<div>📊 Summary Stats: ${renderFlatTable(data.summary_stats_headers || ["Feature", "Mean", "Std", "Min", "Max"], data.summary_stats)}</div>` : ""}
       
