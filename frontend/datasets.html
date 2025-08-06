@@ -2113,7 +2113,7 @@ async function fetchWithTokenRefresh(url, options = {}) {
     clearAuthStorage();  // wipe out stale tokens
     window.location.href =
       `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
-  }, 50000);
+  }, 2000);
 
   throw new Error('Authentication and refresh both failed');
 }
