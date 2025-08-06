@@ -51,48 +51,48 @@ import logging
 from collections import Counter
 from sklearn.metrics import confusion_matrix, classification_report
 
-# from .anomaly_detection import train_best_anomaly_detection
-# from .preprocessing import preprocess_data
-# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from .auth import master_db_cm
-# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-# from .target import generate_customer_summary
-# from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-# from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-# from .preprocessing import preprocess_data
-# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from .feature_importance import safe_generate_feature_importance
-# from .clustering import run_kmeans, find_optimal_k, label_clusters_general
-# from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
-# from .regression import (
-#     get_confidence_interval,
-#     get_percentile_summary,
-#     get_risk_shift_summary,
-#     get_class_distribution_change
-# )
-
-
-
-
-from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
-from anomaly_detection import train_best_anomaly_detection
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from auth import master_db_cm
-from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-from target import generate_customer_summary
-from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
-from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
-from preprocessing import preprocess_data
-from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from feature_importance import safe_generate_feature_importance
-from clustering import run_kmeans, find_optimal_k, label_clusters_general
-from regression import (
+from .anomaly_detection import train_best_anomaly_detection
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .auth import master_db_cm
+from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from .target import generate_customer_summary
+from .auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+from .regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+from .preprocessing import preprocess_data
+from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from .feature_importance import safe_generate_feature_importance
+from .clustering import run_kmeans, find_optimal_k, label_clusters_general
+from .timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations,  SARIMAModel
+from .regression import (
     get_confidence_interval,
     get_percentile_summary,
     get_risk_shift_summary,
     get_class_distribution_change
 )
+
+
+
+
+# from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
+# from anomaly_detection import train_best_anomaly_detection
+# from preprocessing import preprocess_data
+# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from auth import master_db_cm
+# from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from target import generate_customer_summary
+# from auth import _append_limited_metadata, _append_metadata, _load_metadata, _save_metadata, _get_meta_path
+# from regression import ModelTrainer, lgb_params, cat_params, xgb_params, DataPreprocessor, train_regression_models, generate_visualizations_improved
+# from preprocessing import preprocess_data
+# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from feature_importance import safe_generate_feature_importance
+# from clustering import run_kmeans, find_optimal_k, label_clusters_general
+# from regression import (
+#     get_confidence_interval,
+#     get_percentile_summary,
+#     get_risk_shift_summary,
+#     get_class_distribution_change
+# )
 
 # OAuth2 scheme
 # Configure logging
@@ -106,20 +106,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# celery_app = Celery(
-#     "tasks",
-#     broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
-#     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
-# )
-
-BROKER_URL = "redis://localhost:6379/0"
-RESULT_BACKEND = "redis://localhost:6379/1"
-
 celery_app = Celery(
-    "worker",
-    broker=BROKER_URL,
-    backend=RESULT_BACKEND
+    "tasks",
+    broker="redis://red-d1n270gdl3ps73fqo7fg:6379/0",
+    backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 )
+
+# BROKER_URL = "redis://localhost:6379/0"
+# RESULT_BACKEND = "redis://localhost:6379/1"
+
+# celery_app = Celery(
+#     "worker",
+#     broker=BROKER_URL,
+#     backend=RESULT_BACKEND
+# )
 
 import numpy as np
 
@@ -5548,106 +5548,62 @@ def do_what_if(
             return {"status": "error", "errors": ["No feature changes specified for what-if analysis"]}
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Load data and model
+            # ───── Load data, model, and training‐column metadata ─────
             df, dataset_name = safe_download_and_load_data()
             model, task_type = load_model(df, target_column)
-            training_columns_supabase_path = f"{user_id}/training_columns.json"
 
-            # ───── Download training columns ─────
-            try:
-                training_columns_data = download_file_from_supabase(training_columns_supabase_path)
-                training_columns = json.loads(training_columns_data.decode('utf-8'))
-            except Exception as e:
-                raise FileNotFoundError(f"Training columns metadata not found in Supabase: {str(e)}")
+            raw = download_file_from_supabase(f"{user_id}/training_columns.json")
+            training_columns = json.loads(raw.decode("utf-8"))
 
-            # Validate sample selection (optional)
-            if sample_id is not None:
-                if 'ID' in df.columns:
-                    original_sample = df[df['ID'] == sample_id]
-                    if len(original_sample) == 0:
-                        return {"status": "error", "errors": [f"Sample with ID {sample_id} not found"]}
-                else:
-                    if sample_id >= len(df) or sample_id < 0:
-                        return {"status": "error", "errors": [f"Sample index {sample_id} out of range"]}
-            
-            # ───────── Apply mass changes ─────────
+            # ───── Remove the target column from the expected features ─────
+            training_columns = [c for c in training_columns if c != target_column]
+
+            # ───── Apply any bulk feature changes ─────
             modified_df, applied_changes = apply_feature_changes(df, changes)
 
-            # ───────── Extract feature columns ─────────
-            feature_cols = [col for col in df.columns if col in training_columns]
+            # ───── Pick only the features that both exist in the DF and were in training_columns ─────
+            feature_cols = [c for c in training_columns if c in df.columns]
             if not feature_cols:
-                return {"status": "error", "errors": ["No feature columns found for prediction"]}
+                return {"status":"error", "errors":["No feature columns found for prediction"]}
 
-            # ───────── Preprocess both original and modified dataframes ─────────
+                # ───── Drop ONLY the target (and any other unwanted cols) ─────
+            raw_orig = df.drop(columns=[target_column], errors="ignore")
+            raw_mod  = modified_df.drop(columns=[target_column], errors="ignore")
+
+            # ───────── Preprocess ORIGINAL and MODIFIED ─────────
             try:
-                X_original, _, _ = preprocess_data(df[feature_cols])
-                X_original = X_original.reset_index(drop=True)
-                X_modified, _, _ = preprocess_data(modified_df[feature_cols])
-                X_modified = X_modified.reset_index(drop=True)
+                X_orig, _, _ = preprocess_data(raw_orig)
+                X_mod , _, _ = preprocess_data(raw_mod)
             except Exception as e:
-                return {"status": "error", "errors": [f"Preprocessing failed: {str(e)}"]}
+                return {"status":"error", "errors":[f"Preprocessing failed: {e}"]}
 
-            # ───────── Align features to training columns if needed ─────────
-            missing_cols = set(training_columns) - set(X_original.columns)
-            extra_cols = set(X_original.columns) - set(training_columns)
+            # sanity‐check sizes
+            logging.info(f"Post-preprocess shapes: X_orig={X_orig.shape}, X_mod={X_mod.shape}")
 
-            for col in missing_cols:
-                X_original[col] = 0
-                X_modified[col] = 0
+            # ───────── Now align to exactly the saved training_columns ─────────
+            # (you already removed target from the list earlier)
+            missing = set(training_columns) - set(X_orig.columns)
+            extra   = set(X_orig.columns)   - set(training_columns)
 
-            X_original.drop(columns=list(extra_cols), inplace=True, errors='ignore')
-            X_modified.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+            for col in missing:
+                X_orig[col] = X_mod[col] = 0
 
-            X_original = X_original.reindex(columns=training_columns, fill_value=0)
-            X_modified = X_modified.reindex(columns=training_columns, fill_value=0)
+            X_orig.drop(columns=list(extra), inplace=True, errors="ignore")
+            X_mod .drop(columns=list(extra), inplace=True, errors="ignore")
+
+            X_orig = X_orig.reindex(columns=training_columns, fill_value=0)
+            X_mod  = X_mod .reindex(columns=training_columns, fill_value=0)
 
             # ───────── Run predictions ─────────
             try:
-                if hasattr(model, 'predict'):
-                    predictor = model
-                elif isinstance(model, (list, tuple)) and len(model) > 0:
-                    predictor = model[0]
-                else:
-                    return {"status": "error", "errors": ["Invalid model format"]}
-                # Check for NaN values
-                if X_original.isnull().any().any() or X_modified.isnull().any().any():
-                    nan_cols_original = X_original.columns[X_original.isnull().any()].tolist()
-                    nan_cols_modified = X_modified.columns[X_modified.isnull().any()].tolist()
+                predictor = model.predict if hasattr(model, "predict") else model[0]
+                # (you can keep your NaN/Inf checks here…)
 
-                    logging.warning(f"NaN detected in X_original columns: {nan_cols_original}")
-                    logging.warning(f"NaN detected in X_modified columns: {nan_cols_modified}")
-
-                    return {
-                        "status": "error",
-                        "errors": [
-                            "NaN values detected in features before prediction",
-                            f"X_original NaN columns: {nan_cols_original}",
-                            f"X_modified NaN columns: {nan_cols_modified}"
-                        ]
-                    }
-
-                # Check for Infinity values
-                inf_cols_original = X_original.columns[np.isinf(X_original.to_numpy()).any(axis=0)].tolist()
-                inf_cols_modified = X_modified.columns[np.isinf(X_modified.to_numpy()).any(axis=0)].tolist()
-
-                if inf_cols_original or inf_cols_modified:
-                    logging.warning(f"Infinity detected in X_original columns: {inf_cols_original}")
-                    logging.warning(f"Infinity detected in X_modified columns: {inf_cols_modified}")
-
-                    return {
-                        "status": "error",
-                        "errors": [
-                            "Infinity values detected in features before prediction",
-                            f"X_original inf columns: {inf_cols_original}",
-                            f"X_modified inf columns: {inf_cols_modified}"
-                        ]
-                    }
-
-                original_preds = predictor.predict(X_original)
-                modified_preds = predictor.predict(X_modified)
+                original_preds = predictor(X_orig)
+                modified_preds = predictor(X_mod)
             except Exception as e:
-                return {"status": "error", "errors": [f"Prediction failed: {str(e)}"]}
-            
+                return {"status":"error", "errors":[f"Prediction failed: {e}"]}
+
             # Calculate metrics
             metrics = calculate_advanced_metrics(original_preds, modified_preds)
             
