@@ -2145,6 +2145,9 @@ async def download_file_for_processing(file_path: str) -> str:
             
     except Exception as e:
         raise Exception(f"Failed to download file for processing: {str(e)}")
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
 
 app.include_router(auth_router)
 if __name__ == "__main__":
