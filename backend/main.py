@@ -53,7 +53,7 @@ from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
 from .ai import generate_insights
 from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
 from .ecs_launcher import launch_job_on_ecs
 from .worker import make_json_safe
 from .auth import Base, master_engine, decode_user_from_request
@@ -117,7 +117,7 @@ from .storage import upload_file_to_supabase, download_file_from_supabase, handl
 
 # from ai import generate_insights
 # from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-# from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths
+# from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
 # from ecs_launcher import launch_job_on_ecs
 # from worker import make_json_safe
 # from auth import Base, master_engine, decode_user_from_request
@@ -1981,7 +1981,7 @@ async def ab_test(
     file_path = await handle_file_upload(user_id, file)
 
     # ──────────── Kick off Celery Task ─────────────
-    task = run_ab_test_task.delay(
+    task = run_ab_test.delay(
         user_id=user_id,
         file_path=file_path,
         target_column=target_column,

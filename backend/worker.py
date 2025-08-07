@@ -6447,8 +6447,9 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
         traceback.print_exc()
         return False
 
+from scipy.stats import chi2_contingency
 
-def run_ab_test(
+def do_ab_test(
     user_id: str,
     file_path: str,
     target_column: str = "converted",
@@ -6459,36 +6460,62 @@ def run_ab_test(
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Download dataset
+            # ─── Download & load dataset ───
             file_bytes = download_file_from_supabase(file_path)
             local_path = os.path.join(temp_dir, os.path.basename(file_path))
             with open(local_path, 'wb') as f:
                 f.write(file_bytes)
-
             df = pd.read_csv(local_path)
+
+            # ─── Clean up unwanted cols ───
             if drop_columns:
                 drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
                 df.drop(columns=[c for c in drops if c in df.columns], inplace=True)
 
+            # ─── Validate & cast ───
             if target_column not in df.columns or variant_column not in df.columns:
-                raise ValueError(f"Columns '{target_column}' and/or '{variant_column}' not found in dataset.")
-
+                raise ValueError(f"Missing '{target_column}' or '{variant_column}' column.")
             df = df.dropna(subset=[target_column, variant_column])
             df[target_column] = df[target_column].astype(int)
 
-            # Group and summarize
+            # ─── Summarize & χ² test ───
             summary = df.groupby(variant_column)[target_column].agg(["count", "sum"])
             summary.columns = ["total_users", "conversions"]
             summary["conversion_rate"] = summary["conversions"] / summary["total_users"]
 
-            # Run Chi-squared test
             contingency = pd.crosstab(df[variant_column], df[target_column])
             chi2, p_value, _, _ = chi2_contingency(contingency)
 
-            # Choose best variant
-            best_variant = summary["conversion_rate"].idxmax()
-            lift = summary.loc[best_variant, "conversion_rate"] - summary["conversion_rate"].min()
+            # ─── Identify winner & lift ───
+            best = summary["conversion_rate"].idxmax()
+            lift = summary.loc[best, "conversion_rate"] - summary["conversion_rate"].min()
 
+            # ─── Chart 1: Conversion-Rate Bar ───
+            buf1 = io.BytesIO()
+            plt.figure(figsize=(6,4))
+            summary["conversion_rate"].plot(kind="bar", rot=0)
+            plt.ylabel("Conversion Rate")
+            plt.title("A/B Conversion Rates")
+            plt.tight_layout()
+            plt.savefig(buf1, format="png")
+            buf1.seek(0)
+            chart_b64 = base64.b64encode(buf1.read()).decode("utf-8")
+            plt.close()
+
+            # ─── Chart 2: Contingency Heatmap ───
+            buf2 = io.BytesIO()
+            plt.figure(figsize=(6,4))
+            sns.heatmap(contingency, annot=True, fmt="d", cbar=False)
+            plt.ylabel(variant_column)
+            plt.xlabel(target_column)
+            plt.title("Contingency Table")
+            plt.tight_layout()
+            plt.savefig(buf2, format="png")
+            buf2.seek(0)
+            heatmap_b64 = base64.b64encode(buf2.read()).decode("utf-8")
+            plt.close()
+
+            # ─── Build metadata including images ───
             entry = {
                 "id": str(uuid.uuid4()),
                 "created_at": datetime.utcnow().isoformat(),
@@ -6498,32 +6525,27 @@ def run_ab_test(
                 "variant_column": variant_column,
                 "summary_stats": summary.reset_index().to_dict("records"),
                 "p_value": round(p_value, 6),
-                "winner": best_variant,
+                "winner": best,
                 "lift": round(lift * 100, 2),
                 "conversion_rate": {
                     var: round(rate * 100, 2)
                     for var, rate in summary["conversion_rate"].items()
                 },
-                "insights": f"Variant '{best_variant}' performed best with {round(lift*100, 2)}% higher conversion rate.",
+                "insights": f"Variant '{best}' won with a {round(lift*100,2)}% lift.",
+                # ← here are your images, ready for front-end display
+                "conversion_rate_chart": chart_b64,
+                "contingency_heatmap": heatmap_b64,
             }
 
             entry = ensure_json_serializable(entry)
-
-            # Save metadata
-            from db.session import master_db_cm
             with master_db_cm() as db:
                 _append_limited_metadata(user_id, entry, db=db, max_entries=5)
 
-            return {
-                "status": "success",
-                "id": entry["id"],
-                "user_id": user_id,
-                **entry
-            }
+            return {"status": "success", "id": entry["id"], "user_id": user_id, **entry}
 
     except Exception as e:
         print(f"[⚠️] Error in run_ab_test: {e}")
-        raise e
+        raise
 
 @celery_app.task
 def run_classification(
@@ -6959,7 +6981,7 @@ def run_forecast(
             "user_id": user_id
         }
 @celery_app.task
-def run_ab_test_task(
+def run_ab_test(
     user_id: str,
     file_path: str,
     target_column: str = "converted",
@@ -6971,7 +6993,7 @@ def run_ab_test_task(
     time.sleep(1)  # Optional: rate-limiting, simulate delay
     
     # Delegate to full implementation
-    return run_ab_test(
+    return do_ab_test(
         user_id=user_id,
         file_path=file_path,
         target_column=target_column,

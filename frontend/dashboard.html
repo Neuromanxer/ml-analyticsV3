@@ -1165,6 +1165,21 @@
             <div id="editable-features"></div>
             <small class="help-text">These are AI-suggested inputs you can tweak to simulate how predictions change.</small>
           </div>
+          
+          <div id="ab-test-config" class="config-section" style="display: none;">
+            <h3>A/B Test Settings</h3>
+            <div class="input-row">
+              <div class="input-group">
+                <label for="variant-column">Variant Column</label>
+                <input type="text" id="variant-column" value="" placeholder="e.g. variant">
+                <small class="help-text">
+                  The field that tells the function which “arm” each user saw—e.g. “A” vs. “B”, “control” vs. “treatment”.  
+                  Use the exact column name from your CSV.
+                </small>
+              </div>
+            </div>
+          </div>
+
 
         <div class="config-actions">
           <button class="btn secondary" onclick="resetConfiguration()">Reset</button>
@@ -1224,11 +1239,6 @@
                 <span>Visualize</span>
                 <small>Explore relationships</small>
               </button>
-              <button id="btn-feature-impact" class="btn analysis-btn" data-category="exploratory">
-                <i class="fas fa-chart-pie"></i>
-                <span>Feature Impact</span>
-                <small>Understand importance</small>
-              </button>
             </div>
           </div>
 
@@ -1254,6 +1264,11 @@
                 <i class="fas fa-project-diagram"></i>
                 <span>Decision Paths</span>
                 <small>Optimal strategies</small>
+              </button>
+              <button id="btn-ab_test" class="btn analysis-btn" data-category="advanced">
+                 <i class="fas fa-flask"></i>
+                <span>AB Test</span>
+                <small>Control vs Test Experimentation</small>
               </button>
             </div>
           </div>
@@ -1354,7 +1369,7 @@
       classification:         '/classification/',
       clustering:             '/cluster/',
       visualize:              '/visualize/',
-      'feature-impact':       '/feature_impact/',
+      'ab_test':              '/ab_test/',
       counterfactual:         '/counterfactual/',
       segments:               '/segment_analysis/',
       risk:                   '/risk_analysis/',
@@ -1560,7 +1575,7 @@ document.getElementById('btn-regression').addEventListener('click', () => select
 document.getElementById('btn-classification').addEventListener('click', () => selectAnalysisMethod('classification'));
 document.getElementById('btn-clustering').addEventListener('click', () => selectAnalysisMethod('clustering'));
 document.getElementById('btn-visualize').addEventListener('click', () => selectAnalysisMethod('visualize'));
-document.getElementById('btn-feature-impact').addEventListener('click', () => selectAnalysisMethod('feature-impact'));
+document.getElementById('btn-ab_test').addEventListener('click', () => selectAnalysisMethod('ab_test'));
 document.getElementById('btn-counterfactual').addEventListener('click', () => selectAnalysisMethod('counterfactual'));
 document.getElementById('btn-segments').addEventListener('click', () => selectAnalysisMethod('segments'));
 document.getElementById('btn-decision-paths').addEventListener('click', () => selectAnalysisMethod('decision-paths'));
@@ -2617,14 +2632,18 @@ function prepareAndRunAnalysis() {
       });
       break;
       
-    case 'feature-impact':
-      if (!targetCol) return showError('Please specify a target column.');
+   case 'ab_test':
+  if (!targetCol)     return showError('Please specify a target column.');
+  if (!variantCol)    return showError('Please specify a variant column.');
+  if (!filePath)      return showError('Please upload a dataset first.');
 
-      callRealAPI('feature-impact', {
-        target_column: targetCol,
-        drop_columns: dropCols
-      });
-      break;
+  callRealAPI('ab_test', {
+    file_path:       filePath,
+    target_column:   targetCol,
+    variant_column:  variantCol,
+    drop_columns:    dropCols
+  });
+  break;
       
     case 'counterfactual':
       if (!targetCol) return showError('Please specify a target column.');
@@ -3381,7 +3400,43 @@ function displayResults(endpoint, data) {
     }
 
     break;
+    case 'ab_test':
+  // A/B Test Metrics
+  metricsDetails.innerHTML = '<h4>A/B Test Metrics</h4><ul>';
 
+  // Per-variant conversion rates
+  if (Array.isArray(data.summary_stats)) {
+    data.summary_stats.forEach(item => {
+      metricsDetails.innerHTML += 
+        `<li>${item.variant_column || item.variant}: ` +
+        `${item.conversion_rate.toFixed(2)}% (` +
+        `${item.conversions}/${item.total_users})</li>`;
+    });
+  }
+
+  // Statistical significance and lift
+  if ('p_value' in data) {
+    metricsDetails.innerHTML += `<li>Chi-square p-value: ${data.p_value}</li>`;
+  }
+  if ('lift' in data) {
+    metricsDetails.innerHTML += `<li>Lift: ${data.lift.toFixed(2)}%</li>`;
+  }
+  metricsDetails.innerHTML += '</ul>';
+
+  // Insights summary
+  if (data.insights) {
+    modelDetails.innerHTML = `<p>Insights: <strong>${data.insights}</strong></p>`;
+  }
+
+  // Visualizations
+  if (data.conversion_rate_chart) {
+    addVisualization('Conversion Rate Chart', data.conversion_rate_chart);
+  }
+  if (data.contingency_heatmap) {
+    addVisualization('Contingency Heatmap', data.contingency_heatmap);
+  }
+  break;
+      
 
 
     default:
