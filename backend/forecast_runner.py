@@ -9,6 +9,26 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from datetime import datetime
 import uuid
 
+
+from .auth import master_db_cm, _append_limited_metadata
+
+
+# from auth import master_db_cm, _append_limited_metadata
+
+
+def ensure_json_serializable(obj):
+    if isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    elif isinstance(obj, (list, tuple)):
+        return [ensure_json_serializable(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: ensure_json_serializable(v) for k, v in obj.items()}
+    return obj
+
 def main():
     import sys
     if len(sys.argv) != 2:
@@ -121,19 +141,37 @@ def main():
             }
         }
 
-        meta_list.append(entry)
-        with output_path.open("w", encoding="utf-8") as f:
-            json.dump(meta_list, f, indent=2, ensure_ascii=False)
+        try:
+            # ───────────── Save metadata to Supabase ─────────────
+            entry = ensure_json_serializable(entry)
+            with master_db_cm() as db:
+                _append_limited_metadata(
+                    user_id,
+                    entry,
+                    db=db,
+                    max_entries=5
+                )
+            print(f"[✅] Forecast metadata saved for user {user_id}")
 
+        except Exception as meta_error:
+            print(f"[⚠️] Metadata save error: {meta_error}", file=sys.stderr)
+            traceback.print_exc()
+
+        # ───────────── Write out the result.json ─────────────
         result_json_path = output_dir / "result.json"
-        with result_json_path.open("w", encoding="utf-8") as f:
-            json.dump({
-                "forecast_comparison": forecast_b64,
-                "acf_pacf": acf_pacf_b64,
-                "model_info": entry["model_info"]
-            }, f, indent=2)
+        try:
+            with result_json_path.open("w", encoding="utf-8") as f:
+                json.dump({
+                    "forecast_comparison": forecast_b64,
+                    "acf_pacf": acf_pacf_b64,
+                    "model_info": entry.get("model_info", {})
+                }, f, indent=2, ensure_ascii=False)
 
-        print(f"✅ Forecast visualizations saved to {output_path}")
+            print(f"✅ Forecast visualizations and result.json saved to {output_dir}")
+
+        except Exception as e:
+            print(f"[❌] Failed to write result.json: {e}", file=sys.stderr)
+            traceback.print_exc()
     except Exception as e:
         print("Saving visualization JSON failed:", e)
         import traceback

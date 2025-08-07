@@ -357,6 +357,8 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
             "/decision_paths/",
             "/classification/predict/",
             "/regression/predict/",
+            "/what_if/",
+            "/ab_test/"
         ]
         if request.url.path not in tracked_paths:
             return response
