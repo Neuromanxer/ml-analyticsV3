@@ -5618,7 +5618,40 @@ def do_what_if(
                 metrics,
                 task_type
             )
-            
+            # ───────────── Save metadata to Supabase ─────────────
+            try:
+                metadata_entry = {
+                    "id": str(uuid.uuid4()),
+                    "created_at": datetime.utcnow().isoformat(),
+                    "type": "mass_scenario_what_if_analysis",
+                    "dataset": dataset_name,
+                    "parameters": {
+                        "target_column": target_column,
+                        "applied_changes": applied_changes,
+                        "sample_id": sample_id,
+                        "dropped_columns": drop_columns.split(",") if drop_columns else [],
+                        "configuration": {
+                            "revenue_per_conversion": config.revenue_per_conversion,
+                            "confidence_level": config.confidence_level,
+                            "significance_threshold": config.significance_threshold
+                        }
+                    },
+                    "metrics": metrics,
+                    "visualizations": visualizations,            # ← include the full dict here
+                    "insights": insights,
+                    "validation": {
+                        "warnings": validation.warnings,
+                        "changes_applied": len(applied_changes),
+                        "records_affected": len(df)
+                    }
+                }
+
+                metadata_entry = ensure_json_serializable(metadata_entry)
+                with master_db_cm() as db:
+                    _append_limited_metadata(user_id, metadata_entry, db=db, max_entries=5)
+
+            except Exception as meta_error:
+                logging.warning(f"[⚠️] What-if metadata save error: {meta_error}")
             # Generate insights
             insights = generate_insights(
                 metrics,
