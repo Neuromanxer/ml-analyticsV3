@@ -51,95 +51,36 @@ import json
 from io import StringIO
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
-from .ai import generate_insights
-from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
-from .ecs_launcher import launch_job_on_ecs
-from .worker import make_json_safe
-from .auth import Base, master_engine, decode_user_from_request
-from .tokens import TokenUsageLogResponse, TokenUsageLog
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .preprocessing import preprocess_data
-from .survival import calculate_business_metrics
-from .anomaly_detection import train_best_anomaly_detection
-from .datasets import (
-    Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
-    get_user_db,
-
-)
-from .datasets import init_db as init_dataset_master_db
-from .activity import router as activity_router
-from .account import router as a_router
-from .target import router as t_router
-from .auth import _load_metadata, _save_metadata
-from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
-# These names should match exactly what you export from auth.py
-from .auth import (
-    # Authentication & token utilities
-    get_current_active_user,
-    get_current_user,
-    create_access_token,
-    authenticate_user,
-    Dataset,
-    # Pydantic schemas for auth
-    UserCreate,
-    UserResponse,
-    Token,
-    AuthTokenResponse,
-    RegisterResponse,
-    
-    # Database/session helpers
-    DatasetResponse,
-    DatasetCreate,
-    register_dataset,
-    create_user_database,
-    get_dataset_by_id,
-    get_dataset_data,
-    delete_dataset_crud,
-    query_dataset,
-    get_user_session,
-    get_user_session_direct,
-    get_user_engine,
-    get_master_db_session,
-    get_user_by_email,
-    master_db_cm,
-    Base,
-    User
-
-)
-from .auth import get_master_db_session
-from .auth import router as auth_router
-from .tokens import router as token_router
-from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
 
 
 
 
-# from ai import generate_insights
-# from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-# from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
-# from ecs_launcher import launch_job_on_ecs
-# from worker import make_json_safe
-# from auth import Base, master_engine, decode_user_from_request
-# from tokens import TokenUsageLogResponse, TokenUsageLog
 
-# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from preprocessing import preprocess_data
-# from survival import calculate_business_metrics
-# from anomaly_detection import train_best_anomaly_detection
-# from datasets import (
+
+# from .ai import generate_insights
+# from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+# from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
+# from .ecs_launcher import launch_job_on_ecs
+# from .worker import make_json_safe
+# from .auth import Base, master_engine, decode_user_from_request
+# from .tokens import TokenUsageLogResponse, TokenUsageLog
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .preprocessing import preprocess_data
+# from .survival import calculate_business_metrics
+# from .anomaly_detection import train_best_anomaly_detection
+# from .datasets import (
 #     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
 #     get_user_db,
 
 # )
-# from datasets import init_db as init_dataset_master_db
-# from activity import router as activity_router
-# from account import router as a_router
-# from target import router as t_router
-# from auth import _load_metadata, _save_metadata
-# from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+# from .datasets import init_db as init_dataset_master_db
+# from .activity import router as activity_router
+# from .account import router as a_router
+# from .target import router as t_router
+# from .auth import _load_metadata, _save_metadata
+# from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
 # # These names should match exactly what you export from auth.py
-# from auth import (
+# from .auth import (
 #     # Authentication & token utilities
 #     get_current_active_user,
 #     get_current_user,
@@ -172,10 +113,75 @@ from .storage import upload_file_to_supabase, download_file_from_supabase, handl
 #     User
 
 # )
-# from auth import get_master_db_session
-# from auth import router as auth_router
-# from tokens import router as token_router
-# from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from .auth import get_master_db_session
+# from .auth import router as auth_router
+# from .tokens import router as token_router
+# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+
+
+
+
+from ai import generate_insights
+from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
+from ecs_launcher import launch_job_on_ecs
+from worker import make_json_safe
+from auth import Base, master_engine, decode_user_from_request
+from tokens import TokenUsageLogResponse, TokenUsageLog
+
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from preprocessing import preprocess_data
+from survival import calculate_business_metrics
+from anomaly_detection import train_best_anomaly_detection
+from datasets import (
+    Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
+    get_user_db,
+
+)
+from datasets import init_db as init_dataset_master_db
+from activity import router as activity_router
+from account import router as a_router
+from target import router as t_router
+from auth import _load_metadata, _save_metadata
+from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+# These names should match exactly what you export from auth.py
+from auth import (
+    # Authentication & token utilities
+    get_current_active_user,
+    get_current_user,
+    create_access_token,
+    authenticate_user,
+    Dataset,
+    # Pydantic schemas for auth
+    UserCreate,
+    UserResponse,
+    Token,
+    AuthTokenResponse,
+    RegisterResponse,
+    
+    # Database/session helpers
+    DatasetResponse,
+    DatasetCreate,
+    register_dataset,
+    create_user_database,
+    get_dataset_by_id,
+    get_dataset_data,
+    delete_dataset_crud,
+    query_dataset,
+    get_user_session,
+    get_user_session_direct,
+    get_user_engine,
+    get_master_db_session,
+    get_user_by_email,
+    master_db_cm,
+    Base,
+    User
+
+)
+from auth import get_master_db_session
+from auth import router as auth_router
+from tokens import router as token_router
+from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
 
 
 
@@ -364,8 +370,8 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
             return response
 
         # --- concave-down pricing parameters ---
-        DATA_PRICE_SCALE = 17.0      # updated scale factor
-        PRICE_PER_SECOND = 0.50      # compute time still billed per second
+        DATA_PRICE_SCALE = 74.1  # updated scale factor
+        PRICE_PER_MINUTE = 0.50  
 
         # Estimate data volume
         content_length = request.headers.get("content-length", "0")
@@ -375,8 +381,8 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
 
         # Logarithmic (concave) data cost + linear compute cost
         cost_data = DATA_PRICE_SCALE * math.log1p(mb_used)
-        cost_time = PRICE_PER_SECOND * duration
-        cost_for_request = round(cost_data + cost_time, 2)
+        minutes_used = duration / 60
+        cost_time = PRICE_PER_MINUTE * minutes_used
 
         # Billing update
         OVERDRAFT_LIMIT = -1.0

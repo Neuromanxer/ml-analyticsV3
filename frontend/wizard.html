@@ -884,17 +884,20 @@
 
         
         .instructions-container {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            border: 2px solid #e2e8f0;
-            min-height: 300px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 0;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid #dee2e6;
+            opacity: 0;
+            transform: translateY(10px);
             transition: all 0.3s ease;
         }
 
         .instructions-container.show {
-            border-color: #667eea;
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.1);
+            opacity: 1;
+            transform: translateY(0);
         }
 
         .instructions-title {
@@ -905,40 +908,26 @@
             align-items: center;
             gap: 10px;
         }
-        /* Instructions Container */
-.instructions-container {
-    background: linear-gradient(135deg, #f8fcff 0%, #ffffff 100%);
-    border: 1px solid rgba(0, 153, 255, 0.1);
-    border-radius: 16px;
-    padding: 30px;
-    margin: 20px 0;
-    box-shadow: 0 4px 20px rgba(0, 153, 255, 0.05);
-    transition: all 0.3s ease;
-    min-height: 500px; /* or even 600px depending on your content */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
 
-.instructions-container:hover {
-    box-shadow: 0 6px 25px rgba(0, 153, 255, 0.1);
-    transform: translateY(-2px);
-}
+    .instructions-container:hover {
+        box-shadow: 0 6px 25px rgba(0, 153, 255, 0.1);
+        transform: translateY(-2px);
+    }
 
-/* Placeholder Message */
-.placeholder-message {
-    color: #999;
-    font-size: 1.1rem;
-    text-align: center;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    opacity: 0.8;
-    padding: 40px 20px;
-    border: 2px dashed rgba(0, 153, 255, 0.2);
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(0, 153, 255, 0.02) 0%, rgba(0, 153, 255, 0.05) 100%);
-    transition: all 0.3s ease;
-}
+    /* Placeholder Message */
+    .placeholder-message {
+        color: #999;
+        font-size: 1.1rem;
+        text-align: center;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        opacity: 0.8;
+        padding: 40px 20px;
+        border: 2px dashed rgba(0, 153, 255, 0.2);
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(0, 153, 255, 0.02) 0%, rgba(0, 153, 255, 0.05) 100%);
+        transition: all 0.3s ease;
+    }
 
 .placeholder-message:hover {
     border-color: rgba(0, 153, 255, 0.3);
@@ -964,141 +953,189 @@
     font-size: 1rem;
 }
 
-.instructions-content h2 {
-    color: #0099ff;
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid rgba(0, 153, 255, 0.1);
+.model-name {
+    font-weight: 700;
+    text-decoration: underline;
 }
 
-.instructions-content h3 {
-    color: #0066cc;
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin: 25px 0 15px 0;
-}
-
-.instructions-content p {
-    margin-bottom: 15px;
-    color: #555;
-}
-
-.instructions-content ul {
-    margin-bottom: 20px;
-    padding-left: 20px;
-}
-
-.instructions-content li {
-    margin-bottom: 8px;
-    color: #555;
-    position: relative;
-}
-
-.instructions-content li::marker {
-    color: #0099ff;
-}
-
-.instructions-content code {
-    background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    color: #0066cc;
-    border: 1px solid rgba(0, 153, 255, 0.1);
-}
-
-.instructions-content pre {
-    background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
-    padding: 15px;
+.prerequisite-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
     border-radius: 8px;
-    overflow-x: auto;
-    border: 1px solid rgba(0, 153, 255, 0.1);
-    margin: 15px 0;
+    margin: 15px 20px;
+    padding: 15px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
 }
 
-.instructions-content pre code {
-    background: none;
-    padding: 0;
-    border: none;
-    font-size: 0.9rem;
+.warning-icon {
+    font-size: 20px;
+    flex-shrink: 0;
 }
-.instructions-title {
-    font-size: 1.75rem;
-    margin-bottom: 16px;
-    color: #2d3748;
+
+.warning-text {
+    color: #856404;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.instructions-content {
+    padding: 20px;
+}
+
+.section-title {
+    color: #495057;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
     display: flex;
     align-items: center;
     gap: 8px;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 8px;
+}
+
+.steps-section {
+    margin-bottom: 24px;
 }
 
 .instruction-steps {
-    padding-left: 24px;
-    margin-bottom: 32px;
-    list-style-type: decimal;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    margin: 0;
+    padding-left: 20px;
+    counter-reset: step-counter;
 }
 
 .instruction-steps li {
-    margin-bottom: 16px;
-    font-size: 16px;
-    line-height: 1.6;
-    color: #2d3748;
+    margin: 12px 0;
     padding-left: 8px;
-    transition: color 0.3s ease;
-}
-
-.instruction-steps li:hover {
-    color: #0099ff;
-}
-
-.instruction-meta {
-    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 24px;
-    font-size: 15px;
-    line-height: 1.6;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    transition: all 0.3s ease;
-}
-
-.instruction-meta:hover {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    transform: translateY(-2px);
-}
-
-.meta-section {
-    margin-bottom: 16px;
-    padding: 12px 0;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.meta-section:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-}
-
-.meta-label {
-    display: block;
-    font-weight: 600;
-    color: #0099ff;
-    margin-bottom: 8px;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.meta-values {
-    display: block;
-    color: #2d3748;
-    font-size: 15px;
     line-height: 1.5;
+    color: #495057;
+}
+
+.instruction-steps li code {
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 90%;
+    color: #e83e8c;
+}
+
+.requirements-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+    .requirements-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.requirement-card {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.requirement-card.required {
+    border-left: 4px solid #28a745;
+}
+
+.requirement-card.optional {
+    border-left: 4px solid #17a2b8;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.card-icon {
+    font-size: 16px;
+}
+
+.card-title {
+    font-weight: 600;
+    color: #495057;
+}
+
+.card-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.field-tag {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.field-tag.required {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.field-tag.optional {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.no-optional {
+    color: #6c757d;
+    font-style: italic;
+    font-size: 14px;
+}
+
+.example-section {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid #ffc107;
+}
+
+.example-content {
+    color: #495057;
+    line-height: 1.5;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 14px;
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+.note-section {
+    background: #e3f2fd;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border-left: 4px solid #2196f3;
+}
+
+.note-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    color: #1976d2;
+}
+
+.note-content {
+    color: #1565c0;
+    line-height: 1.5;
+    font-size: 14px;
 }
 
 /* Optional: Add responsive design for mobile */
@@ -1277,43 +1314,54 @@
                 <p class="subtitle">Let's understand your business needs and find the perfect ML solution. This will take just 2-3 minutes.</p>
                 
                 <div class="question">👋 What would you like to accomplish with your data?</div>
-                
                 <div class="options-grid">
-                    <div class="option-card" onclick="selectOption(this, 'predict-sales')">
-                        <div class="option-icon">📈</div>
-                        <div class="option-title">Predict Future Sales</div>
-                        <div class="option-desc">Forecast revenue, sales trends, and seasonal patterns</div>
-                    </div>
-                    
-                    <div class="option-card" onclick="selectOption(this, 'customer-segments')">
-                        <div class="option-icon">👥</div>
-                        <div class="option-title">Understand Customer Segments</div>
-                        <div class="option-desc">Group customers by behavior, value, and preferences</div>
-                    </div>
-                    
-                    <div class="option-card" onclick="selectOption(this, 'detect-fraud')">
-                        <div class="option-icon">🛡️</div>
-                        <div class="option-title">Detect Fraud/Anomalies</div>
-                        <div class="option-desc">Identify unusual activities, fraudulent transactions</div>
-                    </div>
-                    
-                    <div class="option-card" onclick="selectOption(this, 'forecast-demand')">
-                        <div class="option-icon">📊</div>
-                        <div class="option-title">Forecast Demand</div>
-                        <div class="option-desc">Predict inventory needs, resource planning</div>
-                    </div>
-                    
-                    <div class="option-card" onclick="selectOption(this, 'churn-risk')">
-                        <div class="option-icon">⚠️</div>
-                        <div class="option-title">Find Churn Risks</div>
-                        <div class="option-desc">Identify customers likely to leave or cancel</div>
-                    </div>
-                    
-                    <div class="option-card" onclick="selectOption(this, 'explore-data')">
-                        <div class="option-icon">🔍</div>
-                        <div class="option-title">Just Explore My Data</div>
-                        <div class="option-desc">Discover patterns and insights in my data</div>
-                    </div>
+                <div class="option-card" onclick="selectOption(this, 'what-if-bulk')">
+                    <div class="option-icon">📝</div>
+                    <div class="option-title">Run What-If Simulations</div>
+                    <div class="option-desc">Test scenarios (e.g. “+5% price, −10% marketing”) and see impact</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'regression')">
+                    <div class="option-icon">📈</div>
+                    <div class="option-title">Forecast Continuous Values</div>
+                    <div class="option-desc">Predict numeric outcomes like sales or costs</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'classification')">
+                    <div class="option-icon">🔍</div>
+                    <div class="option-title">Sort Into Categories</div>
+                    <div class="option-desc">Group things (e.g. high vs. low risk customers)</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'time-series-analysis')">
+                    <div class="option-icon">⏳</div>
+                    <div class="option-title">Forecast Trends Over Time</div>
+                    <div class="option-desc">Model seasonal peaks and valleys in your data</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'ab-test')">
+                    <div class="option-icon">⚗️</div>
+                    <div class="option-title">Run A/B Experiments</div>
+                    <div class="option-desc">Compare two versions (A vs. B) and see which wins</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'customer-segments')">
+                    <div class="option-icon">👥</div>
+                    <div class="option-title">Find Customer Segments</div>
+                    <div class="option-desc">Identify distinct groups for targeted marketing</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'decision-paths')">
+                    <div class="option-icon">🛣️</div>
+                    <div class="option-title">Discover Decision Paths</div>
+                    <div class="option-desc">Reveal the key rules that drive outcomes</div>
+                </div>
+
+                <div class="option-card" onclick="selectOption(this, 'visualize-relationships')">
+                    <div class="option-icon">📊</div>
+                    <div class="option-title">Visualize Data Patterns</div>
+                    <div class="option-desc">Create simple charts to spot trends and correlations</div>
+                </div>
                 </div>
             </div>
 
@@ -1512,68 +1560,100 @@ let currentStep = 1;
 const totalSteps = 5;
 let selectedData = {};
 const token = localStorage.getItem('access_token');
-const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+// const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+  const API_BASE_URL = 'http://127.0.0.1:8000';
 const goalMapping = {
-    'predict-sales': 'Predict Future Sales',
-    'customer-segments': 'Customer Segmentation',
-    'detect-fraud': 'Fraud/Anomaly Detection',
-    'forecast-demand': 'Demand Forecasting',
-    'churn-risk': 'Churn Risk Analysis',
-    'explore-data': 'Data Exploration'
+  'what-if-bulk':         'Test scenarios at scale (e.g. +5% price & –10% marketing)',
+  'regression':           'Forecast continuous values (e.g. next quarter sales)',
+  'classification':       'Group items into categories (e.g. high vs. low risk)',
+  'time-series-analysis': 'Model trends over time (e.g. seasonal peaks)',
+  'ab-test':              'Compare two variants (e.g. Email A vs. Email B)',
+  'customer-segments':    'Identify customer groups (e.g. heavy vs. light buyers)',
+  'decision-paths':       'Uncover key decision rules (e.g. steps leading to purchase)',
+  'visualize-relationships':'Chart data patterns (e.g. order size vs. spend)'
 };
+
 
 const dataTypeMapping = {
-    'sales-data': 'Sales & Revenue Data',
-    'customer-data': 'Customer Data',
-    'operational-data': 'Operational Data',
-    'marketing-data': 'Marketing Data'
+  'sales-data':       'Sales & Revenue Data',
+  'customer-data':    'Customer Data',
+  'operational-data': 'Operational Data',
+  'marketing-data':   'Marketing Data',
+
 };
+
 
 const modelRecommendations = {
-    'predict-sales': ['Time Series Forecast', 'Regression Analysis'],
-    'customer-segments': ['K-Means Clustering'],
-    'detect-fraud': ['Outlier Detection', 'Anomaly Detection', 'Classification'],
-    'forecast-demand': ['Time Series Forecast', 'Regression Analysis'],
-    'churn-risk': ['Classification', 'Survival Analysis'],
-    'explore-data': ['Visualize Relationships']
+  'what-if-bulk': [
+    'What-If Bulk', 
+    'Counterfactual Analysis'
+  ],
+  'regression': [
+    'Regression Model', 
+    'Time Series Analysis'
+  ],
+  'classification': [
+    'Classification Model', 
+    'Survival Analysis'
+  ],
+  'time-series-analysis': [
+    'Time Series Analysis', 
+    'Regression Model'
+  ],
+  'ab-test': [
+    'A/B Test'
+  ],
+  'customer-segments': [
+    'Customer Segments', 
+    'KMeans Clustering'
+  ],
+  'decision-paths': [
+    'Decision Paths', 
+    'Counterfactual Analysis'
+  ],
+  'visualize-relationships': [
+    'Visualize Relationships', 
+    'Segment Analysis'
+  ]
 };
 
+
 function selectOption(element, value) {
-    // Remove selection from siblings
-    const siblings = element.parentElement.querySelectorAll('.option-card');
-    siblings.forEach(card => card.classList.remove('selected'));
-    
-    // Add selection to clicked element
-    element.classList.add('selected');
-    
-    // Store the selection
-    if (currentStep === 1) {
-        selectedData.goal = value;
-        updateAISuggestion();
-    } else if (currentStep === 3) { // Data type is now step 3
-        selectedData.dataType = value;
-    }
-    
-    // Enable next button
-    const nextBtn = document.getElementById('nextBtn');
-    nextBtn.disabled = false;
+  // 1) Clear old selection
+  element.parentElement
+         .querySelectorAll('.option-card')
+         .forEach(card => card.classList.remove('selected'));
+
+  // 2) Mark this one
+  element.classList.add('selected');
+
+  // 3) Store & update suggestion if on Step 1
+  if (currentStep === 1) {
+    selectedData.goal = value;
+    updateAISuggestion();
+  }
+  // (…other steps unchanged…)
+
+  // 4) Turn the Next button back on
+  document.getElementById('nextBtn').disabled = false;
 }
 
 function updateAISuggestion() {
-    const suggestions = {
-        'predict-sales': 'For sales prediction, historical transaction data with seasonal patterns will give you the most accurate forecasts.',
-        'customer-segments': 'Customer segmentation works best with demographic data combined with purchase history and engagement metrics.',
-        'detect-fraud': 'Fraud detection requires transaction data with features like amount, frequency, location, and user behavior patterns.',
-        'forecast-demand': 'Demand forecasting needs historical usage data, seasonal trends, and external factors like marketing campaigns.',
-        'churn-risk': 'Churn prediction is most effective with customer interaction data, usage patterns, and support ticket history.',
-        'explore-data': 'Data exploration will help you understand patterns, correlations, and data quality before choosing specific models.'
-    };
-    
-    const suggestionElement = document.getElementById('aiSuggestion');
-    if (suggestionElement) {
-        suggestionElement.textContent = suggestions[selectedData.goal] || '';
-    }
+  const suggestionElement = document.getElementById('aiSuggestion');
+  if (!suggestionElement) return;
+
+  // Pull our full description+example from goalMapping
+  const text = goalMapping[selectedData.goal] || '';
+  
+  // Render line-breaks as <br> so the “e.g.” shows on a new line
+  suggestionElement.innerHTML = text
+    .trim()
+    .split('\n')
+    .map(line => line.trim())
+    .join('<br>');
 }
+
+
 
 function handleTrainTestUpload(event) {
     const trainFile = document.getElementById('train-input').files[0];
@@ -1678,11 +1758,8 @@ function handleFileSelection(file, uploadLabel, nameElement, inputId) {
         
         // Enable analysis buttons if they exist
         enableAnalysisButtons();
-        
-        // Auto-suggest model for Pro/Enterprise users
-        if (userSubscription === 'Pro' || userSubscription === 'Enterprise') {
-            suggestModelType();
-        }
+
+
         
     } else if (inputId === 'train-input') {
         // Train file upload
@@ -1740,10 +1817,6 @@ function enableAnalysisButtons() {
     console.log('Analysis buttons enabled');
 }
 
-function suggestModelType() {
-    // Implementation for auto model suggestion
-    console.log('Suggesting model type for premium users');
-}
 
 function showPreview(file) {
     // Implementation for showing file preview
@@ -1837,26 +1910,29 @@ function displayTablePreview(content, isCSV) {
     previewTable.innerHTML = html;
 }
 function goNext() {
-    if (currentStep < totalSteps) {
-        // Capture data from current step BEFORE moving to next step
-        if (currentStep === 4) {
-            selectedData.target = document.getElementById('targetColumn').value.trim();
-            selectedData.success = document.getElementById('successCriteria').value.trim();
-            selectedData.timeColumn = document.getElementById('timeColumn').value.trim();
-        }
-
-        // Hide current step
-        document.getElementById(`step${currentStep}`).classList.remove('active');
-
-        // Go to next step
-        currentStep += 1;
-        document.getElementById(`step${currentStep}`).classList.add('active');
-
-        updateProgress();
-        updateButtons();
-
+  if (currentStep < totalSteps) {
+    if (currentStep === 4) {
+      selectedData.target      = document.getElementById('targetColumn').value.trim();
+      selectedData.success     = document.getElementById('successCriteria').value.trim();
+      selectedData.timeColumn  = document.getElementById('timeColumn').value.trim();
     }
+
+    // move steps
+    document.getElementById(`step${currentStep}`).classList.remove('active');
+    currentStep++;
+    document.getElementById(`step${currentStep}`).classList.add('active');
+
+    updateProgress();
+    updateButtons();
+
+    // once you land on step 5, run both:
+    if (currentStep === 5) {
+      updateSummary();
+      suggestModelType();
+    }
+  }
 }
+
 
 function updateProgress() {
     const progress = (currentStep / totalSteps) * 100;
@@ -1937,7 +2013,6 @@ function initializeFileUpload() {
         }
     });
 }
-
 async function suggestModelType() {
     if (!selectedData.uploadedFile) return null;
 
@@ -1952,22 +2027,41 @@ async function suggestModelType() {
     try {
         const formData = new FormData();
         formData.append('file', selectedData.uploadedFile);
+
+        // existing fields
         if (selectedData.target) {
             formData.append('target_column', selectedData.target);
         }
 
+        // ── ADD THESE ──
+        if (selectedData.goal) {
+            // send the *key* (e.g. 'predict-sales') or the *label* (e.g. 'Predict Future Sales')
+            const goalLabel = goalMapping[selectedData.goal] || selectedData.goal;
+            formData.append('summary_goal_key', selectedData.goal);
+            formData.append('summary_goal_label', goalLabel);
+        }
+        if (selectedData.dataType) {
+            const dtLabel = dataTypeMapping[selectedData.dataType] || selectedData.dataType;
+            formData.append('summary_data_type_key', selectedData.dataType);
+            formData.append('summary_data_type_label', dtLabel);
+        }
+
+        if (selectedData.timeColumn) {
+            formData.append('timeCol', timeColumn)
+        }
+        // (You could also send selectedData.timeColumn if you wanted.)
+
+        // now call the API
         const response = await fetch(`${API_BASE_URL}/api/suggest-model`, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
         const result = await response.json();
 
-        // Dynamically display model options
+        // display as before
         displayModelOptions(result);
-
         return result;
 
     } catch (error) {
@@ -2062,10 +2156,6 @@ function setupFormListeners() {
     if (targetInput) {
         targetInput.addEventListener('change', (e) => {
             selectedData.target = e.target.value;
-            // Trigger model suggestion when target is selected
-            if (userSubscription !== 'Free') {
-                suggestModelType();
-            }
         });
     }
     
@@ -2314,103 +2404,293 @@ function selectModel(model) {
 
 }
 
+
 function generateLocalInstructions(modelType, selectedData) {
     const target = selectedData.target || "[your_target_column]";
     const timeColumn = selectedData.timeColumn || "[your_time_column]";
     const forecastPeriods = selectedData.forecastPeriods || "[# of future steps]";
     const featureColumns = selectedData.featureColumns || "[your_feature_columns]";
+    const variantColumn = selectedData.variantColumn || "[your_variant_column]";
 
     const instructionsMap = {
         "Regression Model": {
             required_fields: ["file", "target_column"],
             optional_fields: ["drop_columns"],
             steps: [
-                "1. Upload your CSV file",
-                `2. Set your <code>target_column</code> to <strong>${target}</strong>`,
-                "3. (Optional) Set any columns to drop",
-                "4. Click the <strong>Run Regression Model</strong> button"
+                "Upload your CSV file containing numerical data",
+                `Set your <code>target_column</code> to <strong>${target}</strong> (the numerical value you want to predict)`,
+                "Optionally specify columns to drop if they're irrelevant",
+                "Click the <strong>Run Regression Model</strong> button to train the model"
             ],
-            example: `🎯 You are predicting: ${target} (target variable)`
+            example: `🎯 Predicting numerical values for: ${target}`,
+            note: "Use this for predicting continuous numerical values like prices, sales, temperatures, etc."
         },
+        
         "Classification Model": {
             required_fields: ["file", "target_column"],
             optional_fields: ["drop_columns"],
             steps: [
-                "1. Upload your CSV file",
-                `2. Set your <code>target_column</code> to <strong>${target}</strong>`,
-                "3. (Optional) Drop irrelevant columns",
-                "4. Click the <strong>Run Classification Model</strong> button"
+                "Upload your CSV file containing categorical data",
+                `Set your <code>target_column</code> to <strong>${target}</strong> (the category you want to predict)`,
+                "Optionally specify columns to drop if they're irrelevant",
+                "Click the <strong>Run Classification Model</strong> button to train the model"
             ],
-            example: `🎯 You are classifying: ${target} (target variable)`
+            example: `🎯 Classifying categories for: ${target}`,
+            note: "Use this for predicting categories like spam/not spam, approved/rejected, high/medium/low, etc."
         },
+        
         "Time Series Analysis": {
             required_fields: ["file", "time_column", "target_column", "forecast_periods"],
-            optional_fields: ["drop_columns"],
+            optional_fields: ["drop_columns", "arima_order"],
             steps: [
-                "1. Upload your CSV file",
-                `2. Set your <code>time_column</code> to <strong>${timeColumn}</strong>`,
-                `3. Set your <code>target_column</code> to <strong>${target}</strong>`,
-                `4. Set <code>forecast_periods</code> to <strong>${forecastPeriods}</strong>`,
-                "5. (Optional) Drop irrelevant columns",
-                "6. Click the <strong>Run Time Series Analysis</strong> button"
+                "Upload your CSV file with time-ordered data",
+                `Set your <code>time_column</code> to <strong>${timeColumn}</strong> (date/time column)`,
+                `Set your <code>target_column</code> to <strong>${target}</strong> (the value to forecast)`,
+                `Set <code>forecast_periods</code> to <strong>${forecastPeriods}</strong> (how many future steps to predict)`,
+                "Optionally set ARIMA order (e.g., 1,1,1) for advanced modeling",
+                "Click the <strong>Run Time Series Analysis</strong> button"
             ],
-            example: `📅 Forecasting <code>${target}</code> over time using <code>${timeColumn}</code> for ${forecastPeriods} future steps`
+            example: `📅 Forecasting ${target} over time using ${timeColumn} for ${forecastPeriods} future periods`,
+            note: "Perfect for predicting future trends, seasonal patterns, and time-based forecasting."
         },
+        
         "Survival Analysis": {
             required_fields: ["file", "time_column", "target_column"],
             optional_fields: ["drop_columns"],
             steps: [
-                "1. Upload your CSV file",
-                `2. Set your <code>time_column</code> to <strong>${timeColumn}</strong>`,
-                `3. Set your <code>target_column</code> to <strong>${target}</strong> (e.g., 1 = event, 0 = censored)`,
-                "4. (Optional) Drop irrelevant columns",
-                "5. Click the <strong>Run Survival Analysis</strong> button"
+                "Upload your CSV file with event and duration data",
+                `Set your <code>time_column</code> to <strong>${timeColumn}</strong> (duration until event)`,
+                `Set your <code>target_column</code> to <strong>${target}</strong> (1 = event occurred, 0 = censored/no event)`,
+                "Ensure time and event columns are different",
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run Survival Analysis</strong> button"
             ],
-            example: `🕒 Modeling event occurrence: <code>${target}</code> based on time: <code>${timeColumn}</code>`
+            example: `🕒 Modeling survival/duration analysis: ${target} events over ${timeColumn} time periods`,
+            note: "Used for analyzing time-to-event data like customer churn, equipment failure, medical survival rates."
         },
+        
         "Counterfactual Analysis": {
             required_fields: ["file", "target_column", "feature_columns"],
             optional_fields: ["drop_columns"],
+            prerequisite: "⚠️ IMPORTANT: You must run Classification or Regression on this SAME dataset first!",
             steps: [
-                "1. Upload your CSV file",
-                `2. Set your <code>target_column</code> to <strong>${target}</strong>`,
-                `3. Set <code>impactful_features</code> to <strong>${featureColumns}</strong>`,
-                "4. (Optional) Drop irrelevant columns",
-                "5. Click the <strong>Run Counterfactual Analysis</strong> button"
+                "<strong>Step 0:</strong> First run Classification/Regression on your dataset",
+                "Upload the SAME CSV file used in the previous step",
+                `Set your <code>target_column</code> to <strong>${target}</strong>`,
+                `Set <code>editable_features</code> to <strong>${featureColumns}</strong> (features to analyze)`,
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run Counterfactual Analysis</strong> button"
             ],
-            example: `🔄 Analyzing what affects: <code>${target}</code> given features: <code>${featureColumns}</code>`
+            example: `🔄 Analyzing 'what-if' scenarios: How changing ${featureColumns} affects ${target}`,
+            note: "Discovers minimal changes needed to flip prediction outcomes. Requires a pre-trained model."
         },
+        
+        "Classification Predict": {
+            required_fields: ["file", "target_column"],
+            optional_fields: ["drop_columns"],
+            prerequisite: "⚠️ IMPORTANT: You must run Classification Model on this SAME dataset first!",
+            steps: [
+                "<strong>Step 0:</strong> First run Classification Model to train on your dataset",
+                "Upload the SAME CSV file used for training",
+                `Ensure <code>target_column</code> matches your training: <strong>${target}</strong>`,
+                "Optionally specify columns to drop (same as training)",
+                "Click the <strong>Run Classification Predict</strong> button"
+            ],
+            example: `🎯 Making predictions using trained classification model for: ${target}`,
+            note: "Generates predictions on new data using your previously trained classification model."
+        },
+        
+        "Regression Predict": {
+            required_fields: ["file", "target_column"],
+            optional_fields: ["drop_columns"],
+            prerequisite: "⚠️ IMPORTANT: You must run Regression Model on this SAME dataset first!",
+            steps: [
+                "<strong>Step 0:</strong> First run Regression Model to train on your dataset",
+                "Upload the SAME CSV file used for training",
+                `Ensure <code>target_column</code> matches your training: <strong>${target}</strong>`,
+                "Optionally specify columns to drop (same as training)",
+                "Click the <strong>Run Regression Predict</strong> button"
+            ],
+            example: `🎯 Making predictions using trained regression model for: ${target}`,
+            note: "Generates numerical predictions on new data using your previously trained regression model."
+        },
+        
+        "What-If Analysis": {
+            required_fields: ["file", "target_column", "bulk_feature_changes"],
+            optional_fields: ["drop_columns"],
+            prerequisite: "⚠️ IMPORTANT: You must run Classification or Regression on this SAME dataset first!",
+            steps: [
+                "<strong>Step 0:</strong> First run Classification/Regression on your dataset",
+                "Upload the SAME CSV file used in the previous step",
+                `Set your <code>target_column</code> to <strong>${target}</strong>`,
+                "Configure bulk feature changes in the interface (specify which features to modify and their new values)",
+                "Ensure at least one feature change is specified",
+                "Click the <strong>Run What-If Analysis</strong> button"
+            ],
+            example: `🔮 Bulk analysis: How changing multiple features simultaneously affects ${target}`,
+            note: "Analyzes impact of changing multiple features at once across your entire dataset."
+        },
+        
+        "A/B Test Analysis": {
+            required_fields: ["file", "target_column", "variant_column"],
+            optional_fields: ["drop_columns"],
+            steps: [
+                "Upload your CSV file containing A/B test data",
+                `Set your <code>target_column</code> to <strong>${target}</strong> (the metric you're measuring)`,
+                `Set your <code>variant_column</code> to <strong>${variantColumn}</strong> (A/B test groups like 'A', 'B')`,
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run A/B Test</strong> button"
+            ],
+            example: `🧪 Comparing test variants in ${variantColumn} and their effect on ${target}`,
+            note: "Analyzes statistical significance between different test groups or variants."
+        },
+        
+        "Decision Paths": {
+            required_fields: ["file", "target_column"],
+            optional_fields: ["drop_columns"],
+            steps: [
+                "Upload your CSV file for decision tree analysis",
+                `Set your <code>target_column</code> to <strong>${target}</strong>`,
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run Decision Paths</strong> button"
+            ],
+            example: `🌳 Creating interpretable decision rules for: ${target}`,
+            note: "Generates easy-to-understand decision trees showing how predictions are made."
+        },
+        
+        "Visualization": {
+            required_fields: ["file", "target_column", "feature_column"],
+            optional_fields: ["drop_columns"],
+            steps: [
+                "Upload your CSV file for data visualization",
+                `Set your <code>target_column</code> to <strong>${target}</strong>`,
+                `Set <code>feature_column</code> in Advanced Config to <strong>${featureColumns}</strong>`,
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run Visualization</strong> button"
+            ],
+            example: `📊 Creating visualizations showing relationship between ${featureColumns} and ${target}`,
+            note: "Generates charts and plots to explore relationships in your data."
+        },
+        
         "KMeans Clustering": {
             required_fields: ["file"],
             optional_fields: ["drop_columns"],
             steps: [
-                "1. Upload your CSV file",
-                "2. (Optional) Drop irrelevant columns",
-                "3. Click the <strong>Run Clustering</strong> button"
+                "Upload your CSV file for cluster analysis",
+                "Optionally drop irrelevant columns",
+                "Click the <strong>Run Clustering</strong> button"
             ],
-            example: "🧩 This model finds natural groupings — no target variable required"
+            example: "🧩 Discovering natural groupings in your data - no target variable needed",
+            note: "Finds hidden patterns and groups similar data points together automatically."
         },
+        
         "Customer Segments": {
             required_fields: ["file"],
             optional_fields: ["drop_columns"],
             steps: [
-                "1. Upload your CSV file",
-                "2. (Optional) Drop irrelevant columns",
-                "3. Click the <strong>Run Customer Segments</strong> button"
+                "Upload your CSV file with customer data",
+                "Optionally drop irrelevant columns (like customer IDs)",
+                "Click the <strong>Run Customer Segments</strong> button"
             ],
-            example: "📊 Used to segment your customers based on their data patterns"
+            example: "📊 Segmenting customers based on behavior and characteristics",
+            note: "Specialized clustering for customer analysis - identifies distinct customer groups for targeted marketing."
         }
     };
 
     const directions = instructionsMap[modelType] || {
         required_fields: ["file"],
         optional_fields: [],
-        steps: ["1. Upload your CSV file", "2. Select an analysis type"],
-        example: "General analysis"
+        steps: ["Upload your CSV file", "Select an analysis type from the options above"],
+        example: "General data analysis",
+        note: "Please select a specific analysis type to see detailed instructions."
     };
 
     return directions;
 }
+
+// Updated function to handle instruction display with improved HTML
+function selectModel(model) {
+    selectedData.selectedModel = model;
+
+    // Validate basic input (optional: remove this if you don't need it)
+    if (!selectedData.target && model.model_type !== "KMeans Clustering" && model.model_type !== "Customer Segments") {
+        alert("Please set a target column.");
+        return;
+    }
+
+    // Generate instructions using the local generator
+    const directions = generateLocalInstructions(model.model_type, selectedData);
+    const instructionsDiv = document.getElementById("instructionsContainer");
+
+    if (instructionsDiv && directions.steps) {
+        // Build prerequisite warning if it exists
+        const prerequisiteHtml = directions.prerequisite ? 
+            `<div class="prerequisite-warning">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-text">${directions.prerequisite}</div>
+            </div>` : '';
+
+        instructionsDiv.innerHTML = `
+            <div class="instructions-header">
+                <div class="model-icon">🛠️</div>
+                <h3 class="instructions-title">How to Use: <span class="model-name">${model.model_type}</span></h3>
+            </div>
+
+            ${prerequisiteHtml}
+
+            <div class="instructions-content">
+                <div class="steps-section">
+                    <h4 class="section-title">📋 Step-by-Step Instructions</h4>
+                    <ol class="instruction-steps">
+                        ${directions.steps.map(step => `<li>${step}</li>`).join('')}
+                    </ol>
+                </div>
+
+                <div class="requirements-grid">
+                    <div class="requirement-card required">
+                        <div class="card-header">
+                            <span class="card-icon">✅</span>
+                            <span class="card-title">Required Fields</span>
+                        </div>
+                        <div class="card-content">
+                            ${directions.required_fields.map(field => `<span class="field-tag required">${field}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <div class="requirement-card optional">
+                        <div class="card-header">
+                            <span class="card-icon">⚙️</span>
+                            <span class="card-title">Optional Fields</span>
+                        </div>
+                        <div class="card-content">
+                            ${directions.optional_fields.length > 0 
+                                ? directions.optional_fields.map(field => `<span class="field-tag optional">${field}</span>`).join('')
+                                : '<span class="no-optional">None</span>'
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="example-section">
+                    <h4 class="section-title">💡 Example Use Case</h4>
+                    <div class="example-content">
+                        ${directions.example}
+                    </div>
+                </div>
+
+                ${directions.note ? `
+                    <div class="note-section">
+                        <div class="note-icon">ℹ️</div>
+                        <div class="note-content">${directions.note}</div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        instructionsDiv.classList.add("show");
+    }
+}
+
 function sortByPriority(models) {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
     return models.slice().sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
@@ -2587,7 +2867,7 @@ document.addEventListener('keydown', function(e) {
                             icon: '🎯',
                             description: 'Predict categorical outcomes with high accuracy using advanced algorithms.',
                             priority: 'high',
-                            endpoint: '/api/classification',
+                            endpoint: '/classification',
                             requirements: {
                                 suggested_target: 'category',
                                 target_column: 'category'
@@ -2599,7 +2879,7 @@ document.addEventListener('keydown', function(e) {
                             icon: '📈',
                             description: 'Predict continuous numerical values for forecasting and analysis.',
                             priority: 'medium',
-                            endpoint: '/api/regression',
+                            endpoint: '/regression',
                             requirements: {
                                 suggested_target: 'price',
                                 target_column: 'price'
@@ -2611,7 +2891,7 @@ document.addEventListener('keydown', function(e) {
             icon: '🔗',
             description: 'Discover hidden patterns and group similar data points automatically.',
             priority: 'medium',
-            endpoint: '/api/clustering',
+            endpoint: '/clustering',
             requirements: {
                 suggested_target: 'auto_detect',
                 target_column: 'none'
@@ -2623,7 +2903,7 @@ document.addEventListener('keydown', function(e) {
             icon: '⏳',
             description: 'Predict future trends and time-series patterns with temporal analysis.',
             priority: 'high',
-            endpoint: '/api/forecast',
+            endpoint: '/forecast',
             requirements: {
                 suggested_target: 'value',
                 target_column: 'timestamp'
@@ -2635,7 +2915,7 @@ document.addEventListener('keydown', function(e) {
             icon: '📊',
             description: 'Analyze customer behavior and identify distinct user segments.',
             priority: 'medium',
-            endpoint: '/api/segment_analysis',
+            endpoint: '/segment_analysis',
             requirements: {
                 suggested_target: 'segment_id',
                 target_column: 'user_id'
@@ -2647,7 +2927,7 @@ document.addEventListener('keydown', function(e) {
             icon: '⚕️',
             description: 'Model time-to-event data and analyze survival probabilities.',
             priority: 'low',
-            endpoint: '/api/survival',
+            endpoint: '/survival',
             requirements: {
                 suggested_target: 'duration',
                 target_column: 'event_time'
@@ -2659,7 +2939,7 @@ document.addEventListener('keydown', function(e) {
             icon: '🔄',
             description: 'Understand causal relationships and what-if scenarios in your data.',
             priority: 'low',
-            endpoint: '/api/counterfactual',
+            endpoint: '/counterfactual',
             requirements: {
                 suggested_target: 'outcome',
                 target_column: 'treatment'
@@ -2667,35 +2947,11 @@ document.addEventListener('keydown', function(e) {
             use_cases: ['A/B Testing', 'Policy Analysis', 'Causal Inference']
         },
         {
-            model_type: 'Deep Learning Model',
-            icon: '🧠',
-            description: 'Advanced neural networks for complex pattern recognition tasks.',
-            priority: 'medium',
-            endpoint: '/api/deep_learning',
-            requirements: {
-                suggested_target: 'auto_detect',
-                target_column: 'features'
-            },
-            use_cases: ['Image Recognition', 'NLP Tasks', 'Complex Patterns']
-        },
-        {
-            model_type: 'Ensemble Model',
-            icon: '🎭',
-            description: 'Combine multiple algorithms for superior prediction accuracy.',
-            priority: 'high',
-            endpoint: '/api/ensemble',
-            requirements: {
-                suggested_target: 'target',
-                target_column: 'auto_detect'
-            },
-            use_cases: ['Competition Winning', 'High Stakes Prediction', 'Model Optimization']
-        },
-        {
             model_type: 'Recommendation System',
             icon: '💡',
             description: 'Generate personalized recommendations based on user preferences.',
             priority: 'medium',
-            endpoint: '/api/recommendation',
+            endpoint: '/recommendation',
             requirements: {
                 suggested_target: 'rating',
                 target_column: 'user_item'
@@ -2725,6 +2981,6 @@ function trackStepCompletion(step) {
         dataType: selectedData.dataType
     });
 }
-        </script>
-    </body>
-    </html>
+</script>
+</body>
+</html>

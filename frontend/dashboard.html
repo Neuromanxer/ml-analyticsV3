@@ -882,6 +882,7 @@
         display: none;
     }
   </style>
+  
 </head>
 <body>
   <!-- Mobile Toggle Button -->
@@ -1166,7 +1167,7 @@
             <small class="help-text">These are AI-suggested inputs you can tweak to simulate how predictions change.</small>
           </div>
           
-          <div id="ab-test-config" class="config-section" style="display: none;">
+          <div id="ab_test-config" class="config-section" style="display: none;">
             <h3>A/B Test Settings</h3>
             <div class="input-row">
               <div class="input-group">
@@ -1239,6 +1240,11 @@
                 <span>Visualize</span>
                 <small>Explore relationships</small>
               </button>
+              <button id="btn-segments" class="btn analysis-btn" data-category="advanced">
+                <i class="fas fa-users"></i>
+                <span>Customer Segments</span>
+                <small>Identify user groups</small>
+              </button>
             </div>
           </div>
 
@@ -1255,11 +1261,7 @@
                 <span>What-If Bulk</span>
                 <small>Mass-level simulation</small>
               </button>
-              <button id="btn-segments" class="btn analysis-btn" data-category="advanced">
-                <i class="fas fa-users"></i>
-                <span>Customer Segments</span>
-                <small>Identify user groups</small>
-              </button>
+
               <button id="btn-decision-paths" class="btn analysis-btn" data-category="advanced">
                 <i class="fas fa-project-diagram"></i>
                 <span>Decision Paths</span>
@@ -1409,13 +1411,16 @@
         icon.classList.add('fa-chevron-down');
       }
     }
-  function showAnalysisSpecificConfig(analysisType) {
-      // Hide all analysis-specific configs
-      const configs = document.querySelectorAll('#analysis-specific-config > div');
-      configs.forEach(config => config.style.display = 'none');
-      
-      // Show specific config based on analysis type
-      const specificConfig = document.getElementById(`${analysisType}-config`);
+    function showAnalysisSpecificConfig(analysisType) {
+      // e.g. "ab-test"  →  "ab_test"
+      const key = analysisType.replace(/[-\s]/g, '_');
+
+      // hide everything
+      document.querySelectorAll('#analysis-specific-config > div')
+              .forEach(c => c.style.display = 'none');
+
+      // try to find "#<key>-config"
+      const specificConfig = document.getElementById(`${key}-config`);
       if (specificConfig) {
         document.getElementById('analysis-specific-config').style.display = 'block';
         specificConfig.style.display = 'block';
@@ -1423,7 +1428,7 @@
         document.getElementById('analysis-specific-config').style.display = 'none';
       }
     }
-    
+        
     function validateConfiguration() {
       const targetColumn = document.getElementById('target-column').value;
       if (!targetColumn) {
@@ -2585,6 +2590,7 @@ function prepareAndRunAnalysis() {
   const timeCol = document.getElementById('time-column').value;
   const editableFeatures = document.getElementById('editable-features-input').value;
   const forecastPeriods = parseInt(document.getElementById("forecast-periods").value, 10);
+  const variantCol = doucment.getElementById('variant-column').value;
     // Inputs & preview elements
   const fullInput  = document.getElementById('full-input');
   const trainInput = document.getElementById('train-input');

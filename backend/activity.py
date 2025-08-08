@@ -70,142 +70,246 @@ def get_activity(current_user: User = Depends(get_current_active_user), db: Sess
         .limit(10)
         .all()
     )
-
-def suggest_model_from_df(df, target_column: str):
+def suggest_model_from_df(
+    df,
+    target_column: str,
+    summary_goal_key: str = "",
+    summary_goal_label: str = "",
+    summary_data_type_key: str = "",
+    summary_data_type_label: str = "",
+    summary_success_criteria: str = "",
+    time_column: str = ""
+):
     import numpy as np
+    import pandas as pd
 
     suggestions = []
-    added_model_types = set()
+    added = set()
+    classification_priority = None
 
-    # Check target column type
-    if target_column and target_column in df.columns:
-        target_series = df[target_column].dropna()
-        unique_vals = target_series.nunique()
-        is_numeric = np.issubdtype(target_series.dtype, np.number)
+    # determine time column (client-provided wins)
+    time_col = time_column if time_column in df.columns else None
+    if not time_col:
+        for c in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[c]) or "date" in c.lower() or "time" in c.lower():
+                time_col = c
+                break
 
-        if is_numeric:
-            if unique_vals == 2:
-                model_type = "Classification Model"
-                priority = "high"
-            elif unique_vals < 10:
-                model_type = "Classification Model"
-                priority = "medium"
-            else:
-                model_type = "Regression Model"
-                priority = "high"
-        else:
-            model_type = "Classification Model"
-            priority = "medium"
+    def score_and_reason(model_id, needs_target=False, needs_time=False):
+        score = 2  # 0=high,1=medium,2=low
+        reasons = []
 
-        suggestions.append({
-            "model_type": model_type,
-            "icon": "🎯" if "Classification" in model_type else "📈",
-            "description": "Automatically selected based on your target column",
-            "priority": priority,
-            "endpoint": f"/api/{model_type.lower().replace(' ', '_')}",
-            "requirements": {
-                "suggested_target": target_column,
-                "target_column": target_column
-            },
-            "use_cases": ["Auto-selected", "Smart Detection"]
-        })
+        if model_id == summary_goal_key:
+            score = 0
+            reasons.append(f"High priority: aligns exactly with your goal (\"{summary_goal_label}\").")
+        elif needs_target and target_column:
+            score = min(score, 1)
+            reasons.append("Medium priority: uses your specified target column.")
+        elif needs_time and time_col:
+            score = min(score, 1)
+            reasons.append(f"Medium priority: uses your time column (\"{time_col}\").")
+        elif (summary_data_type_key and model_id in {"regression","time-series-analysis","what-if-bulk"} and summary_data_type_key.startswith("time")):
+            score = min(score, 1)
+            reasons.append(f"Medium priority: matches your data type (\"{summary_data_type_label}\").")
 
-        added_model_types.add(model_type)
+        priority = ["high","medium","low"][score]
+        reason = " ".join(reasons) or "Low priority: may not fit your primary goal."
+        return priority, reason
 
-    # Detect time column candidates
-    time_col = None
-    for col in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[col]) or "date" in col.lower() or "time" in col.lower():
-            time_col = col
-            break
+    # 1) Regression & Classification
+    if target_column in df.columns:
+        series = df[target_column].dropna()
+        unique = series.nunique()
+        is_num = np.issubdtype(series.dtype, np.number)
 
-    if time_col:
-        model_type = "Time Series Analysis"
-        suggestions.append({
-            "model_type": model_type,
-            "icon": "⏳",
-            "description": f"Detected time-related column: '{time_col}'",
-            "priority": "high" if target_column else "medium",
-            "endpoint": "/api/forecast",
-            "requirements": {
-                "suggested_target": target_column or "value",
-                "target_column": target_column or "value"
-            },
-            "use_cases": ["Demand Forecasting", "Trend Prediction"]
-        })
-        added_model_types.add(model_type)
+        if is_num and unique >= 10:
+            p, r = score_and_reason("regression", needs_target=True)
+            suggestions.append({
+                "model_type": "Regression Model",
+                "icon": "📈",
+                "description": f"Forecast numeric outcomes like sales or costs. {r}",
+                "priority": p,
+                "endpoint": "regression",
+                "requirements": {"target_column": target_column},
+                "use_cases": ["Revenue Forecast", "Cost Prediction"]
+            })
+            added.add("regression")
 
-    # Always include these baseline/general models if not added
-    general_models = [
-        {
-            "model_type": "KMeans Clustering",
-            "icon": "🔗",
-            "description": "No target column needed. Clusters your dataset by similarity.",
-            "endpoint": "/api/clustering",
-            "requirements": {
-                "suggested_target": "auto_detect",
-                "target_column": "none"
-            },
-            "use_cases": ["Customer Segmentation", "Pattern Discovery"]
-        },
-        {
-            "model_type": "Survival Analysis",
-            "icon": "⚕️",
-            "description": "Handles time-to-event data (e.g., churn, failure, dropout).",
-            "endpoint": "/api/survival",
-            "requirements": {
-                "suggested_target": target_column or "event",
-                "target_column": target_column or "event"
-            },
-            "use_cases": ["Churn Modeling", "Time-to-Failure"]
-        },
-        {
-            "model_type": "Counterfactual Analysis",
-            "icon": "🔄",
-            "description": "Explore what-if scenarios and causal relationships.",
-            "endpoint": "/api/counterfactual",
-            "requirements": {
-                "suggested_target": target_column or "outcome",
-                "target_column": target_column or "outcome"
-            },
-            "use_cases": ["Policy Testing", "A/B Analysis"]
-        },
-        {
-            "model_type": "Customer Segments",
-            "icon": "📊",
-            "description": "Uncover behavioral clusters and optimize marketing.",
-            "endpoint": "/api/segment_analysis",
-            "requirements": {
-                "suggested_target": "auto_detect",
-                "target_column": "n/a"
-            },
-            "use_cases": ["Retention", "Persona Discovery"]
-        },
-        {
-            "model_type": "Deep Learning Model",
-            "icon": "🧠",
-            "description": "Complex nonlinear pattern detection using neural networks.",
-            "endpoint": "/api/deep_learning",
-            "requirements": {
-                "suggested_target": target_column or "auto_detect",
-                "target_column": target_column or "auto_detect"
-            },
-            "use_cases": ["Image/NLP", "High-Dimensional Modeling"]
-        }
-    ]
+        if (not is_num) or unique < 10:
+            p, r = score_and_reason("classification", needs_target=True)
+            suggestions.append({
+                "model_type": "Classification Model",
+                "icon": "🎯",
+                "description": f"Group records into categories (e.g. high/low risk, Churn/No Churn). {r}",
+                "priority": p,
+                "endpoint": "classification",
+                "requirements": {"target_column": target_column},
+                "use_cases": ["Churn Flagging", "Risk Segmentation"]
+            })
+            added.add("classification")
+            classification_priority = p
 
-    # Add remaining general models with default low priority
-    for model in general_models:
-        if model["model_type"] not in added_model_types:
-            model["priority"] = "low"
-            suggestions.append(model)
+    # 2) Clustering
+    p_cl, r_cl = score_and_reason("clustering")
+    suggestions.append({
+        "model_type": "Clustering",
+        "icon": "🧩",
+        "description": f"Discover natural groupings in your data. {r_cl}",
+        "priority": p_cl,
+        "endpoint": "clustering",
+        "requirements": {"drop_columns": []},
+        "use_cases": ["Customer Segmentation", "Pattern Discovery"]
+    })
+    added.add("clustering")
+
+    # 3) Time Series (always include)
+    p_ts, r_ts = score_and_reason("time-series-analysis", needs_time=True)
+    suggestions.append({
+        "model_type": "Time Series Analysis",
+        "icon": "⏳",
+        "description": f"Project trends & seasonality over time. {r_ts}",
+        "priority": p_ts,
+        "endpoint": "time-series-analysis",
+        "requirements": {"time_column": time_col or "<select>", "target_column": target_column or "<select>"},
+        "use_cases": ["Traffic Forecast", "Seasonal Planning"]
+    })
+    added.add("time-series-analysis")
+
+    # 4) What-If Bulk
+    p_wi, r_wi = score_and_reason("what-if-bulk")
+    suggestions.append({
+        "model_type": "What-If Bulk",
+        "icon": "📝",
+        "description": f"Test bulk scenario changes at scale. {r_wi}",
+        "priority": p_wi,
+        "endpoint": "what_if",
+        "requirements": {"target_column": target_column or "<select>"},
+        "use_cases": ["Scenario Simulation"]
+    })
+    added.add("what-if-bulk")
+
+    # 5) Counterfactual
+    p_cf, r_cf = score_and_reason("counterfactual")
+    suggestions.append({
+        "model_type": "Counterfactual Analysis",
+        "icon": "🔄",
+        "description": f"Find smallest changes to reach a different outcome. {r_cf}",
+        "priority": p_cf,
+        "endpoint": "counterfactual",
+        "requirements": {"target_column": target_column or "<select>"},
+        "use_cases": ["Policy Testing", "A/B Analysis"]
+    })
+    added.add("counterfactual")
+
+    # 6) A/B Test
+    p_ab, r_ab = score_and_reason("ab-test")
+    suggestions.append({
+        "model_type": "A/B Test",
+        "icon": "⚗️",
+        "description": f"Compare two variants (A vs. B). {r_ab}",
+        "priority": p_ab,
+        "endpoint": "ab_test",
+        "requirements": {"variant_column": "<specify>"},
+        "use_cases": ["Email Testing", "Feature Rollout"]
+    })
+    added.add("ab-test")
+
+    # 7) Segments
+    p_se, r_se = score_and_reason("segments")
+    suggestions.append({
+        "model_type": "Customer Segments",
+        "icon": "👥",
+        "description": f"Identify distinct customer groups. {r_se}",
+        "priority": p_se,
+        "endpoint": "segments",
+        "requirements": {},
+        "use_cases": ["Targeted Campaigns"]
+    })
+    added.add("segments")
+
+    # 8) Decision Paths
+    if classification_priority == "high":
+        p_dp = "high"
+        r_dp = "High priority: classification is high-priority, so decision paths are too."
+    else:
+        p_dp, r_dp = score_and_reason("decision-paths", needs_target=True)
+    suggestions.append({
+        "model_type": "Decision Paths",
+        "icon": "🛣️",
+        "description": f"Reveal key rules & thresholds. {r_dp}",
+        "priority": p_dp,
+        "endpoint": "decision-paths",
+        "requirements": {"target_column": target_column or "<select>"},
+        "use_cases": ["Strategy Mapping"]
+    })
+    added.add("decision-paths")
+
+    # 9) Visualize Relationships
+    p_vr, r_vr = score_and_reason("visualize-relationships")
+    suggestions.append({
+        "model_type": "Visualize Relationships",
+        "icon": "📊",
+        "description": f"Spot patterns with simple charts. {r_vr}",
+        "priority": p_vr,
+        "endpoint": "visualize",
+        "requirements": {},
+        "use_cases": ["Correlation Plots"]
+    })
+    added.add("visualize-relationships")
+
+    # 10) Survival Analysis
+    p_sv, r_sv = score_and_reason("survival", needs_target=True, needs_time=True)
+    suggestions.append({
+        "model_type": "Survival Analysis",
+        "icon": "⏳",
+        "description": f"Estimate time-to-event outcomes. {r_sv}",
+        "priority": p_sv,
+        "endpoint": "survival",
+        "requirements": {"event_col": target_column or "<select>", "time_col": time_col or "<select>"},
+        "use_cases": ["Churn Timing", "Failure Prediction"]
+    })
+    added.add("survival")
+
+    # 11) Classification-Predict
+    p_cp, r_cp = score_and_reason("classification-predict", needs_target=True)
+    suggestions.append({
+        "model_type": "Classification Prediction",
+        "icon": "🤖",
+        "description": f"Predict categorical outcomes on new data. {r_cp}",
+        "priority": p_cp,
+        "endpoint": "classification-predict",
+        "requirements": {"target_column": target_column},
+        "use_cases": ["New Data Scoring"]
+    })
+    added.add("classification-predict")
+
+    # 12) Regression-Predict
+    p_rp, r_rp = score_and_reason("regression-predict", needs_target=True)
+    suggestions.append({
+        "model_type": "Regression Prediction",
+        "icon": "🔢",
+        "description": f"Predict numeric outcomes on new data. {r_rp}",
+        "priority": p_rp,
+        "endpoint": "regression-predict",
+        "requirements": {"target_column": target_column},
+        "use_cases": ["New Data Scoring"]
+    })
+    added.add("regression-predict")
 
     return {
         "all_model_options": suggestions,
         "data_shape": df.shape,
         "missing_values": int(df.isnull().sum().sum()),
-        "numeric_columns": int(len(df.select_dtypes(include=['number']).columns)),
-        "categorical_columns": int(len(df.select_dtypes(include=['object', 'category']).columns))
+        "numeric_columns": int(df.select_dtypes(include=['number']).shape[1]),
+        "categorical_columns": int(df.select_dtypes(include=['object','category']).shape[1]),
+        "summary": {
+            "goal_key": summary_goal_key,
+            "goal_label": summary_goal_label,
+            "data_type_key": summary_data_type_key,
+            "data_type_label": summary_data_type_label,
+            "success_criteria": summary_success_criteria,
+            "time_column": time_col
+        }
     }
 
 
@@ -229,62 +333,60 @@ def make_json_serializable(obj):
 @router.post("/suggest-model")
 async def suggest_model(
     file: UploadFile = File(...),
-    target_column: str = Form(default="")
+    target_column: str = Form(default=""),
+    summary_goal_key: str = Form(default=""),
+    summary_goal_label: str = Form(default=""),
+    summary_data_type_key: str = Form(default=""),
+    summary_data_type_label: str = Form(default=""),
+    time_column: str = Form(default=""),              # ← new
+    summary_success_criteria: str = Form(default="")
 ):
     """
     Analyze uploaded dataset and suggest multiple model options with configurations.
-    
-    Args:
-        file: CSV file to analyze
-        target_column: Optional target column name for supervised learning
-        
-    Returns:
-        JSON with primary suggestion, all model options, and data characteristics
+    Now also captures the user’s summary selections and an optional time column.
     """
     try:
-        # Validate file type
         if not file.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="Only CSV files are supported")
-        
-        # Read and parse CSV
+            raise HTTPException(400, "Only CSV files are supported")
+
         contents = await file.read()
         df = pd.read_csv(StringIO(contents.decode("utf-8")))
-        
-        # Basic data validation
+
         if df.empty:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty")
-        
+            raise HTTPException(400, "Uploaded file is empty")
         if len(df.columns) < 2:
-            raise HTTPException(status_code=400, detail="Dataset must have at least 2 columns")
-        
-        # Get model suggestions
-        df = pd.read_csv("your_data.csv")
+            raise HTTPException(400, "Dataset must have at least 2 columns")
+
+        # Your existing preprocessing logic
         df_cleaned, CATS, NUMS = preprocess_data(df, RMV=[])
 
+        # Pass all form fields into your core suggestion logic
+        result = suggest_model_from_df(
+            df_cleaned,
+            target_column=target_column,
+            summary_goal_key=summary_goal_key,
+            summary_goal_label=summary_goal_label,
+            summary_data_type_key=summary_data_type_key,
+            summary_data_type_label=summary_data_type_label,
+            summary_success_criteria=summary_success_criteria,
+            time_column=time_column                   # ← make sure your function signature accepts this
+        )
 
-        result = suggest_model_from_df(df_cleaned, target_column)
-        
-        # Add filename
-        result["filename"] = file.filename
-        
-        # Make sure all values are JSON serializable
-        result = make_json_serializable(result)
-        
-        return JSONResponse(content=result)
-    
+        # Echo back what was sent
+        result["filename"]    = file.filename
+        result["time_column"] = time_column
+
+        return JSONResponse(content=make_json_serializable(result))
+
     except pd.errors.EmptyDataError:
-        raise HTTPException(status_code=400, detail="CSV file is empty or corrupted")
-    
+        raise HTTPException(400, "CSV file is empty or corrupted")
     except pd.errors.ParserError as e:
-        raise HTTPException(status_code=400, detail=f"CSV parsing error: {str(e)}")
-    
+        raise HTTPException(400, f"CSV parsing error: {e}")
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File encoding not supported. Please use UTF-8 encoded CSV")
-    
+        raise HTTPException(400, "File encoding not supported. Please use UTF-8")
     except Exception as e:
-        logging.error(f"Model suggestion error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
+        logging.error(f"Model suggestion error: {e}")
+        raise HTTPException(500, f"Internal server error: {e}")
 @router.post("/ai_recommendations")
 async def get_ai_recommendations(
     file: UploadFile = File(...),
