@@ -383,7 +383,7 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
         cost_data = DATA_PRICE_SCALE * math.log1p(mb_used)
         minutes_used = duration / 60
         cost_time = PRICE_PER_MINUTE * minutes_used
-
+        cost_for_request = round(cost_data + cost_time, 2)
         # Billing update
         OVERDRAFT_LIMIT = -1.0
         db_gen = get_master_db_session()
