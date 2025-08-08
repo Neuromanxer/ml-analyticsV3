@@ -1,573 +1,363 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MLAnalytics - Business Analytics Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Poppins', sans-serif;
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MLAnalytics — Business Analytics Platform</title>
 
-        body {
-            background: linear-gradient(135deg, #e6f7ff 0%, #b3e5fc 100%);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+  <!-- Inter variable (free, fast) -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&display=swap" rel="stylesheet">
 
-        /* Navigation */
-        nav {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            padding: 15px 0;
-            box-shadow: 0 2px 20px rgba(0, 102, 204, 0.1);
-            transition: all 0.3s ease;
-        }
+  <style>
+    /* ========= Design Tokens (light theme) ========= */
+    :root{
+  /* Base (light) */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --elev: #f8fbff;
 
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 20px;
-        }
+  /* Brand */
+  --primary: #0066cc;   /* brand blue */
+  --primary-2: #0099ff; /* cyan-ish partner */
 
-        .logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: #0066cc;
-            text-decoration: none;
-            background: linear-gradient(45deg, #0066cc, #0099ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+  /* Text */
+  --text: #0f1e3a;      /* deep navy body text (good contrast) */
+  --muted: #5a7ea6;     /* secondary copy */
 
-        .nav-menu {
-            display: flex;
-            list-style: none;
-            gap: 30px;
-            align-items: center;
-        }
+  /* UI */
+  --border: #dbe8ff;
+  --ring: 0 0 0 6px rgb(0 102 204 / .15);
+  --radius: 16px;
+  --shadow: 0 10px 30px rgba(16, 64, 120, .12);
+  --maxw: 1200px;
+  --space: clamp(56px, 8vw, 120px);
+}
 
-        .nav-menu a {
-            color: #333;
-            font-size: 14px;
-            font-weight: 500;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            position: relative;
-            padding: 8px 0;
-        }
+    /* ========= Base ========= */
+    * { box-sizing: border-box }
+    html,body{ height:100% }
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    }
+    a{ color:inherit; text-decoration:none }
+    img{ max-width:100%; display:block }
+    .container{ max-width:var(--maxw); margin:0 auto; padding:0 24px }
 
-        .nav-menu a:hover {
-            color: #0066cc;
-            transform: translateY(-2px);
-        }
+    /* ========= Softer ambient glow for white bg ========= */
+    .glow{ position:fixed; inset:0; pointer-events:none; z-index:-1; overflow:hidden }
+    .glow::before{
+      content:""; position:absolute; left:50%; top:35%;
+      width:80vmax; height:80vmax; translate:-50% -50%;
+      background: radial-gradient(closest-side, rgba(90,162,255,.10), transparent 60%),
+                  radial-gradient(closest-side, rgba(110,224,255,.06), transparent 65%);
+      filter: blur(36px); opacity:.85; animation: breath 14s ease-in-out infinite;
+    }
+    @keyframes breath{ 0%,100%{ transform:scale(1) rotate(0) } 50%{ transform:scale(1.05) rotate(6deg) } }
+    @media (prefers-reduced-motion: reduce){ .glow::before{ animation:none } .reveal{ opacity:1 !important; transform:none !important } }
 
-        .nav-menu a::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 0;
-            height: 2px;
-            background: linear-gradient(45deg, #0066cc, #0099ff);
-            transition: width 0.3s ease;
-        }
+    /* ========= Nav ========= */
+    nav{
+      position:sticky; top:0; z-index:50;
+      background: rgba(255,255,255,.9);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .nav-inner{ display:flex; align-items:center; justify-content:space-between; height:64px }
+    .logo{
+      font-weight: 700; letter-spacing:-0.02em; font-size: 20px;
+      background: linear-gradient(90deg, var(--primary), var(--primary-2));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .menu{ display:flex; gap:28px; align-items:center; color:var(--muted) }
+    .menu a{ font-size:14px; transition: opacity .2s ease }
+    .menu a:hover{ opacity:.8 }
+    .cta{
+      padding:10px 16px; font-weight:600; font-size:14px; border-radius:12px;
+      background:linear-gradient(90deg, var(--primary), var(--primary-2));
+      color:#0b0d12; border:none; cursor:pointer; transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .cta:hover{ transform: translateY(-1px); box-shadow: var(--ring) }
 
-        .nav-menu a:hover::after {
-            width: 100%;
-        }
+    /* ========= Hero ========= */
+    .hero{ padding: clamp(56px, 8vw, 96px) 0 var(--space); position:relative }
+    .eyebrow{
+      display:inline-flex; gap:8px; align-items:center;
+      color:var(--muted); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+      background: #f0f7ff; border:1px solid var(--border); border-radius:999px; padding:8px 12px;
+    }
+    /* Make hero headline use the brand gradient */
+h1{
+  margin:14px 0 12px; line-height:1.05; font-weight:800;
+  font-size: clamp(40px, 6vw, 64px); letter-spacing:-0.02em;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
 
-        button {
-            border-radius: 25px;
-            border: 2px solid #0099ff;
-            background: linear-gradient(45deg, #0099ff, #0066cc);
-            color: #FFFFFF;
-            font-size: 12px;
-            font-weight: bold;
-            padding: 12px 30px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-        }
+/* Section headings slightly bolder + navy by default */
+.section-title{ color: var(--text) }
 
-        button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s ease;
-        }
+/* Card titles in brand blue; body copy stays muted */
+.card h3{ color: var(--primary) }
+.card p, .lead, .menu{ color: var(--muted) }
 
-        button:hover::before {
-            left: 100%;
-        }
+/* Buttons keep gradient; secondary stays outlined */
+/* --- Gradient primary buttons: white text everywhere --- */
+.btn--primary,
+.cta,
+.purchase-btn,
+.select-plan-btn {
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  color: #fff !important;             /* was #0b0d12 */
+  border: none;
+  text-shadow: 0 1px 0 rgba(0,0,0,.12); /* subtle readability boost */
+}
 
-        button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(0, 153, 255, 0.4);
-        }
+/* Hover / focus states */
+.btn--primary:hover,
+.cta:hover,
+.purchase-btn:hover,
+.select-plan-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 102, 204, .35);
+}
 
-        /* Hero Section */
-        .hero {
-            margin-top: 80px;
-            min-height: 90vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
+.btn--primary:focus-visible,
+.cta:focus-visible,
+.purchase-btn:focus-visible,
+.select-plan-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,.9),
+    0 0 0 6px rgba(0,102,204,.35);
+}
 
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="200" cy="200" r="3" fill="%230099ff" opacity="0.3"><animate attributeName="opacity" values="0.3;0.8;0.3" dur="3s" repeatCount="indefinite"/></circle><circle cx="800" cy="300" r="2" fill="%230066cc" opacity="0.4"><animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite"/></circle><circle cx="400" cy="700" r="4" fill="%230099ff" opacity="0.2"><animate attributeName="opacity" values="0.2;0.7;0.2" dur="4s" repeatCount="indefinite"/></circle></svg>');
-            animation: float 20s infinite linear;
-        }
+/* Make any icons inside stay white too */
+.btn--primary svg,
+.cta svg,
+.purchase-btn svg,
+.select-plan-btn svg {
+  fill: #fff;
+  stroke: #fff;
+}
 
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-            100% { transform: translateY(0px); }
-        }
+/* Disabled (optional) */
+.btn--primary:disabled,
+.cta:disabled,
+.purchase-btn:disabled,
+.select-plan-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
 
-        .hero-content {
-            max-width: 800px;
-            padding: 0 20px;
-            z-index: 1;
-            position: relative;
-        }
+.btn{ color: var(--text) }
 
-        h1 {
-            font-weight: 700;
-            font-size: 4rem;
-            margin: 0 0 20px 0;
-            color: #0066cc;
-            background: linear-gradient(45deg, #0066cc, #0099ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: slideInUp 1s ease-out;
-        }
+/* Softer stat cards */
+.stat h3{ color: var(--primary) }
+.stat p{ color: var(--muted) }
 
-        @keyframes slideInUp {
-            from {
-                opacity: 0;
-                transform: translateY(50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+    .lead{
+      color:var(--muted); max-width:720px; font-size: clamp(16px, 2vw, 20px); line-height:1.6;
+    }
+    .hero-ctas{ display:flex; gap:12px; margin-top:24px; flex-wrap:wrap }
+    .btn{
+      padding:14px 20px; border-radius:14px; border:1px solid var(--border);
+      background: var(--elev); color:var(--text); font-weight:600; cursor:pointer;
+      transition: transform .2s ease, background .2s ease, color .2s ease, box-shadow .2s ease;
+    }
+    .btn:hover{ transform: translateY(-1px); background:#eef6ff; box-shadow: var(--ring) }
+    .btn--primary{
+      background:linear-gradient(90deg, var(--primary), var(--primary-2));
+      color:#0b0d12; border:none;
+    }
 
-        .hero h2 {
-            font-size: 1.5rem;
-            color: #333;
-            margin-bottom: 30px;
-            font-weight: 400;
-            animation: slideInUp 1s ease-out 0.2s both;
-        }
+    /* ========= Trust (logo marquee) ========= */
+    .trust{ margin-top:40px }
+    .track{
+      display:flex; gap:48px; white-space:nowrap; will-change: transform;
+      animation: marquee 28s linear infinite;
+    }
+    .track span{ color:var(--muted) }
+    .marquee-mask{
+      mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+      -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+      overflow:hidden;
+    }
+    @keyframes marquee{ from{ transform: translateX(0) } to{ transform: translateX(-50%) } }
 
-        .hero p {
-            font-size: 18px;
-            font-weight: 300;
-            line-height: 1.8;
-            letter-spacing: 0.5px;
-            margin: 30px 0 50px;
-            color: #555;
-            animation: slideInUp 1s ease-out 0.4s both;
-        }
+    /* ========= Sections / cards ========= */
+    section{ padding: var(--space) 0 }
+    .section-title{
+      text-align:center; font-size: clamp(28px, 4vw, 40px); font-weight:700; letter-spacing:-0.01em;
+    }
+    .muted{ color:var(--muted) }
 
-        .cta-buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-            animation: slideInUp 1s ease-out 0.6s both;
-        }
+    .grid{
+      display:grid; gap:20px; margin-top:32px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card{
+      background: var(--surface);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding:24px;
+      box-shadow: 0 1px 0 rgb(0 0 0 / .02) inset;
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+    }
+    .card:hover{ transform: translateY(-3px); box-shadow: var(--shadow); border-color:#cfe3ff; background:#f9fcff }
+    .card h3{ margin:0 0 6px; font-size:18px }
+    .card p{ margin:0; color:var(--muted); line-height:1.6 }
 
-        .btn-primary {
-            background: linear-gradient(45deg, #0099ff, #0066cc);
-            border: none;
-            padding: 15px 40px;
-            font-size: 14px;
-        }
+    /* ========= Stats ========= */
+    .stats{
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(90,162,255,.10), transparent 60%) no-repeat,
+        radial-gradient(1000px 600px at 80% 120%, rgba(110,224,255,.08), transparent 60%) no-repeat,
+        var(--bg);
+      border-top:1px solid var(--border);
+      border-bottom:1px solid var(--border);
+      text-align:center;
+    }
+    .stats-grid{
+      display:grid; gap:24px; margin-top:28px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .stat{ background:var(--elev); border:1px solid var(--border); border-radius:14px; padding:22px }
+    .stat h3{ margin:0; font-size:32px; font-weight:750 }
+    .stat p{ margin:6px 0 0; color:var(--muted) }
 
-        .btn-secondary {
-            background: transparent;
-            border: 2px solid #0099ff;
-            color: #0099ff;
-            padding: 15px 40px;
-            font-size: 14px;
-        }
+    /* ========= Reveal on scroll ========= */
+    .reveal{ opacity:0; transform: translateY(16px); transition: opacity .55s ease, transform .55s ease }
+    .reveal.is-visible{ opacity:1; transform:none }
 
-        .btn-secondary:hover {
-            background: #0099ff;
-            color: white;
-        }
-
-        /* Features Section */
-        .features {
-            padding: 100px 0;
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        .features h2 {
-            text-align: center;
-            font-size: 2.5rem;
-            color: #0066cc;
-            margin-bottom: 60px;
-            font-weight: 600;
-        }
-
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 40px;
-            margin-top: 60px;
-        }
-
-        .feature-card {
-            background: white;
-            padding: 40px 30px;
-            border-radius: 20px;
-            text-align: center;
-            box-shadow: 0 10px 40px rgba(0, 102, 204, 0.1);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(45deg, #0099ff, #0066cc);
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
-        }
-
-        .feature-card:hover::before {
-            transform: scaleX(1);
-        }
-
-        .feature-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 20px 60px rgba(0, 102, 204, 0.2);
-        }
-
-        .feature-icon {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(45deg, #0099ff, #0066cc);
-            border-radius: 50%;
-            margin: 0 auto 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
-        }
-
-        .feature-card h3 {
-            font-size: 1.5rem;
-            color: #0066cc;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
-        .feature-card p {
-            color: #666;
-            line-height: 1.6;
-            margin: 0;
-        }
-
-        /* Stats Section */
-        .stats {
-            padding: 80px 0;
-            background: linear-gradient(135deg, #0066cc, #0099ff);
-            color: white;
-            text-align: center;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 40px;
-            margin-top: 40px;
-        }
-
-        .stat-item h3 {
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        .stat-item p {
-            font-size: 16px;
-            opacity: 0.9;
-            margin: 0;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .nav-menu {
-                display: none;
-            }
-
-            h1 {
-                font-size: 2.5rem;
-            }
-
-            .hero h2 {
-                font-size: 1.2rem;
-            }
-
-            .cta-buttons {
-                flex-direction: column;
-                align-items: center;
-            }
-
-            .feature-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Animations */
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-
-        /* Scroll animations */
-        .fade-in {
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.6s ease;
-        }
-
-        .fade-in.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    </style>
+    /* ========= Responsive nav ========= */
+    @media (max-width: 820px){
+      .menu{ display:none }
+    }
+  </style>
 </head>
+
 <body>
-    <!-- Navigation -->
-    <nav>
-        <div class="nav-container">
-            <a href="index.html" class="logo">MLAnalytics</a>
-            <ul class="nav-menu">
-                <li><a href="index.html">Home</a></li>
-                <li><a href="pricing.html">Pricing</a></li>
-                <li><a href="models.html">Analytics Tools</a></li>
-                <li><a href="login.html">Sign Up</a></li>
-                <li><a href="login.html">Login</a></li>
-            </ul>
-        </div>
-    </nav>
+  <!-- Ambient glow -->
+  <div class="glow" aria-hidden="true"></div>
 
-    <!-- Hero Section -->
-    <section class="hero" id="home">
-        <div class="hero-content">
-            <h1>Be Your Own Data Scientist</h1>
-            <h2>Turn Your Data Into Actionable Business Insights</h2>
-            <p>MLAnalytics helps business owners understand their customers better, identify growth opportunities, and make informed decisions. Get clear analytics that actually help you increase traffic and build customer loyalty.</p>
-            <div class="cta-buttons">
-                <button class="btn-primary">Start Your Analysis</button>
-                <button class="btn-secondary">See How It Works</button>
-            </div>
-        </div>
-    </section>
+  <!-- Nav -->
+  <nav>
+    <div class="container nav-inner">
+      <a class="logo" href="#home">MLAnalytics</a>
+      <div class="menu" role="navigation" aria-label="Primary">
+        <a href="index.html">Home</a>
+        <a href="models.html">Models</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="login.html">Sign Up</a>
+        <a href="login.html">Login</a>
+      </div>
+    </div>
+  </nav>
 
-    <!-- Features Section -->
-    <section class="features">
-        <div class="container">
-            <h2>Built for Business Owners Who Want Results</h2>
-            <div class="feature-grid">
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">📊</div>
-                    <h3>Customer Behavior Analysis</h3>
-                    <p>Understand how customers interact with your business. Identify patterns that lead to purchases and loyalty.</p>
-                </div>
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">📈</div>
-                    <h3>Revenue Growth Insights</h3>
-                    <p>Find opportunities to increase sales and identify what's working best for your business right now.</p>
-                </div>
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">🎯</div>
-                    <h3>Traffic Optimization</h3>
-                    <p>Learn where your best customers come from and how to attract more of them to your business.</p>
-                </div>
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">🔄</div>
-                    <h3>Customer Retention</h3>
-                    <p>Discover what keeps customers coming back and how to turn one-time buyers into loyal customers.</p>
-                </div>
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">⚡</div>
-                    <h3>Quick Reports</h3>
-                    <p>Get meaningful insights in minutes, not hours. Focus on running your business, not analyzing spreadsheets.</p>
-                </div>
-                <div class="feature-card fade-in">
-                    <div class="feature-icon">💡</div>
-                    <h3>Practical Recommendations</h3>
-                    <p>Receive specific, actionable suggestions based on your data - no confusing jargon or complex charts.</p>
-                </div>
-            </div>
-        </div>
-    </section>
+  <!-- Hero -->
+  <header id="home" class="hero container">
+    <span class="eyebrow reveal">Beta access • No setup headaches</span>
+    <h1 class="reveal" style="transition-delay: .05s">Be Your Own Data Scientist</h1>
+    <p class="lead reveal" style="transition-delay: .1s">
+      Turn messy spreadsheets into <strong>actionable insights</strong>. Forecast outcomes, spot inefficiencies,
+      and get plain-English recommendations—fast.
+    </p>
+    <div class="hero-ctas reveal" style="transition-delay:.15s">
+      <button class="btn btn--primary" type="button">Start your analysis</button>
+      <button class="btn" type="button" onclick="document.querySelector('#how').scrollIntoView({behavior:'smooth'})">See how it works</button>
+    </div>
 
-    <!-- Stats Section -->
-    <section class="stats">
-        <div class="container">
-            <h2>Currently in Beta Testing </h2>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <h3>100+</h3>
-                    <p>Test Reports Generated</p>
-                </div>
-                <div class="stat-item">
-                    <h3>Early Access</h3>
-                    <p>Help Shape the Platform</p>
-                </div>
-                <div class="stat-item">
-                    <h3>Simple Setup</h3>
-                    <p>Connect Your Data Sources</p>
-                </div>
-                <div class="stat-item">
-                    <h3>Real Results</h3>
-                    <p>Insights You Can Use Today</p>
-                </div>
-            </div>
-        </div>
-    </section>
+    <!-- Trust row -->
+    <div class="trust marquee-mask reveal" style="transition-delay:.2s">
+      <div class="track" aria-label="Trusted by logos">
+        <span>Acme</span><span>Watershed</span><span>Base44</span><span>Warner</span><span>Stride</span><span>Glance</span>
+        <span>Acme</span><span>Watershed</span><span>Base44</span><span>Warner</span><span>Stride</span><span>Glance</span>
+      </div>
+    </div>
+  </header>
 
-    <script>
-        // Smooth scrolling for navigation links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
-            });
-        });
+  <!-- Features -->
+  <section id="features" class="container">
+    <h2 class="section-title reveal">Built for teams that want results</h2>
+    <p class="muted reveal" style="text-align:center; max-width:720px; margin:10px auto 0">
+      Clear dashboards, sharp recommendations, and fast iteration—without hiring a data team.
+    </p>
 
-        // Navbar scroll effect
-        window.addEventListener('scroll', () => {
-            const nav = document.querySelector('nav');
-            if (window.scrollY > 50) {
-                nav.style.background = 'rgba(255, 255, 255, 0.98)';
-                nav.style.boxShadow = '0 2px 30px rgba(0, 102, 204, 0.15)';
-            } else {
-                nav.style.background = 'rgba(255, 255, 255, 0.95)';
-                nav.style.boxShadow = '0 2px 20px rgba(0, 102, 204, 0.1)';
-            }
-        });
+    <div class="grid" style="margin-top:36px">
+      <article class="card reveal"><h3>Customer behavior</h3><p>Find patterns that drive purchases and loyalty.</p></article>
+      <article class="card reveal" style="transition-delay:.03s"><h3>Revenue insights</h3><p>See what’s working now and where to double down.</p></article>
+      <article class="card reveal" style="transition-delay:.06s"><h3>Traffic optimization</h3><p>Identify your highest-value channels—backed by data.</p></article>
+      <article class="card reveal" style="transition-delay:.09s"><h3>Retention</h3><p>Turn one-time buyers into repeat customers.</p></article>
+      <article class="card reveal" style="transition-delay:.12s"><h3>Instant reports</h3><p>Useful summaries in minutes, not hours.</p></article>
+      <article class="card reveal" style="transition-delay:.15s"><h3>Plain-English recs</h3><p>No jargon. Just specific steps to act on today.</p></article>
+    </div>
+  </section>
 
-        // Intersection Observer for fade-in animations
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
+  <!-- How it works -->
+  <section id="how" class="container">
+    <h2 class="section-title reveal">From upload to insight in three steps</h2>
+    <div class="grid" style="margin-top:32px">
+      <article class="card reveal"><h3>1) Import</h3><p>Connect a CSV or sheet. We auto-detect types and clean the data.</p></article>
+      <article class="card reveal" style="transition-delay:.05s"><h3>2) Analyze</h3><p>We run models and highlight the few metrics that matter.</p></article>
+      <article class="card reveal" style="transition-delay:.1s"><h3>3) Act</h3><p>Get prioritized, business-friendly recommendations.</p></article>
+    </div>
+  </section>
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
-            });
-        }, observerOptions);
+  <!-- Stats -->
+  <section id="stats" class="stats">
+    <div class="container">
+      <h2 class="section-title reveal">Currently in Beta Testing</h2>
+      <div class="stats-grid" style="margin-top:32px">
+        <div class="stat reveal"><h3>100+</h3><p>Test reports generated</p></div>
+        <div class="stat reveal" style="transition-delay:.05s"><h3>Early access</h3><p>Help shape the platform</p></div>
+        <div class="stat reveal" style="transition-delay:.1s"><h3>Simple setup</h3><p>Connect your data sources</p></div>
+        <div class="stat reveal" style="transition-delay:.15s"><h3>Real results</h3><p>Insights you can use today</p></div>
+      </div>
+    </div>
+  </section>
 
-        document.querySelectorAll('.fade-in').forEach(el => {
-            observer.observe(el);
-        });
-
-        // Add some interactive hover effects
-        document.querySelectorAll('.feature-card').forEach(card => {
-            card.addEventListener('mouseenter', () => {
-                card.style.transform = 'translateY(-10px) scale(1.02)';
-            });
-            
-            card.addEventListener('mouseleave', () => {
-                card.style.transform = 'translateY(0) scale(1)';
-            });
-        });
-
-        // Dynamic background particles
-        function createParticle() {
-            const particle = document.createElement('div');
-            particle.style.position = 'fixed';
-            particle.style.width = Math.random() * 4 + 2 + 'px';
-            particle.style.height = particle.style.width;
-            particle.style.background = Math.random() > 0.5 ? '#0099ff' : '#0066cc';
-            particle.style.borderRadius = '50%';
-            particle.style.left = Math.random() * 100 + '%';
-            particle.style.top = '100%';
-            particle.style.opacity = Math.random() * 0.5 + 0.2;
-            particle.style.pointerEvents = 'none';
-            particle.style.zIndex = '0';
-            
-            document.body.appendChild(particle);
-            
-            const animation = particle.animate([
-                { transform: 'translateY(0px)', opacity: particle.style.opacity },
-                { transform: 'translateY(-100vh)', opacity: 0 }
-            ], {
-                duration: Math.random() * 3000 + 2000,
-                easing: 'linear'
-            });
-            
-            animation.onfinish = () => particle.remove();
+  <script>
+    // Smooth scroll for in-page anchors only
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{
+      a.addEventListener('click', e=>{
+        const id = a.getAttribute('href');
+        const target = id && document.querySelector(id);
+        if (target){
+          e.preventDefault();
+          target.scrollIntoView({behavior:'smooth', block:'start'});
         }
+      });
+    });
 
-        // Create particles periodically
-        setInterval(createParticle, 300);
-    </script>
+    // Reveal on scroll
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduce && 'IntersectionObserver' in window){
+      const io = new IntersectionObserver((entries)=>{
+        for (const entry of entries){
+          if (entry.isIntersecting){
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        }
+      }, { rootMargin: '0px 0px -10% 0px', threshold: 0.1 });
+
+      document.querySelectorAll('.reveal').forEach(el=> io.observe(el));
+    } else {
+      document.querySelectorAll('.reveal').forEach(el=> el.classList.add('is-visible'));
+    }
+
+    // Pause marquee on hover and for reduced motion
+    const track = document.querySelector('.track');
+    if (track){
+      track.addEventListener('mouseenter', ()=> track.style.animationPlayState = 'paused');
+      track.addEventListener('mouseleave', ()=> track.style.animationPlayState = 'running');
+      if (reduce) track.style.animation = 'none';
+    }
+  </script>
 </body>
 </html>

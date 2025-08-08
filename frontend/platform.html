@@ -2,517 +2,595 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ML Analytics Platform</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,200&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap" rel="stylesheet" />
+
+  <!-- Icons (optional; you can remove if unused) -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"/>
+
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Poppins', sans-serif;
+    /* ========== Design Tokens ========== */
+    :root {
+      --bg: #0b0f14;          /* page background */
+      --surface: #0f1620;     /* nav/footer surface */
+      --card: #101820;        /* cards */
+      --border: #1f2937;
+      --text: #e7eef7;        /* primary text */
+      --muted: #9aa4b2;       /* secondary text */
+      --accent: #60a5fa;      /* brand accent (blue) */
+      --accent-2: #22d3ee;    /* cyan highlight */
+      --ring: 0 0 0 6px rgba(96,165,250,.2);
+      --radius: 14px;
+
+      --shadow-sm: 0 6px 20px rgba(0,0,0,.25);
+      --shadow-lg: 0 24px 60px rgba(0,0,0,.45);
+
+      --space-1: 8px;
+      --space-2: 12px;
+      --space-3: 16px;
+      --space-4: 20px;
+      --space-5: 28px;
+      --space-6: 36px;
+      --space-7: 48px;
+      --space-8: 72px;
     }
-    
+
+    /* ========== Base ========== */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      background-color: #e6f7ff; /* Light blue background */
+      margin: 0;
+      color: var(--text);
+      background: radial-gradient(1200px 600px at 70% 10%, rgba(34,211,238,.08), transparent 60%),
+                  radial-gradient(900px 500px at 10% 20%, rgba(96,165,250,.08), transparent 60%),
+                  var(--bg);
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
-    
+
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
     .container {
-      max-width: 1300px;
-      margin: auto;
-      padding-left: 25px;
-      padding-right: 25px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 var(--space-4);
     }
-    
+
+    /* ========== Header / Nav ========== */
     .navbar {
-      display: flex;
-      align-items: center;
-      padding: 20px;
-      background-color: white;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-      border-bottom-left-radius: 10px;
-      border-bottom-right-radius: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: saturate(130%) blur(8px);
+      background: color-mix(in srgb, var(--surface) 75%, transparent);
+      border-bottom: 1px solid var(--border);
     }
-    
-    nav {
-      flex: 1;
-      text-align: right;
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 70px;
     }
-    
-    nav ul {
-      display: inline-block;
-      list-style-type: none;
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; letter-spacing: -0.02em;
     }
-    
-    nav ul li {
-      display: inline-block;
-      margin-right: 20px;
+    .logo .dot {
+      width: 10px; height: 10px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 24px rgba(96,165,250,.6);
     }
-    
-    a {
-      text-decoration: none;
-      color: #0066cc;
-    }
-    
-    .logo h1 {
-      color: #0099ff;
-      font-weight: 600;
-    }
-    
-    .logo span {
-      color: #0066cc;
-    }
-    
-    .menu-icon {
-      width: 28px;
-      margin-left: 20px;
-      display: none;
-    }
-    
-    /* Main content area */
-    .row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: space-around;
-      margin-top: 30px;
-    }
-    
-    .col-2 {
-      flex-basis: 50%;
-      min-width: 300px;
-    }
-    
-    .col-2 img {
-      max-width: 100%;
-      padding: 50px 0;
-    }
-    
-    .col-2 h1 {
-      font-size: 50px;
-      line-height: 60px;
-      margin: 25px 0;
-      color: #0066cc;
-    }
-    
-    .col-2 p {
-      color: #555;
-      margin-bottom: 20px;
-    }
-    
+    nav ul { display: flex; gap: var(--space-5); list-style: none; }
+    nav a { color: var(--muted); font-weight: 500; }
+    nav a:hover { color: var(--text); }
+    .cta-row { display: flex; gap: var(--space-3); align-items: center; }
+
     .btn {
-      display: inline-block;
-      background: #0099ff;
-      color: #fff;
-      padding: 8px 30px;
-      margin: 30px 0;
-      border-radius: 30px;
-      transition: background 0.5s;
+      --btn-bg: var(--text);
+      --btn-color: #0b0f14;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--btn-bg);
+      color: var(--btn-color);
+      font-weight: 600;
+      border: 1px solid transparent;
+      transition: transform .15s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease;
       cursor: pointer;
-      border: none;
+      text-decoration: none;
+      will-change: transform;
     }
-    
-    .btn:hover {
-      background: #0066cc;
+    .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .btn.secondary {
+      --btn-bg: transparent;
+      --btn-color: var(--text);
+      border-color: var(--border);
     }
-    
-    /* Feature boxes */
-    .categories {
-      margin: 70px 0;
+    .btn.secondary:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--text)); }
+
+    .menu-icon {
+      display: none;
+      width: 40px; height: 40px; border-radius: 10px;
+      border: 1px solid var(--border); color: var(--text);
+      align-items: center; justify-content: center;
+      background: transparent; cursor: pointer;
     }
-    
+
+    /* ========== Hero ========== */
+    .hero {
+      padding: var(--space-8) 0 var(--space-7);
+      position: relative;
+      overflow: clip;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: var(--space-7);
+      align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--muted); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+      font-size: 12px;
+    }
+    .eyebrow .badge {
+      width: 7px; height: 7px; border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 16px rgba(34,211,238,.5);
+    }
+    .hero h1 {
+      margin: var(--space-3) 0 var(--space-3);
+      font-size: clamp(34px, 6.4vw, 64px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: clamp(16px, 2.2vw, 20px);
+      max-width: 56ch;
+    }
+    .hero-cta { margin-top: var(--space-5); display: flex; gap: var(--space-3); align-items: center; }
+
+    .hero-preview {
+      position: relative;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(96,165,250,.06), rgba(34,211,238,.04)), var(--card);
+      border-radius: var(--radius);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-lg);
+      isolation: isolate;
+    }
+    .hero-preview:before {
+      content: "";
+      position: absolute; inset: -20%; z-index: -1;
+      background: radial-gradient(closest-side, rgba(96,165,250,.15), transparent 65%);
+      filter: blur(40px);
+      animation: breathe 14s ease-in-out infinite;
+      transform-origin: 20% 30%;
+    }
+    @keyframes breathe {
+      0%,100% { transform: scale(1) rotate(0deg); opacity: .6; }
+      50% { transform: scale(1.05) rotate(6deg); opacity: .9; }
+    }
+    .preview-img {
+      aspect-ratio: 3/2; width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(135deg, rgba(96,165,250,.18), rgba(34,211,238,.12)),
+        url("/api/placeholder/600/400") center/cover no-repeat;
+      box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    }
+
+    /* ========== Trust Logos Marquee ========== */
+    .marquee-wrap {
+      margin-top: var(--space-7);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+      mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+      overflow: hidden;
+    }
+    .marquee {
+      display: flex; gap: var(--space-7);
+      white-space: nowrap;
+      animation: scroll 28s linear infinite;
+    }
+    .marquee span {
+      color: var(--muted);
+      opacity: .85;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    @keyframes scroll {
+      to { transform: translateX(-50%); }
+    }
+
+    /* ========== Sections ========== */
+    section { padding: var(--space-8) 0; }
+    .section-title {
+      font-size: clamp(24px, 3.6vw, 36px);
+      letter-spacing: -0.015em;
+      margin-bottom: var(--space-5);
+    }
+    .muted { color: var(--muted); }
+
+    /* Features grid */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: var(--space-5);
+    }
     .feature-box {
-      border-radius: 10px;
-      flex-basis: 30%;
-      min-width: 250px;
-      margin-bottom: 30px;
-      text-align: center;
-      padding: 30px 20px;
-      box-shadow: 0 0 20px 0px rgba(0, 0, 0, 0.1);
-      background-color: white;
-      transition: transform 0.5s;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-5);
+      transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
     }
-    
-    .feature-box:hover {
-      transform: translateY(-10px);
+    .feature-box:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--border) 40%, var(--text)); box-shadow: var(--shadow-sm); }
+    .feature-box h3 { margin: 10px 0 8px; letter-spacing: -0.01em; }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      display: grid; place-items: center;
+      color: #0b0f14;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 8px 26px rgba(34,211,238,.35);
+      font-weight: 900;
     }
-    
-    .feature-box img {
-      width: 50px;
-      margin-bottom: 10px;
+
+    /* Demo section */
+    .demo-grid {
+      display: grid; gap: var(--space-5);
+      grid-template-columns: 1fr 1fr;
+      align-items: start;
     }
-    
-    .feature-box h3 {
-      color: #0066cc;
-      margin-bottom: 10px;
+    .chart-container, .form-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-sm);
     }
-    
-    /* Form styling */
-    .form-container {
-      background: #fff;
+    .chart {
+      width: 100%; aspect-ratio: 2.2/1; border-radius: 10px;
+      border: 1px dashed var(--border);
+      background: linear-gradient(180deg, rgba(96,165,250,.06), transparent);
+    }
+
+    form { display: grid; gap: var(--space-3); }
+    select, input[type="file"], input[type="text"], input[type="password"] {
       width: 100%;
-      height: 100%;
-      position: relative;
-      text-align: center;
-      padding: 20px 0;
-      margin: auto;
-      box-shadow: 0 0 20px 0px rgba(0, 0, 0, 0.1);
-      border-radius: 10px;
+      background: #0d141b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 14px; border-radius: 10px;
+      transition: border-color .2s ease, box-shadow .2s ease;
     }
-    
-    form {
-      max-width: 300px;
-      margin: auto;
-      padding: 20px 0;
-    }
-    
-    form input {
-      width: 100%;
-      height: 40px;
-      margin: 10px 0;
-      padding: 0 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-    
-    form select {
-      width: 100%;
-      height: 40px;
-      margin: 10px 0;
-      padding: 0 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-    
-    .form-btn {
-      display: inline-block;
-    }
-    
-    .form-btn span {
-      padding: 0 20px;
-      cursor: pointer;
-      background: transparent;
-      border: 0;
-      outline: none;
-      position: relative;
-      color: #0066cc;
-    }
-    
+    select:focus, input:focus { outline: none; border-color: color-mix(in srgb, var(--border) 40%, var(--text)); box-shadow: var(--ring); }
+
     /* Footer */
     .footer {
-      background: #0066cc;
-      color: #fff;
-      font-size: 14px;
-      padding: 60px 0 20px;
-      margin-top: 80px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      margin-top: var(--space-8);
+      padding: var(--space-7) 0 var(--space-6);
     }
-    
-    .footer p {
-      color: #fff;
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      gap: var(--space-5);
     }
-    
-    .footer h3 {
-      color: #fff;
-      margin-bottom: 20px;
+    .footer h4 { margin-bottom: var(--space-3); }
+    .footer ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; color: var(--muted); }
+    .copyright { margin-top: var(--space-6); color: var(--muted); text-align: center; }
+
+    /* ========== Reveal on Scroll ========== */
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.in-view { opacity: 1; transform: translateY(0); }
+
+    /* ========== Responsive ========== */
+    @media (max-width: 1024px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .demo-grid { grid-template-columns: 1fr; }
+      .features { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
-    
-    .footer-col-1, .footer-col-2, .footer-col-3, .footer-col-4 {
-      min-width: 250px;
-      margin-bottom: 20px;
+    @media (max-width: 800px) {
+      nav ul { display: none; position: absolute; left: 0; right: 0; top: 70px; padding: var(--space-4); background: var(--surface); border-bottom: 1px solid var(--border); }
+      nav ul.open { display: grid; gap: 14px; }
+      .menu-icon { display: inline-flex; }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
     }
-    
-    .footer-col-1 {
-      flex-basis: 30%;
+    @media (max-width: 560px) {
+      .features { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr; }
     }
-    
-    .footer-col-2 {
-      flex: 1;
-      text-align: center;
-    }
-    
-    .footer-col-3, .footer-col-4 {
-      flex-basis: 12%;
-      text-align: center;
-    }
-    
-    .footer ul {
-      list-style-type: none;
-    }
-    
-    .app-logo {
-      margin-top: 20px;
-    }
-    
-    .app-logo img {
-      width: 140px;
-    }
-    
-    .footer hr {
-      border: none;
-      background: #b5b5b5;
-      height: 1px;
-      margin: 20px 0;
-    }
-    
-    .copyright {
-      text-align: center;
-    }
-    
-    /* Dashboard page */
-    .dashboard {
-      padding: 50px 0;
-    }
-    
-    .chart-container {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 30px;
-      box-shadow: 0 0 20px 0px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Responsive media queries */
-    @media only screen and (max-width: 800px) {
-      nav ul {
-        position: absolute;
-        top: 70px;
-        left: 0;
-        background: white;
-        width: 100%;
-        overflow: hidden;
-        transition: max-height 0.5s;
-        z-index: 100;
-      }
-      
-      nav ul li {
-        display: block;
-        margin-right: 50px;
-        margin-top: 10px;
-        margin-bottom: 10px;
-      }
-      
-      .menu-icon {
-        display: block;
-        cursor: pointer;
-      }
+
+    /* Respect reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+      .marquee { animation: none; }
     }
   </style>
 </head>
-
 <body>
-  <div class="header">
-    <div class="container">
-      <div class="navbar">
-        <div class="logo">
-          <h1>ML<span>Analytics</span></h1>
+
+  <!-- Nav -->
+  <header class="navbar">
+    <div class="container nav-inner">
+      <div class="logo" aria-label="MLAnalytics Home">
+        <span class="dot" aria-hidden="true"></span>
+        <span>ML<span style="color:var(--accent)">Analytics</span></span>
+      </div>
+
+      <nav aria-label="Main">
+        <ul id="nav-list">
+          <li><a href="platform.html">Home</a></li>
+          <li><a href="models.html">Models</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="services.html">Services</a></li>
+          <li><a href="api.html">API</a></li>
+          <li><a href="account.html">Account</a></li>
+        </ul>
+      </nav>
+
+      <div class="cta-row">
+        <a href="login.html" class="btn secondary">Sign in</a>
+        <a href="login.html" class="btn"><i class="fa fa-rocket" aria-hidden="true"></i> Get started</a>
+        <button class="menu-icon" id="menuBtn" aria-label="Open menu" aria-expanded="false">
+          <i class="fa fa-bars" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <div class="eyebrow"><span class="badge" aria-hidden="true"></span> Deploy, predict, iterate</div>
+        <h1>Machine learning, minus the mess.</h1>
+        <p class="lead">Upload a simple spreadsheet and get clean forecasts, explanations, and “what-if” scenarios. Built for speed, clarity, and trust.</p>
+        <div class="hero-cta">
+          <a href="#demo" class="btn"><i class="fa fa-play-circle" aria-hidden="true"></i> Try the demo</a>
+          <a href="pricing.html" class="btn secondary">See pricing</a>
         </div>
-        <nav>
-          <ul id="MenuItems">
-            <li><a href="platform.html">Home</a></li>
-            <li><a href="models.html">Models</a></li>
-            <li><a href="pricing.html">Pricing</a></li>
-            <li><a href="services.html">Services</a></li>
-            <li><a href="api.html">API</a></li>
-            <li><a href="account.html">Account</a></li>
-            <li><a href= "login.html">Login</a></li>
-            <li><a href= "login.html">Sign Up</a></li>
-          </ul>
-        </nav>
-        <img src="/api/placeholder/28/28" alt="menu" class="menu-icon" onclick="menutoggle()" />
-      </div>
-    </div>
-  </div>
 
-  <!-- Hero Section -->
-  <div class="row container">
-    <div class="col-2">
-      <h1>Machine Learning<br>Made Simple</h1>
-      <p>Our platform provides easy-to-use machine learning algorithms for regression, classification, anomaly detection, clustering, survival analysis, and interactive visualizations.</p>
-      <a href="#features" class="btn">Explore Now &#8594;</a>
-    </div>
-    <div class="col-2">
-      <img src="/api/placeholder/600/400" alt="ML Platform Preview" />
-    </div>
-  </div>
+        <div class="marquee-wrap" aria-label="Trusted by">
+          <div class="marquee">
+            <span>Anker</span><span>CBS</span><span>Watershed</span><span>Alibaba</span><span>Base44</span><span>Warner</span>
+            <span>Anker</span><span>CBS</span><span>Watershed</span><span>Alibaba</span><span>Base44</span><span>Warner</span>
+          </div>
+        </div>
+      </div>
 
-  <!-- Features Section -->
-  <div class="categories container" id="features">
-    <div class="row">
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="Regression" />
-        <h3>Regression</h3>
-        <p>Linear, polynomial, and advanced regression techniques for predictive modeling.</p>
-      </div>
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="Classification" />
-        <h3>Classification</h3>
-        <p>Logistic regression, decision trees, random forests, and neural networks.</p>
-      </div>
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="Anomaly Detection" />
-        <h3>Anomaly Detection</h3>
-        <p>Identify outliers and unusual patterns in your data.</p>
+      <div class="hero-preview" aria-label="Platform preview">
+        <div class="preview-img" role="img" aria-label="ML Platform Preview"></div>
       </div>
     </div>
-    <div class="row">
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="K-means Clustering" />
-        <h3>K-means Clustering</h3>
-        <p>Group similar data points into distinct clusters.</p>
-      </div>
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="Survival Analysis" />
-        <h3>Survival Analysis</h3>
-        <p>Analyze time-to-event data with Kaplan-Meier and Cox models.</p>
-      </div>
-      <div class="feature-box">
-        <img src="/api/placeholder/50/50" alt="Visualizations" />
-        <h3>Visualizations</h3>
-        <p>Interactive charts and graphs to explore and present your data.</p>
-      </div>
-    </div>
-  </div>
+  </section>
 
-  <!-- Demo Section -->
-  <div class="dashboard container">
-    <h2 style="text-align: center; margin-bottom: 30px; color: #0066cc;">Interactive Demo</h2>
-    <div class="chart-container">
-      <h3>Sample Visualization</h3>
-      <img src="/api/placeholder/800/400" alt="Sample Chart" style="width: 100%;" />
+  <!-- Features -->
+  <section id="features">
+    <div class="container">
+      <h2 class="section-title">Do more with less setup</h2>
+      <p class="muted reveal">The core building blocks you actually need—clean UI, fast results, and interpretable outputs.</p>
+
+      <div class="features" style="margin-top: var(--space-5);">
+        <div class="feature-box reveal">
+          <div class="feature-icon">R</div>
+          <h3>Regression</h3>
+          <p class="muted">Linear, tree-based, and boosted models with automatic validation and feature importance.</p>
+        </div>
+        <div class="feature-box reveal">
+          <div class="feature-icon">C</div>
+          <h3>Classification</h3>
+          <p class="muted">From logistic to gradient boosting to neural nets—balanced, calibrated, and explainable.</p>
+        </div>
+        <div class="feature-box reveal">
+          <div class="feature-icon">A</div>
+          <h3>Anomaly Detection</h3>
+          <p class="muted">Surface outliers and drift before they impact customers or revenue.</p>
+        </div>
+        <div class="feature-box reveal">
+          <div class="feature-icon">K</div>
+          <h3>Clustering</h3>
+          <p class="muted">K-means and density methods for clean segmentation and cohort discovery.</p>
+        </div>
+        <div class="feature-box reveal">
+          <div class="feature-icon">S</div>
+          <h3>Survival</h3>
+          <p class="muted">Time-to-event analytics (Kaplan–Meier, Cox) to understand churn and retention.</p>
+        </div>
+        <div class="feature-box reveal">
+          <div class="feature-icon"><i class="fa fa-line-chart" aria-hidden="true"></i></div>
+          <h3>Visualizations</h3>
+          <p class="muted">Interactive plots, decision paths, SHAP impact, and “what-if” scenarios.</p>
+        </div>
+      </div>
     </div>
-    <div class="row">
-      <div class="col-2">
-        <div class="form-container">
+  </section>
+
+  <!-- Demo -->
+  <section id="demo">
+    <div class="container">
+      <h2 class="section-title">Interactive Demo</h2>
+      <div class="demo-grid">
+        <div class="chart-container reveal">
+          <h3>Sample Visualization</h3>
+          <div class="chart" aria-label="Sample Chart">
+            <img src="/api/placeholder/800/400" alt="Sample chart" style="width:100%; height:100%; object-fit: cover; border-radius: 10px;">
+          </div>
+        </div>
+
+        <div class="form-container reveal">
           <h3>Try Our Models</h3>
-          <form>
-            <select id="modelType">
-              <option value="">Select Model Type</option>
+          <form id="demoForm">
+            <label class="muted" for="modelType">Model type</label>
+            <select id="modelType" required>
+              <option value="">Select a model</option>
               <option value="regression">Regression</option>
               <option value="classification">Classification</option>
               <option value="anomaly">Anomaly Detection</option>
               <option value="clustering">K-means Clustering</option>
               <option value="survival">Survival Analysis</option>
             </select>
-            <input type="file" id="dataUpload" placeholder="Upload Dataset" />
-            <button type="submit" class="btn">Run Analysis</button>
+
+            <label class="muted" for="dataUpload">Dataset</label>
+            <input type="file" id="dataUpload" accept=".csv,.xlsx" />
+
+            <div style="display:flex; gap: var(--space-3);">
+              <button type="submit" class="btn"><i class="fa fa-cogs" aria-hidden="true"></i> Run analysis</button>
+              <button type="button" class="btn secondary" id="clearDemo">Clear</button>
+            </div>
+            <p id="demoNote" class="muted" style="margin: var(--space-3) 0 0;">No complex setup—just a spreadsheet.</p>
           </form>
         </div>
-      </div>
-      <div class="col-2">
-        <div class="form-container">
-          <h3>Account Login</h3>
-          <div class="form-btn">
-            <span onclick="login()">Login</span>
-            <span onclick="register()">Register</span>
+
+        <div class="form-container reveal">
+          <h3>Account</h3>
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <button class="btn secondary" id="loginTab">Login</button>
+            <button class="btn secondary" id="registerTab">Register</button>
           </div>
-          <form id="LoginForm">
-            <input type="text" placeholder="Username" />
-            <input type="password" placeholder="Password" />
+
+          <form id="LoginForm" aria-label="Login form">
+            <label class="muted" for="loginUser">Username</label>
+            <input id="loginUser" type="text" placeholder="you@example.com" autocomplete="username"/>
+            <label class="muted" for="loginPass">Password</label>
+            <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
             <button type="submit" class="btn">Login</button>
-            <a href="">Forgot Password</a>
+            <a href="#" style="color:var(--accent); margin-top:8px; display:inline-block;">Forgot password?</a>
+          </form>
+
+          <form id="RegForm" aria-label="Register form" style="display:none; margin-top:10px;">
+            <label class="muted" for="regEmail">Email</label>
+            <input id="regEmail" type="text" placeholder="you@example.com" autocomplete="email"/>
+            <label class="muted" for="regPass">Password</label>
+            <input id="regPass" type="password" placeholder="Create a password" autocomplete="new-password"/>
+            <button type="submit" class="btn">Create account</button>
           </form>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
   <!-- Footer -->
-  <div class="footer">
+  <footer class="footer">
     <div class="container">
-      <div class="row">
-        <div class="footer-col-1">
-          <h3>Download Our App</h3>
-          <p>
-            Access ML Analytics on the go with our mobile app<br />
-            Available for Android and iOS
-          </p>
-          <div class="app-logo">
+      <div class="footer-grid">
+        <div>
+          <h4>ML<span style="color:var(--accent)">Analytics</span></h4>
+          <p class="muted">Making machine learning accessible for everyone.</p>
+          <div style="display:flex; gap: 10px; margin-top: 12px;">
             <img src="/api/placeholder/140/40" alt="Play Store" />
             <img src="/api/placeholder/140/40" alt="App Store" />
           </div>
         </div>
-        <div class="footer-col-2">
-          <h1>ML<span>Analytics</span></h1>
-          <p>
-            Making machine learning accessible<br />for everyone
-          </p>
-        </div>
-        <div class="footer-col-3">
-          <h3>Useful Links</h3>
+        <div>
+          <h4>Resources</h4>
           <ul>
-            <li>Documentation</li>
-            <li>Blog</li>
-            <li>API Reference</li>
-            <li>Pricing</li>
+            <li><a href="#">Documentation</a></li>
+            <li><a href="#">API Reference</a></li>
+            <li><a href="#">Guides</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
           </ul>
         </div>
-        <div class="footer-col-4">
-          <h3>Follow us</h3>
+        <div>
+          <h4>Company</h4>
           <ul>
-            <li>Facebook</li>
-            <li>Twitter</li>
-            <li>LinkedIn</li>
-            <li>GitHub</li>
+            <li><a href="#">About</a></li>
+            <li><a href="#">Security</a></li>
+            <li><a href="#">Compliance</a></li>
+            <li><a href="#">Careers</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Follow</h4>
+          <ul>
+            <li><a href="#">Twitter/X</a></li>
+            <li><a href="#">LinkedIn</a></li>
+            <li><a href="#">GitHub</a></li>
+            <li><a href="#">YouTube</a></li>
           </ul>
         </div>
       </div>
-      <hr />
-      <p class="copyright" id="copyright-text">Copyright 2025 - MLAnalytics</p>
+      <p class="copyright" id="copyright-text">© 2025 MLAnalytics</p>
     </div>
-  </div>
+  </footer>
 
   <!-- Scripts -->
   <script>
-    // Toggle menu function
-    function menutoggle() {
-      const MenuItems = document.getElementById("MenuItems");
-      if (MenuItems.style.maxHeight) {
-        MenuItems.style.maxHeight = null;
-      } else {
-        MenuItems.style.maxHeight = "200px";
-      }
+    // ===== Mobile nav toggle =====
+    const menuBtn = document.getElementById('menuBtn');
+    const navList = document.getElementById('nav-list');
+    if (menuBtn) {
+      menuBtn.addEventListener('click', () => {
+        const open = navList.classList.toggle('open');
+        menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
     }
-    
-    // Login and register form toggle
-    function login() {
-  const LoginForm = document.getElementById("LoginForm");
-  const RegForm = document.getElementById("RegForm");
-  const Indicator = document.getElementById("indicator");
-  
-  if (RegForm) {
-    RegForm.style.transform = "translateX(300px)";
-    LoginForm.style.transform = "translateX(300px)";
-    if (Indicator) Indicator.style.transform = "translateX(0px)";
-  }
-}
 
-    function register() {
-  const LoginForm = document.getElementById("LoginForm");
-  const RegForm = document.getElementById("RegForm");
-  const Indicator = document.getElementById("indicator");
-  
-  if (RegForm) {
-    RegForm.style.transform = "translateX(0px)";
-    LoginForm.style.transform = "translateX(0px)";
-    if (Indicator) Indicator.style.transform = "translateX(100px)";
-  }
-}
+    // ===== Tabs: Login/Register =====
+    const loginTab = document.getElementById('loginTab');
+    const registerTab = document.getElementById('registerTab');
+    const LoginForm = document.getElementById('LoginForm');
+    const RegForm = document.getElementById('RegForm');
 
-// Analytics dashboard sample (placeholder)
-    document.addEventListener('DOMContentLoaded', function() {
-  const modelTypeSelect = document.getElementById('modelType');
-  if (modelTypeSelect) {
-    modelTypeSelect.addEventListener('change', function() {
-      // In a real implementation, this would update the UI based on the selected model type
-      console.log("Selected model type:", this.value);
+    function showLogin() {
+      if (!LoginForm || !RegForm) return;
+      LoginForm.style.display = 'grid';
+      RegForm.style.display = 'none';
+      loginTab?.classList.add('active');
+      registerTab?.classList.remove('active');
+    }
+    function showRegister() {
+      if (!LoginForm || !RegForm) return;
+      LoginForm.style.display = 'none';
+      RegForm.style.display = 'grid';
+      registerTab?.classList.add('active');
+      loginTab?.classList.remove('active');
+    }
+    loginTab?.addEventListener('click', showLogin);
+    registerTab?.addEventListener('click', showRegister);
+    showLogin();
+
+    // ===== Demo form handlers (placeholder) =====
+    document.getElementById('demoForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const type = document.getElementById('modelType')?.value || '';
+      if (!type) { alert('Pick a model type first.'); return; }
+      console.log('Run analysis for:', type);
+      const note = document.getElementById('demoNote');
+      if (note) note.textContent = `Running quick ${type} demo…`;
+      // TODO: hook up to your real API
     });
-  }
-  
-  // Initialize any components needed on page load
-  const loginFormButton = document.querySelector('.form-btn span:first-child');
-  if (loginFormButton) {
-    loginFormButton.classList.add('active');
-    login();
-  }
-});
+    document.getElementById('clearDemo')?.addEventListener('click', () => {
+      document.getElementById('dataUpload').value = "";
+      const note = document.getElementById('demoNote');
+      if (note) note.textContent = 'No complex setup—just a spreadsheet.';
+    });
+
+    // ===== Reveal-on-scroll (IntersectionObserver) =====
+    const reveals = document.querySelectorAll('.reveal');
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) entry.target.classList.add('in-view');
+      });
+    }, { threshold: 0.18 });
+    reveals.forEach(el => io.observe(el));
+
+    // ===== Dynamic copyright year =====
+    const c = document.getElementById('copyright-text');
+    if (c) c.textContent = `© ${new Date().getFullYear()} MLAnalytics`;
+  </script>
+</body>
+</html>
