@@ -272,8 +272,12 @@ def get_master_db_session() -> Generator[Session, None, None]:
     finally:
         db.close()
 # Password handling utilities
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        # e.g., malformed/legacy hashes
+        return False
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -337,23 +341,23 @@ def decode_user_from_request(request: Request):
     except (ExpiredSignatureError, JWTError):
         return None
 
+# --- Authentication ---
 def authenticate_user(email: str, password: str, db: Session):
-    email = email.strip().lower()  # sanitize
-
-    # Print all users in the DB (for debugging)
-
-    # Now attempt to find the user
+    """Return user object if credentials are valid, else None."""
+    email = (email or "").strip().lower()
     user = get_user_by_email(db, email)
-    
     if not user:
-        print(f"❌ User NOT found for: {email}")
-        return False
+        # Optional: sleep a bit here to make user-not-found timing similar to bad password
+        return None
 
-    hashed_input = get_password_hash(password)
+    # DO NOT hash the incoming password yourself for comparison
+    if not verify_password(password, user.hashed_password):
+        return None
 
-    match = verify_password(password, user.hashed_password)
+    # Optional: block inactive/suspended accounts
+    # if not user.is_active:
+    #     return None
 
-    print("✅ Password verified.")
     return user
 
 
