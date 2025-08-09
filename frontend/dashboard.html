@@ -3669,39 +3669,45 @@ function callRealAPI(endpoint, params) {
   
   const headers = new Headers();
   headers.append('Authorization', `Bearer ${String(token)}`);
+fetch(url, {
+  method: 'POST',
+  headers: headers,
+  body: formData
+})
+.then(res => {
+  console.log('Response status:', res.status);
 
-  fetch(url, {
-    method: 'POST',
-    headers: headers,
-    body: formData
-  })
+  if (res.status === 401) {
+    // Optional: clear stored token/session
+    localStorage.removeItem('access_token');
+    sessionStorage.removeItem('access_token');
 
-  .then(res => {
-    console.log('Response status:', res.status);
-    console.log('Response headers:', res.headers);
+    // Redirect to login
+    window.location.href = '/login.html'; // or your login route
+    return; // Stop further processing
+  }
 
-    if (!res.ok) {
-      // Read any error text from the server and throw
-      return res.text().then(text => {
-        console.error('Server error response:', text);
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      });
-    }
-    // Always expect JSON (with base64 images)
-    return res.json();
-  })
-  .then(data => {
-    loader.style.display = 'none';
-    showSuccess('Analysis completed successfully.');
-    displayResults(endpoint, data);
-  })
-  
-  .catch(err => {
-    loader.style.display = 'none';
-    showError(`Error: ${err.message}`);
-    console.error('Full API error:', err);
-    console.error('Error stack:', err.stack);
-  });
+  if (!res.ok) {
+    return res.text().then(text => {
+      console.error('Server error response:', text);
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    });
+  }
+
+  return res.json();
+})
+.then(data => {
+  if (!data) return; // Bail if redirected
+  loader.style.display = 'none';
+  showSuccess('Analysis completed successfully.');
+  displayResults(endpoint, data);
+})
+.catch(err => {
+  loader.style.display = 'none';
+  showError(`Error: ${err.message}`);
+  console.error('Full API error:', err);
+  console.error('Error stack:', err.stack);
+});
 
 
 }

@@ -43,7 +43,6 @@ import uuid, os, io
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.arima.model import ARIMA
-from jwt import ExpiredSignatureError, PyJWTError
 from pydantic import BaseModel
 from sqlalchemy import Table, MetaData, Column, String, Integer, Float, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
@@ -342,7 +341,47 @@ import math
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, Response, HTTPException
+import math
+import time
+import logging
+from fastapi import Request, Response, HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 
+# Set up logging
+logger = logging.getLogger(__name__)
+# imports: keep ONE jwt lib. Here we standardize on python-jose.
+from jose import jwt, JWTError, ExpiredSignatureError
+from sqlalchemy.orm import Session
+
+def resolve_user_from_request(request: Request, db: Session) -> "User | None":
+    """Return a User either by API key (preferred) or by decoding JWT 'sub'."""
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        return None
+
+    token = auth.split(" ", 1)[1].strip()
+
+    # 1) API key match
+    user = (
+        db.query(User)
+          .filter((User.prod_api_key == token) | (User.dev_api_key == token))
+          .first()
+    )
+    if user:
+        return user
+
+    # 2) JWT decode
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            return None
+        user = db.query(User).filter(User.email == email.strip().lower()).first()
+        return user
+    except ExpiredSignatureError:
+        return None
+    except JWTError:
+        return None
 class UsageTrackerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.monotonic()
@@ -350,28 +389,20 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
         duration = time.monotonic() - start
 
         tracked_paths = [
-            "/classification/",
-            "/regression/",
-            "/clustering/",
-            "/forecast/",
-            "/segment_analysis/",
-            "/survival/",
-            "/counterfactual/",
-            "/visualize/",
-            "/feature_impact/",
-            "/risk_analysis/",
-            "/decision_paths/",
-            "/classification/predict/",
-            "/regression/predict/",
-            "/what_if/",
-            "/ab_test/"
+            "/classification/", "/regression/", "/clustering/", "/forecast/",
+            "/segment_analysis/", "/survival/", "/counterfactual/", "/visualize/",
+            "/feature_impact/", "/risk_analysis/", "/decision_paths/",
+            "/classification/predict/", "/regression/predict/", "/what_if/", "/ab_test/"
         ]
-        if request.url.path not in tracked_paths:
+
+        # If not a tracked path, or if response is an error (401/403/4xx/5xx), skip billing
+        if (request.url.path not in tracked_paths) or (response.status_code >= 400):
             return response
 
-        # --- concave-down pricing parameters ---
-        DATA_PRICE_SCALE = 74.1  # updated scale factor
-        PRICE_PER_MINUTE = 0.50  
+        # --- Concave-down pricing parameters ---
+        DATA_PRICE_SCALE = 74.1   # scale factor for logarithmic pricing
+        PRICE_PER_MINUTE = 0.50   # $0.50 per minute
+        OVERDRAFT_LIMIT = -1.0
 
         # Estimate data volume
         content_length = request.headers.get("content-length", "0")
@@ -379,44 +410,50 @@ class UsageTrackerMiddleware(BaseHTTPMiddleware):
         bytes_processed = getattr(request.state, "file_bytes", bytes_estimated)
         mb_used = bytes_processed / (1024 * 1024)
 
-        # Logarithmic (concave) data cost + linear compute cost
+        # Calculate costs
         cost_data = DATA_PRICE_SCALE * math.log1p(mb_used)
         minutes_used = duration / 60
         cost_time = PRICE_PER_MINUTE * minutes_used
         cost_for_request = round(cost_data + cost_time, 2)
-        # Billing update
-        OVERDRAFT_LIMIT = -1.0
-        db_gen = get_master_db_session()
-        try:
-            db = next(db_gen)
-            try:
-                payload = decode_user_from_request(request)
-                if not payload:
-                    return response
 
-                user_email = payload.get("sub")
-                user = db.query(User).filter(User.email == user_email).first()
-                if user:
-                    user.tokens = (user.tokens or 0.0) - cost_for_request
-                    if user.tokens < OVERDRAFT_LIMIT:
-                        db.rollback()
-                        raise HTTPException(
-                            status_code=403,
-                            detail=f"You have exceeded your usage limit. Token balance is {user.tokens:.2f}."
-                        )
-                    user.total_bytes_processed += bytes_processed
-                    user.total_compute_seconds += duration
-                    user.total_cost_dollars += cost_for_request
-                    db.commit()
-            except Exception as billing_err:
-                print(f"Billing error: {billing_err}")
-            finally:
-                try:
-                    next(db_gen)
-                except StopIteration:
-                    pass
-        except Exception as db_err:
-            print(f"DB session error: {db_err}")
+        logger.info(
+            f"Usage tracking - Path: {request.url.path}, MB: {mb_used:.3f}, "
+            f"Minutes: {minutes_used:.3f}, Data cost: ${cost_data:.2f}, "
+            f"Time cost: ${cost_time:.2f}, Total: ${cost_for_request}"
+        )
+
+        # Billing update
+        with master_db_cm() as db:
+            user = resolve_user_from_request(request, db)
+            if not user:
+                logger.warning("No authenticated user found for billing (skipping).")
+                return response
+
+            # Initialize tokens if None
+            if user.tokens is None:
+                user.tokens = 0.0
+
+            new_balance = user.tokens - cost_for_request
+            if new_balance < OVERDRAFT_LIMIT:
+                logger.warning(
+                    f"User {user.email} exceeded usage limit. "
+                    f"Current balance: ${user.tokens:.2f}, Request cost: ${cost_for_request:.2f}"
+                )
+                # Do NOT raise here; the request already completed successfully.
+                # Consider tagging the user for soft-lock instead.
+                return response
+
+            # Update counters
+            user.tokens = new_balance
+            user.total_bytes_processed = (user.total_bytes_processed or 0) + bytes_processed
+            user.total_compute_seconds = (user.total_compute_seconds or 0) + duration
+            user.total_cost_dollars = (user.total_cost_dollars or 0) + cost_for_request
+
+            logger.info(
+                f"Billing successful - User: {user.email}, "
+                f"New balance: ${user.tokens:.2f}, "
+                f"Total cost: ${user.total_cost_dollars:.2f}"
+            )
 
         return response
 
@@ -425,87 +462,98 @@ import time
 import openai
 from fastapi import Request, HTTPException, Response
 import time
-
 class AITokenBillingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        tracked_path = "/api/ai_insights"
+        tracked_path_prefix = "/api/ai_insights"
 
-        if not request.url.path.startswith(tracked_path):
-            return await call_next(request)
-
-        # ─── Run the request and time it ─────────────────────
         start_time = time.monotonic()
-        response = await call_next(request)
+        response: Response = await call_next(request)
         duration = time.monotonic() - start_time
 
+        # Only bill tracked paths and successful responses
+        if (not request.url.path.startswith(tracked_path_prefix)) or (response.status_code >= 400):
+            return response
+
+        # ─── Pricing Configuration ─────────────────────
+        OPENAI_COST_PER_1K = 0.04  # OpenAI base rate per 1K tokens
+        MARKUP = 3.0               # 3x markup
+        PRICE_PER_MB = 0.1875      # $/MB
+        PRICE_PER_SECOND = 0.375   # $/sec
+        OVERDRAFT_LIMIT = -1.0     # allow soft overdraft to -$1
+
+        # ─── Usage Extraction ──────────────────────────
+        # Prefer a value set by your handler; otherwise fall back to 0
+        openai_tokens_used = (
+            getattr(request.state, "openai_tokens_used", None)
+            or getattr(response, "openai_tokens_used", None)
+            or 0
+        )
+
+        # Size: prefer handler-provided bytes; else content-length header
+        content_length = request.headers.get("content-length", "0")
+        bytes_estimated = int(content_length) if content_length.isdigit() else 0
+        bytes_processed = getattr(request.state, "file_bytes", bytes_estimated)
+        mb_used = bytes_processed / (1024 * 1024)
+
+        # ─── Charges ───────────────────────────────────
+        ai_cost_usd = (openai_tokens_used / 1000.0) * OPENAI_COST_PER_1K
+        ai_charge = round(ai_cost_usd * MARKUP, 3)
+
+        time_charge = round(duration * PRICE_PER_SECOND, 3)
+        size_charge = round(mb_used * PRICE_PER_MB, 3)
+        additional_charge = round(time_charge + size_charge, 3)
+
+        total_charge = round(ai_charge + additional_charge, 3)
+
+        logger.info(
+            f"AI billing - Path: {request.url.path}, "
+            f"OpenAI tokens: {openai_tokens_used}, AI cost: ${ai_charge:.3f}, "
+            f"MB: {mb_used:.3f}, Duration: {duration:.3f}s, "
+            f"Additional: ${additional_charge:.3f}, Total: ${total_charge:.3f}"
+        )
+
+        # ─── Database billing update ───────────────────
         try:
-            db_gen = get_master_db_session()
-            db = next(db_gen)
+            with master_db_cm() as db:
+                user = resolve_user_from_request(request, db)
+                if not user:
+                    logger.warning("No authenticated user found for AI billing (skipping).")
+                    return response
 
-            # Pull current user
-            payload = decode_user_from_request(request)
-            if not payload:
-                return response
+                # Initialize tokens if None
+                if user.tokens is None:
+                    user.tokens = 0.0
 
-            user_email = payload.get("sub")  # Or user_id, depending on what you encoded
-            user = db.query(User).filter(User.email == user_email).first()
+                new_balance = user.tokens - total_charge
+                if new_balance < OVERDRAFT_LIMIT:
+                    logger.warning(
+                        f"AI billing - User {user.email} exceeded usage limit. "
+                        f"Current balance: ${user.tokens:.2f}, "
+                        f"Request cost: ${total_charge:.3f}"
+                    )
+                    # Do NOT raise here since the request already completed.
+                    # Option: flag user for soft-lock instead of breaking the response.
+                    return response
 
-            if not user:
-                return response
+                # Update aggregates
+                user.tokens = new_balance
+                user.total_ai_tokens_used = (user.total_ai_tokens_used or 0) + int(openai_tokens_used)
+                user.total_bytes_processed = (user.total_bytes_processed or 0) + int(bytes_processed)
+                user.total_compute_seconds = (user.total_compute_seconds or 0) + float(duration)
+                user.total_cost_dollars = (user.total_cost_dollars or 0) + float(total_charge)
 
-            # ─── Pull token usage (if any) from OpenAI call ─────
-            openai_tokens_used = getattr(request.state, "openai_tokens_used", 0)
-
-            # OpenAI Pricing (e.g., GPT-4 Vision or GPT-4o)
-            OPENAI_COST_PER_1K = 0.04  # your actual OpenAI rate
-            MARKUP = 3.0               # 4x markup for profit
-
-            ai_cost_usd = (openai_tokens_used / 1000) * OPENAI_COST_PER_1K
-            ai_charge = round(ai_cost_usd * MARKUP, 3)
-
-            # ─── Add time-based and size-based charges ─────────
-            PRICE_PER_MB =  0.1875
-            PRICE_PER_SECOND =  0.375
-
-            content_length = request.headers.get("content-length")
-            bytes_processed = int(content_length) if content_length and content_length.isdigit() else 0
-            mb_used = bytes_processed / (1024 * 1024)
-
-            time_charge = duration * PRICE_PER_SECOND
-            size_charge = mb_used * PRICE_PER_MB
-
-            additional_charge = round(time_charge + size_charge, 3)
-
-            # ─── Total Charge Calculation ─────────────
-            total_charge_tokens = round(ai_charge + additional_charge, 3)
-
-            if user.tokens is None:
-                user.tokens = 0.0
-
-            user.tokens -= total_charge_tokens
-
-            if user.tokens < -1.0:
-                db.rollback()
-                raise HTTPException(403, detail=f"🚫 Token balance exceeded. Required: {total_charge_tokens}, Available: {user.tokens:.2f}. Please top up.")
-
-            # Tracking
-            user.total_ai_tokens_used += openai_tokens_used
-            user.total_bytes_processed += bytes_processed
-            user.total_compute_seconds += duration
-            user.total_cost_dollars += (ai_cost_usd + additional_charge)
-
-            db.commit()
-
+                logger.info(
+                    f"AI billing successful - User: {user.email}, "
+                    f"New balance: ${user.tokens:.2f}, "
+                    f"Total AI tokens used: {user.total_ai_tokens_used}, "
+                    f"Total cost: ${user.total_cost_dollars:.2f}"
+                )
         except Exception as e:
-            print("⚠️ Billing Middleware Error:", e)
-        finally:
-            try:
-                next(db_gen)
-            except StopIteration:
-                pass
+            # Never break the response due to billing
+            logger.error(f"AI billing error for user "
+                         f"{user.email if 'user' in locals() and user else 'unknown'}: {e}")
 
         return response
-
 app.add_middleware(AITokenBillingMiddleware)
 app.add_middleware(UsageTrackerMiddleware)
 app.add_middleware(LoggingMiddleware)

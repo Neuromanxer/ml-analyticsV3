@@ -327,18 +327,16 @@ def decode_token(token: str):
 # For decoding in middleware or routes
 from jose import jwt, JWTError
 from fastapi import Request
-
 def decode_user_from_request(request: Request):
     auth = request.headers.get("Authorization")
     if not auth or not auth.startswith("Bearer "):
         return None
-
-    token = auth.split(" ")[1]
+    token = auth.split(" ", 1)[1].strip()
     try:
-        payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM", "HS256")])
-        return payload
-    except JWTError:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except (ExpiredSignatureError, JWTError):
         return None
+
 def authenticate_user(email: str, password: str, db: Session):
     email = email.strip().lower()  # sanitize
 
