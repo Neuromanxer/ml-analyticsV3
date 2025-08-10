@@ -75,10 +75,10 @@ from .regression import (
     get_risk_shift_summary,
     get_class_distribution_change
 )
+from .counterfactual import clean_data_for_json, safe_float_conversion, compute_summary_metrics
 
 
-
-
+# from counterfactual import clean_data_for_json, safe_float_conversion, compute_summary_metrics
 # from timeSeries import ScenarioManager, ARIMAModel, ExponentialSmoothingModel, LSTMModel, RandomForestModel, generate_scenario_visualizations, SARIMAModel
 # from anomaly_detection import train_best_anomaly_detection
 # from preprocessing import preprocess_data
@@ -658,7 +658,7 @@ def do_classification(
             ]
 
             headers = ["Model", "Accuracy", "F1", "Precision", "Recall"]
-            
+            impact_metrics = {}
             # Create entry for metadata
             if len(set(y_test)) == 2:
                 tn, fp, fn, tp = confusion_matrix(y_test, preds).ravel()
@@ -691,8 +691,7 @@ def do_classification(
                     "top_features": imp_df.head(10).to_dict("records") if not imp_df.empty else [],
                     "conversion_rate": conversion_rate,
                     "impact_metrics": impact_metrics,
-                    "training_columns": training_columns,
-                    "summary_stats": summary,
+                    "training_columns": training_columns
                 }
                 
                 # Add additional visualizations
@@ -725,8 +724,7 @@ def do_classification(
                 "conversion_rate": round(conversion_rate * 100, 2),
                 "target_column": target_column,
                 "dataset": dataset_name,
-                "parameters": {"drop_columns": drop_columns},
-                 "summary_stats": summary
+                "parameters": {"drop_columns": drop_columns}
             }
 
 
@@ -899,20 +897,7 @@ def do_classification_predict(
             if max_probs is not None:
                 output_df['confidence'] = max_probs
             # ───── Customer Summary Stats (Optional) ───── #
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(output_df.columns):
-                    summary_stats = generate_customer_summary(output_df)
-                else:
-                    summary_stats = {
-                        "note": "Customer-level summary statistics were not calculated.",
-                        "tip": "Visit datasets.html to define 'clv', 'recency', 'upsell_score', and other fields for deeper insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "To view detailed customer insights, compute missing columns from the dataset section."
-                }
+
 
             # Add probability columns for each class if available
             if prediction_probs is not None:
@@ -1017,8 +1002,7 @@ def do_classification_predict(
                         "prediction_features": int(len(X_pred.columns)),
                         "missing_features_added": list(missing_cols),
                         "extra_features_removed": list(extra_cols)
-                    },
-                    "summary_stats": summary_stats
+                    }
                 }
 
 
@@ -1052,8 +1036,7 @@ def do_classification_predict(
                     "missing_features_added": list(missing_cols),
                     "extra_features_removed": list(extra_cols)
                 },
-                "conversion_rate": conversion_rate if true_labels is not None else None,
-                 "summary_stats": summary_stats
+                "conversion_rate": conversion_rate if true_labels is not None else None
             }
             
             # Convert all numpy types in the response
@@ -1253,20 +1236,6 @@ def do_clustering(
                     for feat in top_feats.index
                 ]
             # ───── Optional: Generate Customer-Level Summary Stats ───── #
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer-level summary stats not computed.",
-                        "tip": "Visit datasets.html to define columns like 'clv', 'recency', and 'upsell_score'."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "To view detailed customer insights, define missing columns in the dataset step."
-                }
 
             # Visualization
             cluster_viz_base64 = ""
@@ -1387,8 +1356,7 @@ def do_clustering(
                 "model_url": model_url,
                 "data_url": data_url,
                 "model_path": model_upload_path,
-                "data_path": data_upload_path,
-                "summary_stats": summary_stats
+                "data_path": data_upload_path
             }
 
                     
@@ -1423,8 +1391,7 @@ def do_clustering(
                     "model_url": model_url,
                     "data_url": data_url,
                     "model_path": model_upload_path,
-                    "data_path": data_upload_path,
-                    "summary_stats": summary_stats
+                    "data_path": data_upload_path
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -1560,21 +1527,6 @@ def do_segment_analysis(
             # ───────────── Run KMeans ─────────────
             clusters, kmeans = run_kmeans(scaled_data, best_k)
             df["cluster"] = clusters
-            # ───────────── Optional: Customer-Level Summary Stats ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats were not computed.",
-                        "tip": "Go to datasets.html to define 'clv', 'recency', 'upsell_score', and other metrics for deeper insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Customer summary generation failed: {str(e)}",
-                    "tip": "Visit datasets.html to create missing features for customer analysis."
-                }
 
             # ───────────── Calculate metrics (same as clustering) ─────────────
             clustering_metrics = {
@@ -1760,8 +1712,7 @@ def do_segment_analysis(
                 "data_url": data_url,
                 "model_path": model_upload_path,
                 "scaler_path": scaler_upload_path,
-                "data_path": data_upload_path,
-                "summary_stats": summary_stats
+                "data_path": data_upload_path
             }
 
             # Add visualizations if they exist
@@ -1798,8 +1749,7 @@ def do_segment_analysis(
                     "data_url": data_url,
                     "model_path": model_upload_path,
                     "scaler_path": scaler_upload_path,
-                    "data_path": data_upload_path,
-                    "summary_stats": summary_stats
+                    "data_path": data_upload_path
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -1938,21 +1888,6 @@ def do_label_clusters(
 
             # ───────────── Apply cluster labeling logic ─────────────
             df = label_clusters_general(df, cluster_col="cluster", feature_columns=available_features)
-            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer-level summary stats not generated.",
-                        "tip": "Visit datasets.html to define columns like 'clv', 'recency', and 'upsell_score' for richer insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Customer summary generation failed: {str(e)}",
-                    "tip": "Define missing customer features from datasets.html to enable summary stats."
-                }
 
             # ───────────── Save labeled data to temp directory ─────────────
             labeled_data_path = PathL(temp_dir) / f"{user_id}_labeled_data.csv"
@@ -2050,8 +1985,7 @@ def do_label_clusters(
                 "features_used": available_features,
                 # ✅ Add uploaded file references
                 "labeled_data_url": labeled_data_url,
-                "labeled_data_path": labeled_data_upload_path,
-                "summary_stats": summary_stats
+                "labeled_data_path": labeled_data_upload_path
             }
 
             # Add visualizations if they exist
@@ -2080,8 +2014,7 @@ def do_label_clusters(
                     "segment_insights": segment_insights,
                     # ✅ Add uploaded file references to metadata
                     "labeled_data_url": labeled_data_url,
-                    "labeled_data_path": labeled_data_upload_path,
-                    "summary_stats": summary_stats
+                    "labeled_data_path": labeled_data_upload_path
                 }
 
                 entry = ensure_json_serializable(entry)
@@ -2301,21 +2234,6 @@ def do_regression(
                             full_df.drop(columns=drops, inplace=True)
                 else:
                     full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
-                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-                try:
-                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                    if required_cols.issubset(full_df.columns):
-                        summary_stats = generate_customer_summary(full_df)
-                    else:
-                        summary_stats = {
-                            "note": "Customer-level summary stats not generated.",
-                            "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for deeper business insights."
-                        }
-                except Exception as e:
-                    summary_stats = {
-                        "error": f"Failed to generate summary stats: {str(e)}",
-                        "tip": "Add customer features like CLV and recency to enable automatic summaries."
-                    }
 
 
                 X_full_raw = full_df.reindex(columns=training_features, fill_value=0)
@@ -2590,8 +2508,7 @@ def do_regression(
                         "insights": insights,
                         "model_url": model_url,
                         "preprocessor_url": preprocessor_url,
-                        "data_url": data_url,
-                        "summary_stats": summary_stats
+                        "data_url": data_url
                     }
                     entry = ensure_json_serializable(entry)
                     with master_db_cm() as db:
@@ -2622,8 +2539,7 @@ def do_regression(
                     },
                     "model_url": model_url,
                     "preprocessor_url": preprocessor_url,
-                    "data_url": data_url,
-                    "summary_stats": summary_stats
+                    "data_url": data_url
                 }
 
                 return response_data
@@ -2778,21 +2694,7 @@ def do_regression_predict(
         # Create output dataframe by adding predictions to original data
         output_df = original_df.copy()
         output_df['prediction'] = predictions
-        # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-        try:
-            required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-            if required_cols.issubset(output_df.columns):
-                summary_stats = generate_customer_summary(output_df)
-            else:
-                summary_stats = {
-                    "note": "Customer-level summary stats not generated.",
-                    "tip": "Go to datasets.html to define columns like 'clv', 'recency', 'total_spent', and 'upsell_score' for richer insights."
-                }
-        except Exception as e:
-            summary_stats = {
-                "error": f"Failed to generate summary stats: {str(e)}",
-                "tip": "Add customer features to your dataset to enable summary reporting."
-            }
+
 
         # Calculate evaluation metrics if true labels are available
         evaluation_metrics = None
@@ -2930,8 +2832,7 @@ def do_regression_predict(
                     "extra_features_removed": list(extra_cols)
                 },
                 "evaluation_metrics": evaluation_metrics,
-                "insights": insights,
-                "summary_stats": summary_stats
+                "insights": insights
             }
 
             entry = ensure_json_serializable(entry)
@@ -2970,8 +2871,7 @@ def do_regression_predict(
                 "missing_features_added": list(missing_cols),
                 "extra_features_removed": list(extra_cols)
             },
-            "evaluation_metrics": evaluation_metrics,
-            "summary_stats": summary_stats
+            "evaluation_metrics": evaluation_metrics
         }
         
         # Convert all numpy types in the response
@@ -3087,20 +2987,7 @@ def do_visualization(
             remove_cols = ["ID", target_column] if "ID" in df.columns else [target_column]
             df, CATS, NUMS = preprocess_data(df, RMV=remove_cols)
             # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats not generated.",
-                        "tip": "Go to datasets.html to define 'clv', 'recency', 'total_spent', or 'upsell_score' for detailed insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "Add missing customer-level features to enable summary reporting."
-                }
+
             df = df.reset_index(drop=True)
             if target_column not in df.columns or feature_column not in df.columns:
                 raise ValueError("Specified target or feature column not found in dataset.")
@@ -3191,7 +3078,6 @@ def do_visualization(
                     "thumbnailData": f"data:image/png;base64,{scatter_b64}" if scatter_b64 else "",
                     "imageData": f"data:image/png;base64,{scatter_b64}" if scatter_b64 else "",
                     "visualizations": {},
-                    "summary_stats": summary_stats
                 }
 
                 if scatter_b64:
@@ -3220,8 +3106,7 @@ def do_visualization(
                     "feature_column": feature_column
                 },
                 "visualizations": {},
-                "insights": {},
-                "summary_stats": summary_stats
+                "insights": {}
             }
 
             if scatter_b64:
@@ -3237,31 +3122,6 @@ def do_visualization(
 
 
 
-def clean_data_for_json(data):
-    """Recursively clean data structure for JSON serialization"""
-    if isinstance(data, dict):
-        return {k: clean_data_for_json(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [clean_data_for_json(item) for item in data]
-    elif isinstance(data, (int, float, np.integer, np.floating)):
-        val = float(data)
-        if np.isnan(val) or np.isinf(val):
-            return 0.0
-        return val
-    elif isinstance(data, str):
-        return data
-    else:
-        return str(data)
-
-def safe_float_conversion(value):
-    """Convert value to float, handling NaN and infinity"""
-    try:
-        val = float(value)
-        if np.isnan(val) or np.isinf(val):
-            return 0.0  # or some default value
-        return val
-    except (ValueError, TypeError):
-        return 0.0
 def do_counterfactual(
     user_id: str,
     current_user: dict = None,
@@ -3278,7 +3138,7 @@ def do_counterfactual(
     max_changes: int = 10,
     proximity_metric: str = "euclidean"
 ) -> dict:
-
+    import pandas as pd
     import numpy as np
     import os
     import uuid
@@ -3425,20 +3285,6 @@ def do_counterfactual(
             test_df = test_df.replace([np.inf, -np.inf], np.nan).fillna(0)
             full_df = full_df.replace([np.inf, -np.inf], np.nan).fillna(0)
             # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(full_df.columns):
-                    summary_stats = generate_customer_summary(full_df)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats were not generated.",
-                        "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', or 'upsell_score' for richer insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "Add customer-level features to your dataset to enable summary insights."
-                }
 
                     # Determine target type
             target_is_continuous = False
@@ -3499,6 +3345,49 @@ def do_counterfactual(
 
             print(f"Expected model features: {expected_features}")
             print(f"Number of expected features: {len(expected_features)}")
+            def safe_float(x):
+                try:
+                    v = float(x)
+                    if np.isfinite(v):
+                        return round(v, 6)
+                except Exception:
+                    pass
+                return None
+
+            def summarize_sample_for_ui(sample: pd.DataFrame):
+                # Numeric table: feature | mean | median | std | min | max
+                num_cols = sample.select_dtypes(include=[np.number]).columns.tolist()
+                if num_cols:
+                    num_df = (sample[num_cols]
+                            .agg(['mean','median','std','min','max'])
+                            .T.reset_index()
+                            .rename(columns={'index':'feature'}))
+                    for col in ['mean','median','std','min','max']:
+                        num_df[col] = num_df[col].map(safe_float)
+                    numeric_rows = num_df.to_dict(orient='records')
+                else:
+                    numeric_rows = []
+
+                # Categorical summary: feature | top | top_count | nunique | missing
+                cat_cols = [c for c in sample.columns if c not in num_cols]
+                cat_rows = []
+                for c in cat_cols:
+                    s = sample[c]
+                    vc = s.value_counts(dropna=True)
+                    top = None if vc.empty else str(vc.index[0])
+                    top_count = 0 if vc.empty else int(vc.iloc[0])
+                    cat_rows.append({
+                        "feature": str(c),
+                        "top": top,
+                        "top_count": top_count,
+                        "nunique": int(s.nunique(dropna=True)),
+                        "missing": int(s.isna().sum())
+                    })
+
+                return {
+                    "numeric_table": numeric_rows,      # list[ {feature, mean, median, std, min, max} ]
+                    "categorical_table": cat_rows       # list[ {feature, top, top_count, nunique, missing} ]
+                }
 
             # ──────── Helper function for consistent feature alignment ────────
             def prepare_features_for_model(df, expected_features, target_column):
@@ -3584,16 +3473,21 @@ def do_counterfactual(
             if target_column in numeric_cols:
                 numeric_cols.remove(target_column)
 
-            sample_metrics = {}
-            for col in numeric_cols:
-                col_data = sample[col]
-                sample_metrics[col] = {
-                    "mean": safe_float_conversion(col_data.mean()),
-                    "median": safe_float_conversion(col_data.median()),
-                    "std": safe_float_conversion(col_data.std()),
-                    "min": safe_float_conversion(col_data.min()),
-                    "max": safe_float_conversion(col_data.max())
-                }
+           # NEW
+            summary_stats = summarize_sample_for_ui(sample)
+
+            # If your UI wants a single table, you can also render markdown/HTML:
+            numeric_md = ""
+            if summary_stats["numeric_table"]:
+                import pandas as pd
+                numeric_md = pd.DataFrame(summary_stats["numeric_table"]).to_markdown(index=False)
+
+            categorical_md = ""
+            if summary_stats["categorical_table"]:
+                import pandas as pd
+                categorical_md = pd.DataFrame(summary_stats["categorical_table"]).to_markdown(index=False)
+
+
 
             # ──────── DiCE-ML Setup with proper feature handling ────────
             try:
@@ -3855,6 +3749,70 @@ def do_counterfactual(
                     visualizations.append(fig_base64)
                     sample_ids.append(int(idx))
                     plt.close(fig)
+            # Build baseline (original) features once
+            X_orig = prepare_features_for_model(sample, expected_features, target_column)
+
+            # Baseline predictions
+            original_preds = estimator.predict(X_orig)
+
+            # Baseline probabilities (handle binary + multiclass without assuming [:,1])
+            proba_base = None
+            try:
+                if hasattr(estimator, "predict_proba"):
+                    proba_base_raw = estimator.predict_proba(X_orig)  # (n, k) or (n,)
+                    # Use helper to flatten to 1D positive-class vector (handles k==2 or multiclass)
+                    proba_base = _to_1d_proba(proba_base_raw, desired_outcome=desired_outcome)
+            except Exception:
+                proba_base = None
+
+            # ---- Map one CF per sample row (e.g., first CF) ----
+            # Expect each item to carry which sample it belongs to; if you don't store it yet, add row_index earlier
+            best_cf_by_row = {}  # row_idx -> features_modified dict
+            for cf in counterfactuals_data:
+                row_idx = cf.get("row_index")
+                if row_idx is None:
+                    # fallback: assume counterfactuals_data order matches sample order
+                    row_idx = len(best_cf_by_row)
+                if row_idx not in best_cf_by_row and "features_modified" in cf:
+                    best_cf_by_row[row_idx] = cf["features_modified"]
+
+            # Build X_mod in the same row order as 'sample'; rows without CF stay None
+            mod_rows = [best_cf_by_row.get(i) for i in range(len(sample))]
+            valid_idx = [i for i, r in enumerate(mod_rows) if r is not None]
+
+            modified_preds = np.array([])
+            proba_mod = None
+
+            if valid_idx:
+                X_mod = prepare_features_for_model(pd.DataFrame([mod_rows[i] for i in valid_idx]),
+                                                expected_features, target_column)
+
+                # Modified predictions (only for rows that have CFs)
+                modified_preds = estimator.predict(X_mod)
+
+                # Modified probabilities (flatten safely)
+                try:
+                    if hasattr(estimator, "predict_proba"):
+                        proba_mod_raw = estimator.predict_proba(X_mod)
+                        proba_mod = _to_1d_proba(proba_mod_raw, desired_outcome=desired_outcome)
+                except Exception:
+                    proba_mod = None
+            else:
+                # No CFs generated; keep arrays empty so metrics show baseline only
+                modified_preds = np.array([])
+                proba_mod = None
+
+            # ---- Compute metrics (function aligns lengths automatically) ----
+            sample_metrics = compute_summary_metrics(
+                sample=sample,
+                target_column=target_column,
+                applied_changes=changes if 'changes' in locals() and isinstance(changes, dict) else {},
+                original_preds=original_preds,
+                modified_preds=modified_preds,      # may be shorter; helper aligns
+                original_proba=proba_base,
+                modified_proba=proba_mod,
+                desired_outcome=desired_outcome
+            )
 
             # ──────── Optional Summary Plot ────────
             summary_b64 = None
@@ -3908,9 +3866,8 @@ def do_counterfactual(
                     "visualizations": {},
                     "counterfactuals": counterfactuals_data,
                     "metrics": sample_metrics,
-                    "summary_stats": summary_stats
                 }
-
+            
                 # Add visualizations to entry
                 for i, viz_b64 in enumerate(visualizations):
                     entry["visualizations"][f"counterfactual_{i+1}"] = f"data:image/png;base64,{viz_b64}"
@@ -3946,10 +3903,8 @@ def do_counterfactual(
                     "max_changes": max_changes,
                     "proximity_metric": proximity_metric
                 },
-                "metrics": sample_metrics,
-                "summary_stats": summary_stats
+                "metrics": sample_metrics
             }
-
             # Add visualizations to response
             for i, viz_b64 in enumerate(visualizations):
                 response_data["visualizations"][f"counterfactual_{i+1}"] = f"data:image/png;base64,{viz_b64}"
@@ -4267,145 +4222,187 @@ def do_survival(
                             df_clean[col] = df_clean[col].astype('float32')
                 
                 return df_clean
+            def prune_for_cox(df: pd.DataFrame, time_col: str, event_col: str,
+                            low_var_thresh: float = 1e-12,
+                            high_corr: float = 0.98) -> pd.DataFrame:
+                X = df.copy()
 
-            # Apply cleaning
+                # 0) Remove exact-duplicate columns (perfect multicollinearity)
+                X = X.T.drop_duplicates().T
+
+                # 1) Drop near-constant features (zero/near-zero std → causes divide-by-zero)
+                feat_cols = [c for c in X.columns if c not in [time_col, event_col]]
+                if feat_cols:
+                    var = X[feat_cols].var(numeric_only=True)
+                    drop_low_var = var[var <= low_var_thresh].index.tolist()
+                    if drop_low_var:
+                        X = X.drop(columns=drop_low_var, errors="ignore")
+
+                # 2) Drop features highly correlated with the duration column (complete separation risk)
+                feat_cols = [c for c in X.columns if c not in [time_col, event_col]]
+                if time_col in X.columns and feat_cols:
+                    with np.errstate(all="ignore"):
+                        corr_to_time = X[feat_cols].corrwith(X[time_col]).abs()
+                    drop_vs_time = corr_to_time[(corr_to_time >= high_corr)].index.tolist()
+                    if drop_vs_time:
+                        X = X.drop(columns=drop_vs_time, errors="ignore")
+
+                # 3) Drop one of any pair of highly inter-correlated features
+                feat_cols = [c for c in X.columns if c not in [time_col, event_col]]
+                if len(feat_cols) > 1:
+                    num = X[feat_cols].select_dtypes(include=["float32","float64","int32","int64"])
+                    if num.shape[1] > 1:
+                        corr = num.corr().abs()
+                        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+                        to_drop = [col for col in upper.columns if any(upper[col] >= high_corr)]
+                        if to_drop:
+                            X = X.drop(columns=to_drop, errors="ignore")
+
+                # 4) Final safety: drop columns with <=1 unique value
+                feat_cols = [c for c in X.columns if c not in [time_col, event_col]]
+                drop_single = [c for c in feat_cols if X[c].nunique(dropna=True) <= 1]
+                if drop_single:
+                    X = X.drop(columns=drop_single, errors="ignore")
+
+                return X
+
+                    # ---------- Fast path: clean → (optional) stratified sample → prune → fit ----------
+            def stratified_sample_for_survival(df, time_col, event_col, max_rows=10000, random_state=42):
+                """Downsample large frames while keeping the event rate roughly intact."""
+                n = len(df)
+                if n <= max_rows:
+                    return df
+                if event_col not in df.columns:
+                    return df.sample(max_rows, random_state=random_state)
+
+                pos = df[df[event_col] == 1]
+                neg = df[df[event_col] == 0]
+                # keep the same proportion of events
+                ratio = len(pos) / max(1, n)
+                pos_keep = int(round(max_rows * ratio))
+                pos_keep = min(pos_keep, len(pos))
+                neg_keep = max_rows - pos_keep
+                neg_keep = min(neg_keep, len(neg))
+
+                out = pd.concat([
+                    pos.sample(pos_keep, random_state=random_state) if pos_keep > 0 else pos.head(0),
+                    neg.sample(neg_keep, random_state=random_state) if neg_keep > 0 else neg.head(0),
+                ], axis=0)
+                return out.sample(frac=1.0, random_state=random_state).reset_index(drop=True)
+
+            # Clean
             train_df = clean_dataframe_for_cox(train_df, time_col, event_col)
-            
-            # Check if test set has target columns
             has_test_targets = time_col in test_df.columns and event_col in test_df.columns
             if has_test_targets:
                 test_df = clean_dataframe_for_cox(test_df, time_col, event_col)
             else:
-                # No target columns in test set, only preprocess features
                 test_df = clean_dataframe_for_cox(test_df, None, None)
 
-            # Verify no NaN values in final datasets
             print(f"Train set shape: {train_df.shape}")
             print(f"Train set NaN check: {train_df.isna().sum().sum()} total NaN values")
             print(f"Test set shape: {test_df.shape}")
             print(f"Test set NaN check: {test_df.isna().sum().sum()} total NaN values")
-            
-            # ───────────── Train CoxPH ─────────────
-            # First fit on training data only
-            cph = CoxPHFitter()
-            cph.fit(train_df, duration_col=time_col, event_col=event_col)
-            
-            # For the full model, only use data that has target columns
+
+            # If very large, take a stratified sample BEFORE pruning/fitting (speeds up a lot)
+            BIG = len(train_df) > 10000
+            if BIG:
+                train_df = stratified_sample_for_survival(train_df, time_col, event_col, max_rows=10000)
+                print(f"Train stratified sample shape: {train_df.shape}")
+
+            # Prune (low-var, high-corr, duplicates, single-unique)
+            train_df_pruned = prune_for_cox(train_df, time_col, event_col)
+            print(f"Train pruned shape: {train_df_pruned.shape}")
+
+            test_df_pruned = test_df.copy()
+            common_cols = [c for c in train_df_pruned.columns if c in test_df_pruned.columns]
+            if len(common_cols) >= 2:
+                test_df_pruned = test_df_pruned[common_cols].copy()
+            print(f"Test pruned shape: {test_df_pruned.shape}")
+
+            # ⛔️ Skip univariate Cox entirely. We rely on pruning + penalization instead.
+
+            # Fit on PRUNED train only (bounded steps + ridge penalization to stabilize/accelerate)
+            from lifelines import CoxPHFitter
+            FIT_KW = dict(duration_col=time_col, event_col=event_col, show_progress=False)
+            cph = CoxPHFitter(penalizer=2.0, l1_ratio=0.0)
+            cph.fit(train_df_pruned, **FIT_KW)  # robust=False for speed; turn on if you really need robust SEs
+
+            # Build PRUNED full dataset (align to pruned train columns)
             if has_test_targets:
-                # Ensure columns match before concatenation
-                train_cols = set(train_df.columns)
-                test_cols = set(test_df.columns)
-                
-                # Find common columns
-                common_cols = train_cols.intersection(test_cols)
-                
-                # Make sure target columns are included
-                if time_col not in common_cols or event_col not in common_cols:
-                    print(f"Warning: Target columns missing in test set. Using training data only for full model.")
-                    full_df = train_df.copy()
+                common = set(train_df_pruned.columns).intersection(set(test_df_pruned.columns))
+                if time_col not in common or event_col not in common:
+                    print("Warning: target cols missing in pruned test set; using pruned train only for full model.")
+                    full_df_pruned = train_df_pruned.copy()
                 else:
-                    # Reorder columns to match
-                    ordered_cols = list(common_cols)
-                    train_subset = train_df[ordered_cols].copy()
-                    test_subset = test_df[ordered_cols].copy()
-                    
-                    # Additional safety check for NaN values before concatenation
-                    print(f"Pre-concat train NaN check: {train_subset.isna().sum().sum()}")
-                    print(f"Pre-concat test NaN check: {test_subset.isna().sum().sum()}")
-                    
-                    # Ensure data types match
-                    for col in ordered_cols:
+                    ordered = [c for c in train_df_pruned.columns if c in common]
+                    train_subset = train_df_pruned[ordered].copy()
+                    test_subset  = test_df_pruned[ordered].copy()
+                    # align dtypes
+                    for col in ordered:
                         if train_subset[col].dtype != test_subset[col].dtype:
-                            # Convert both to float32 for consistency
-                            train_subset[col] = train_subset[col].astype('float32')
-                            test_subset[col] = test_subset[col].astype('float32')
-                    
-                    full_df = pd.concat([train_subset, test_subset], axis=0, ignore_index=True)
-                    
-                    # Final NaN check after concatenation
-                    print(f"Post-concat full_df shape: {full_df.shape}")
-                    print(f"Post-concat NaN check: {full_df.isna().sum().sum()}")
-                    
-                    # If there are still NaNs, handle them
-                    if full_df.isna().sum().sum() > 0:
-                        print("Warning: NaNs detected after concatenation. Cleaning...")
-                        full_df = clean_dataframe_for_cox(full_df, time_col, event_col)
-                    # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-                    try:
-                        required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                        if required_cols.issubset(full_df.columns):
-                            summary_stats = generate_customer_summary(full_df)
-                        else:
-                            summary_stats = {
-                                "note": "Customer summary stats not generated.",
-                                "tip": "Visit datasets.html to define features like 'clv', 'recency', 'total_spent', and 'upsell_score' for enhanced insights."
-                            }
-                    except Exception as e:
-                        summary_stats = {
-                            "error": f"Summary generation failed: {str(e)}",
-                            "tip": "Add customer-level metrics to your dataset to enable summary statistics."
-                        }
-
+                            test_subset[col] = test_subset[col].astype(train_subset[col].dtype)
+                    full_df_pruned = pd.concat([train_subset, test_subset], ignore_index=True)
             else:
-                print("Test set has no target columns. Using training data only for full model.")
-                full_df = train_df.copy()
-                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-                try:
-                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                    if required_cols.issubset(full_df.columns):
-                        summary_stats = generate_customer_summary(full_df)
-                    else:
-                        summary_stats = {
-                            "note": "Customer summary stats not generated.",
-                            "tip": "Visit datasets.html to define features like 'clv', 'recency', 'total_spent', and 'upsell_score' for enhanced insights."
-                        }
-                except Exception as e:
-                    summary_stats = {
-                        "error": f"Summary generation failed: {str(e)}",
-                        "tip": "Add customer-level metrics to your dataset to enable summary statistics."
-                    }
+                print("Test set has no target columns. Using pruned train only for full model.")
+                full_df_pruned = train_df_pruned.copy()
 
-            # Fit the full model
-            cph_full = CoxPHFitter()
-            cph_full.fit(full_df, duration_col=time_col, event_col=event_col)
-            
-            # ──────── Survival Model Metrics ────────
+            # Final safety on full_df_pruned
+            full_df_pruned = full_df_pruned.dropna(axis=0, how="any")
+            bad_cols = [c for c in full_df_pruned.columns if c not in [time_col, event_col] and full_df_pruned[c].nunique(dropna=True) <= 1]
+            if bad_cols:
+                full_df_pruned = full_df_pruned.drop(columns=bad_cols, errors="ignore")
+
+            # For huge full sets, cap size again to keep final fit snappy
+            if len(full_df_pruned) > 20000:
+                full_df_pruned = stratified_sample_for_survival(full_df_pruned, time_col, event_col, max_rows=20000)
+                print(f"Full stratified sample shape: {full_df_pruned.shape}")
+
+            # Fit final model on PRUNED full data (same bounded settings)
+            cph_full = CoxPHFitter(penalizer=2.0, l1_ratio=0.0)
+            cph_full.fit(full_df_pruned, **FIT_KW)
+
+            # Metrics
             c_index = cph_full.concordance_index_
             log_likelihood = cph_full.log_likelihood_
-            aic = -2 * log_likelihood + 2 * len(cph_full.params_)
-            bic = -2 * log_likelihood + len(cph_full.params_) * np.log(full_df.shape[0])
+            k_params = len(cph_full.params_)
+            n_obs = full_df_pruned.shape[0]
+            aic = float(-2 * log_likelihood + 2 * k_params)
+            bic = float(-2 * log_likelihood + k_params * np.log(n_obs))
             significant_predictors = int((cph_full.summary["p"] < 0.05).sum())
 
             survival_metrics = {
-                "concordance_index": round(c_index, 4),
-                "log_likelihood": round(log_likelihood, 4),
+                "concordance_index": round(float(c_index), 4),
+                "log_likelihood": round(float(log_likelihood), 4),
                 "AIC": round(aic, 4),
                 "BIC": round(bic, 4),
                 "significant_predictors": significant_predictors
             }
-            
-            # Save model to temporary directory first
+
+            # Save model to temp and upload (with filename arg)
             temp_model_path = PathL(model_dir) / f"{user_id}_survival_cox.pkl"
             joblib.dump(cph_full, temp_model_path)
-            
-            # Upload model to Supabase
+
             try:
                 with open(temp_model_path, 'rb') as f:
                     model_bytes = f.read()
                 supabase_model_path = f"models/{user_id}_survival_cox.pkl"
-                upload_file_to_supabase(model_bytes, supabase_model_path)
+                upload_file_to_supabase(
+                    model_bytes,
+                    supabase_model_path,
+                    f"{user_id}_survival_cox.pkl"  # filename arg
+                )
                 print(f"Model uploaded to Supabase: {supabase_model_path}")
             except Exception as upload_error:
                 print(f"Warning: Failed to upload model to Supabase: {upload_error}")
 
-            # ───────────── Generate Visualizations ─────────────
+            # Example: baseline survival & retention (unchanged)
             baseline_survival = cph_full.baseline_survival_
-
             retention_rates = {
                 "1_month": round(get_retention_rate(1, baseline_survival) * 100, 2),
                 "3_months": round(get_retention_rate(3, baseline_survival) * 100, 2),
                 "6_months": round(get_retention_rate(6, baseline_survival) * 100, 2),
             }
+
             
             # Baseline survival curve
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -4496,7 +4493,6 @@ def do_survival(
                     },
                     "metrics": survival_metrics,
                     "retention_rates": retention_rates,
-                    "summary_stats": summary_stats
                 }
 
                 if risk_fig_base64:
@@ -4526,7 +4522,6 @@ def do_survival(
                 },
                 "metrics": survival_metrics,
                 "retention_rates": retention_rates,
-                "summary_stats": summary_stats
             }
 
             if risk_fig_base64:
@@ -4701,7 +4696,22 @@ def do_what_if(
             
         except Exception as e:
             raise ValueError(f"Failed to load data: {str(e)}")
-    
+    def detect_task_type(y: pd.Series) -> str:
+        y_nonnull = y.dropna()
+        nunique = y_nonnull.nunique()
+
+        # clear binary cases
+        unique_vals = set(pd.unique(y_nonnull))
+        if pd.api.types.is_bool_dtype(y_nonnull) or unique_vals <= {0, 1}:
+            return "classification"
+
+        # small-cardinality heuristic (works on small datasets too)
+        thresh = min(20, max(2, int(0.1 * len(y_nonnull))))
+        if nunique <= thresh:
+            return "classification"
+
+        return "regression"
+
     def load_model(df: pd.DataFrame, target_column: str) -> Any:
         """Load classifier or regressor based on the target column's distribution"""
         model_dir = os.path.join(temp_dir, "models")
@@ -4712,15 +4722,11 @@ def do_what_if(
         num_unique = target_values.nunique()
         total = len(target_values)
 
-        is_classification = (
-            pd.api.types.is_object_dtype(target_values) or
-            pd.api.types.is_bool_dtype(target_values) or
-            (num_unique < 0.05 * total and num_unique <= 20)
-        )
+        target_values = df[target_column].dropna()
+        selected_model_type = "classifier" if detect_task_type(target_values) == "classification" else "regressor"
 
-        selected_model_type = "classifier" if is_classification else "regressor"
         logging.info(f"🔍 Target column '{target_column}' detected as: {selected_model_type.upper()}")
-        task_type = "classification" if is_classification else "regression"
+        task_type = detect_task_type(target_values)
         # Choose the correct model path
         model_paths = {
             "classifier": (
@@ -5390,6 +5396,7 @@ def do_what_if(
 
 
     import logging
+    
     def generate_insights(
         metrics: Dict[str, Any],
         applied_changes: Dict[str, Any],
@@ -5402,19 +5409,16 @@ def do_what_if(
         insights = []
 
         # --- Auto-detect task type ---
-        target_values = df[target_column].dropna()
-        num_unique = target_values.nunique()
-        total = len(target_values)
+        task_type = detect_task_type(df[target_column])
+        num_unique = df[target_column].dropna().nunique()
 
-        is_classification = (
-            pd.api.types.is_object_dtype(target_values) or
-            pd.api.types.is_bool_dtype(target_values) or
-            (num_unique < 0.05 * total and num_unique <= 20)
-        )
-        task_type = "classification" if is_classification else "regression"
-        task_subtype = "binary" if task_type == "classification" and num_unique == 2 else "multiclass" if is_classification else "continuous"
+        if task_type == "classification":
+            task_subtype = "binary" if num_unique == 2 else "multiclass"
+        else:
+            task_subtype = "continuous"
 
         logging.info(f"Auto-detected task: {task_type.upper()} ({task_subtype})")
+
 
         # --- Statistical significance ---
         if "is_significant" in metrics:
@@ -5564,7 +5568,6 @@ def do_what_if(
 
             # ───── Remove the target column from the expected features ─────
             training_columns = [c for c in training_columns if c != target_column]
-
             # ───── Apply any bulk feature changes ─────
             modified_df, applied_changes = apply_feature_changes(df, changes)
 
@@ -5807,21 +5810,6 @@ def do_risk_analysis(
                 drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in df.columns]
                 if drops:
                     df.drop(columns=drops, inplace=True)
-            # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats not generated.",
-                        "tip": "Go to datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for business insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "Ensure your dataset has customer-level metrics before this step."
-                }
 
             # ───────────── Load user model from Supabase ─────────────
             model_path = None
@@ -5919,8 +5907,7 @@ def do_risk_analysis(
                     "imageData": f"data:image/png;base64,{risk_fig_base64}" if risk_fig_base64 else "",
                     "visualizations": {
                         "risk_plot": f"data:image/png;base64,{risk_fig_base64}" if risk_fig_base64 else ""
-                    },
-                    "summary_stats": summary_stats
+                    }
                 }
 
                 try:
@@ -6092,22 +6079,6 @@ def do_decision_paths(
                 X_test = X_test[common_columns]
 
                 dataset_name = f"{os.path.basename(train_path)}+{os.path.basename(test_path)}"
-                # ───────────── Optional: Generate Customer-Level Summary Stats ─────────────
-                try:
-                    full_df = pd.concat([train_df, test_df], axis=0, ignore_index=True)
-                    required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                    if required_cols.issubset(full_df.columns):
-                        summary_stats = generate_customer_summary(full_df)
-                    else:
-                        summary_stats = {
-                            "note": "Customer summary stats not generated.",
-                            "tip": "Visit datasets.html to define 'clv', 'recency', 'total_spent', and 'upsell_score' for business insights."
-                        }
-                except Exception as e:
-                    summary_stats = {
-                        "error": f"Failed to generate summary stats: {str(e)}",
-                        "tip": "Ensure your dataset has customer-level metrics before training."
-                    }
 
             # ───────────── Train decision tree ─────────────
             clf = DecisionTreeClassifier(max_depth=4, random_state=42)
@@ -6225,6 +6196,172 @@ def do_decision_paths(
     except Exception as e:
         print(f"[⚠️] Error in do_decision_paths: {e}")
         raise e
+# -------- Finite-safety + robust TS utilities --------
+import numpy as np, pandas as pd
+from typing import Optional, Dict, Any, Tuple
+
+def _winsorize_quantiles(s: pd.Series, lo=0.001, hi=0.999) -> pd.Series:
+    """Clamp extremes by quantiles to prevent overflow/underflow in fitting."""
+    if s.empty: return s
+    qlo, qhi = s.quantile([lo, hi])
+    return s.clip(qlo, qhi)
+
+def _mad_deoutlier(s: pd.Series, k=12.0) -> pd.Series:
+    """Remove absurd spikes using median absolute deviation."""
+    med = s.median()
+    mad = (s - med).abs().median()
+    if mad == 0:
+        return s
+    z = 0.6745 * (s - med) / mad
+    return s.where(z.abs() <= k, np.nan)
+
+def _stabilize_variance(s: pd.Series) -> pd.Series:
+    """
+    Stabilize heavy-tailed series safely:
+    - Try log1p if series is nonnegative
+    - Else Yeo-Johnson-like transform (sign-preserving)
+    """
+    s = s.astype("float64")
+    if (s >= 0).all():
+        return np.log1p(s)
+    # sign-preserving softplus approximation
+    pos = s.clip(lower=0)
+    neg = (-s.clip(upper=0))
+    pos_t = np.log1p(pos)
+    neg_t = -np.log1p(neg)
+    return pos_t + neg_t
+
+def _ensure_regular_index(y: pd.Series, freq_hint: Optional[str] = None) -> Tuple[pd.Series, str]:
+    """Ensure DatetimeIndex with a frequency; interpolate gaps."""
+    if not isinstance(y.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        # Use synthetic daily index
+        idx = pd.date_range("2000-01-01", periods=len(y), freq="D")
+        y = pd.Series(y.values, index=idx, name=y.name)
+
+    inferred = pd.infer_freq(y.index)
+    freq = freq_hint or inferred or "D"
+    y = y.asfreq(freq)
+    if y.isna().any():
+        y = y.interpolate(limit_direction="both")
+    return y, freq
+
+def _prepare_ts_strict(df: pd.DataFrame, target_col: str, time_col: Optional[str]) -> Dict[str, Any]:
+    """Coerce datetime index, build finite/regularized target series ready for modeling."""
+    w = df.copy()
+
+    # 1) Build a datetime index
+# replace this block inside _prepare_ts_strict(...)
+    if time_col and time_col in w.columns:
+        w[time_col] = parse_datetime_smart(w[time_col])
+        w = w.dropna(subset=[time_col]).sort_values(time_col).set_index(time_col)
+    else:
+        detected = None
+        for col in w.columns:
+            if pd.api.types.is_datetime64_any_dtype(w[col]):
+                detected = col; break
+            if w[col].dtype in (object, "int64", "int32"):
+                parsed = parse_datetime_smart(w[col])
+                if parsed.notna().sum() >= max(8, int(0.3*len(parsed))):
+                    w[col] = parsed; detected = col; break
+        if detected:
+            w = w.dropna(subset=[detected]).sort_values(detected).set_index(detected)
+        else:
+            w = w.reset_index(drop=True); w.index.name = "synthetic_time"
+
+
+    # 2) Extract and coerce target to float; drop non-finite
+    if target_col not in w.columns:
+        raise ValueError(f"Target column '{target_col}' not found. Available: {list(w.columns)}")
+
+    y = pd.to_numeric(w[target_col], errors="coerce").astype("float64")
+    y = y.replace([np.inf, -np.inf], np.nan).dropna()
+
+    # 3) Regularize index & interpolate to remove gaps
+    y, freq = _ensure_regular_index(y, freq_hint=None)
+
+    # 4) Remove absurd spikes (MAD), winsorize remaining extremes
+    y = _mad_deoutlier(y, k=12.0)
+    y = y.interpolate(limit_direction="both")
+    y = _winsorize_quantiles(y, lo=0.001, hi=0.999)
+
+    # 5) Variance stabilize for heavy tails
+    y = _stabilize_variance(y)
+
+    # 6) Final finite check
+    y = pd.to_numeric(y, errors="coerce").astype("float64")
+    y = y.replace([np.inf, -np.inf], np.nan).dropna()
+
+    return {"y": y, "freq": freq, "nobs": int(y.notna().sum())}
+
+def _is_constant(y: pd.Series) -> bool:
+    return y.nunique(dropna=True) <= 1
+
+def _naive_forecast(y: pd.Series, steps: int, freq: str) -> pd.DataFrame:
+    """Drift/last-value fallback that is guaranteed finite."""
+    last = float(y.iloc[-1])
+    idx = pd.date_range(y.index[-1], periods=steps+1, freq=freq)[1:]
+    out = pd.DataFrame({
+        "timestamp": idx,
+        "forecast": np.full(steps, last, dtype="float64"),
+        "lower": np.full(steps, last, dtype="float64"),
+        "upper": np.full(steps, last, dtype="float64"),
+    })
+    return out
+
+def _finite_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure frame has only finite floats where numeric."""
+    for c in df.columns:
+        if pd.api.types.is_numeric_dtype(df[c]):
+            df[c] = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    return df.dropna()
+# Add this helper near your TS utilities
+def parse_datetime_smart(col: pd.Series) -> pd.Series:
+    """Fast, consistent datetime parsing without dateutil fallback spam."""
+    s = col.astype("string")
+
+    # 1) Try common exact formats (vectorized, fast)
+    fmts = [
+        "%Y-%m-%d",                # 2025-08-09
+        "%Y/%m/%d",
+        "%m/%d/%Y",                # 08/09/2025
+        "%m/%d/%y",
+        "%Y-%m-%d %H:%M:%S",       # 2025-08-09 14:30:00
+        "%Y-%m-%dT%H:%M:%S",       # ISO without zone
+        "%d-%b-%Y",                # 09-Aug-2025
+    ]
+    best = None; best_ok = -1
+    for fmt in fmts:
+        parsed = pd.to_datetime(s, format=fmt, errors="coerce")
+        ok = parsed.notna().sum()
+        if ok > best_ok:
+            best_ok, best = ok, parsed
+        if ok == len(s):  # perfect hit
+            return parsed
+
+    # 2) Epoch (seconds) if numeric-ish and not many duds
+    num = pd.to_numeric(s, errors="coerce")
+    if num.notna().sum() >= max(8, int(0.5 * len(s))):
+        epoch_sec = pd.to_datetime(num, unit="s", errors="coerce")
+        if epoch_sec.notna().sum() >= best_ok:
+            best = epoch_sec
+
+    # 3) Fallback: ISO parser (still vectorized) – no warning spam
+    iso = pd.to_datetime(s, errors="coerce")
+    if iso.notna().sum() >= best_ok:
+        best = iso
+
+    return best
+def season_length_from_freq(freq: str) -> int:
+    # crude but practical
+    if not freq: return 0
+    if freq.startswith("H"): return 24
+    if freq.startswith("D"): return 7
+    if freq.startswith("W"): return 52
+    if freq.startswith("M"): return 12
+    if freq.startswith("Q"): return 4
+    if freq.startswith("A") or freq.startswith("Y"): return 1
+    return 0
+
 def do_forecast(
     user_id: str,
     current_user: dict,
@@ -6238,129 +6375,112 @@ def do_forecast(
     time_column: str = None,
     enable_backtesting: bool = False
 ) -> Dict[str, Any]:
-    """
-    Main forecast function - supports single or train/test input, handles Supabase, multiple models, and optional time column.
-    """
-    local_file_path = None
+    import os, tempfile, traceback
+    import pandas as pd
+    import numpy as np
 
-    try:
-        # Create temp dir
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Determine file input type
-            if file_path:
-                file_bytes = download_file_from_supabase(file_path)
-                local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
-                with open(local_file_path, 'wb') as f:
-                    f.write(file_bytes)
-                df = pd.read_csv(local_file_path, sep=None, engine="python")
-            elif train_path and test_path:
-                train_bytes = download_file_from_supabase(train_path)
-                test_bytes = download_file_from_supabase(test_path)
-                train_file = os.path.join(temp_dir, "train.csv")
-                test_file = os.path.join(temp_dir, "test.csv")
-                with open(train_file, 'wb') as f:
-                    f.write(train_bytes)
-                with open(test_file, 'wb') as f:
-                    f.write(test_bytes)
-                df_train = pd.read_csv(train_file, sep=None, engine="python")
-                df_test = pd.read_csv(test_file, sep=None, engine="python")
-                df = pd.concat([df_train, df_test], ignore_index=True)
-            else:
-                raise ValueError("No valid input file provided (file_path or train/test).")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # ---------- Load ----------
+        if file_path:
+            fb = download_file_from_supabase(file_path)
+            local = os.path.join(temp_dir, os.path.basename(file_path))
+            with open(local, "wb") as f: f.write(fb)
+            df = pd.read_csv(local, sep=None, engine="python")
+        elif train_path and test_path:
+            tb = download_file_from_supabase(train_path)
+            vb = download_file_from_supabase(test_path)
+            train_file = os.path.join(temp_dir, "train.csv")
+            test_file  = os.path.join(temp_dir, "test.csv")
+            with open(train_file, "wb") as f: f.write(tb)
+            with open(test_file, "wb")  as f: f.write(vb)
+            df_train = pd.read_csv(train_file, sep=None, engine="python")
+            df_test  = pd.read_csv(test_file,  sep=None, engine="python")
+            df = pd.concat([df_train, df_test], ignore_index=True)
+        else:
+            raise ValueError("No valid input file provided (file_path or train/test).")
 
-            # Drop columns
-            if drop_columns:
-                drop_cols = [c.strip() for c in drop_columns.split(",") if c.strip() in df.columns]
-                df.drop(columns=drop_cols, inplace=True, errors="ignore")
+        # ---------- Drop columns ----------
+        if drop_columns:
+            drops = [c.strip() for c in drop_columns.split(",") if c.strip()]
+            df.drop(columns=[c for c in drops if c in df.columns], inplace=True, errors="ignore")
 
-            # Validate target column
-            if target_column not in df.columns:
-                raise ValueError(f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
+       # ... after loading df and dropping columns ...
 
-            # Time column handling
-            if time_column and time_column in df.columns:
-                try:
-                    df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
-                    df.dropna(subset=[time_column], inplace=True)
-                    df.sort_values(by=time_column, inplace=True)
-                    df.set_index(time_column, inplace=True)
-                except Exception as e:
-                    raise ValueError(f"Time column '{time_column}' could not be parsed as datetime: {str(e)}")
-            else:
-                df = df.reset_index(drop=True)
+        # ---------- STRICT TS PREP ----------
+        prep = _prepare_ts_strict(df, target_column, time_column)
+        y, freq, nobs = prep["y"], prep["freq"], prep["nobs"]
 
-            # Optional: Customer summary stats
-            try:
-                required_cols = {"clv", "recency", "total_spent", "upsell_score"}
-                if required_cols.issubset(df.columns):
-                    summary_stats = generate_customer_summary(df)
-                else:
-                    summary_stats = {
-                        "note": "Customer summary stats not generated.",
-                        "tip": "Add 'clv', 'recency', 'total_spent', and 'upsell_score' to your dataset via datasets.html for richer insights."
-                    }
-            except Exception as e:
-                summary_stats = {
-                    "error": f"Failed to generate summary stats: {str(e)}",
-                    "tip": "Ensure customer-level metrics are available before forecasting."
-                }
-
-            # Extract time series
-            series = df[target_column].dropna()
-
-            # Scenario manager setup
-            scenario_manager = ScenarioManager()
-            scenarios = scenarios or ["comprehensive"]
-
-            if "traditional" in scenarios:
-                scenario_manager.add_scenario(
-                    "traditional",
-                    "Traditional statistical models",
-                    [ARIMAModel(auto_arima=True), SARIMAModel()]
-                )
-
-            if "machine_learning" in scenarios:
-                scenario_manager.add_scenario(
-                    "machine_learning",
-                    "Machine learning models",
-                    [RandomForestModel()]
-                )
-
-            if "comprehensive" in scenarios:
-                scenario_manager.add_scenario(
-                    "comprehensive",
-                    "All available models",
-                    [ARIMAModel(auto_arima=True), SARIMAModel(), RandomForestModel()]
-                )
-
-            # Run scenarios
-            scenario_results = {}
-            for scenario_name in scenarios:
-                if scenario_name in scenario_manager.scenarios:
-                    scenario_results[scenario_name] = scenario_manager.run_scenario(
-                        scenario_name, series, periods
-                    )
-
+        # Early exits
+        if nobs < 3:
+            fc = _naive_forecast(y, periods, freq)
             return {
-                "series": series.tolist(),
-                "parameters": {
-                    "periods": periods,
-                    "target_column": target_column,
-                    "scenarios": scenarios,
-                    "time_column": time_column
-                },
-                "scenarios": scenario_results,
-                "metadata": {
-                    "data_points": len(series),
-                    "user_id": user_id,
-                    "summary_stats": summary_stats
-                }
+                "series": y.tolist(),
+                "parameters": {"periods": periods, "target_column": target_column, "time_column": time_column, "freq": freq, "nobs": nobs, "fallback": "naive"},
+                "scenarios": {"naive": {"forecast": _finite_df(fc).to_dict(orient="records")}},
+                "metadata": {"data_points": int(nobs), "user_id": user_id}
             }
 
-    except Exception as e:
-        print(f"Error in do_forecast: {e}")
-        traceback.print_exc()
-        raise
+        if _is_constant(y):
+            fc = _naive_forecast(y, periods, freq)
+            return {
+                "series": y.tolist(),
+                "parameters": {"periods": periods, "target_column": target_column, "time_column": time_column, "freq": freq, "nobs": nobs, "fallback": "constant_naive"},
+                "scenarios": {"naive": {"forecast": _finite_df(fc).to_dict(orient="records")}},
+                "metadata": {"data_points": int(nobs), "user_id": user_id}
+            }
+
+        # ---------- INSERT HERE: seasonal length + guarded model selection ----------
+        season_L = season_length_from_freq(freq)
+        enough_for_seasonal = (season_L > 1) and (nobs >= 3 * season_L)  # need ~3 seasons
+        stable_flags = {"enforce_stationarity": True, "enforce_invertibility": True}
+
+        if nobs < 12:
+            # short-series guardrails
+            arima_model  = ARIMAModel(auto_arima=False, order=(0,1,0), model_kwargs=stable_flags)
+            sarima_model = SARIMAModel(order=(0,1,0), seasonal_order=(0,0,0,0), model_kwargs=stable_flags)
+        else:
+            seas = (0,0,0,0)
+            if enough_for_seasonal:
+                seas = (1,0,1, season_L)  # simple seasonal ARMA structure
+            arima_model  = ARIMAModel(auto_arima=True, model_kwargs=stable_flags)
+            sarima_model = SARIMAModel(order=(1,1,1), seasonal_order=seas, model_kwargs=stable_flags)
+
+        # ---------- Scenario setup ----------
+        scenario_manager = ScenarioManager()
+        scenarios = scenarios or ["comprehensive"]
+
+        if "traditional" in scenarios:
+            scenario_manager.add_scenario("traditional", "Statistical models", [arima_model, sarima_model])
+
+        if "machine_learning" in scenarios:
+            scenario_manager.add_scenario("machine_learning", "ML models", [RandomForestModel()])
+
+        if "comprehensive" in scenarios:
+            scenario_manager.add_scenario("comprehensive", "All models", [arima_model, sarima_model, RandomForestModel()])
+
+        # ---------- Run scenarios ----------
+        scenario_results = {}
+        for name in scenarios:
+            if name not in scenario_manager.scenarios:
+                continue
+            res = scenario_manager.run_scenario(name, y, periods, freq=freq, enable_backtesting=enable_backtesting)
+            try:
+                if isinstance(res, dict) and "forecast" in res:
+                    fdf = pd.DataFrame(res["forecast"])
+                    fdf = _finite_df(fdf)
+                    res["forecast"] = fdf.to_dict(orient="records")
+            except Exception:
+                pass
+            scenario_results[name] = res
+
+
+        return {
+            "series": y.tolist(),
+            "parameters": {"periods": periods, "target_column": target_column, "time_column": time_column, "freq": freq, "nobs": nobs, "short_series_guard": short_series},
+            "scenarios": scenario_results,
+            "metadata": {"data_points": int(nobs), "user_id": user_id}
+        }
+
 
 def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
     """
@@ -6455,7 +6575,6 @@ def run_forecast_subprocess(user_id, file_path, forecast_result, output_dir):
         return False
 
 from scipy.stats import chi2_contingency
-
 def do_ab_test(
     user_id: str,
     file_path: str,
@@ -6498,29 +6617,21 @@ def do_ab_test(
             lift = summary.loc[best, "conversion_rate"] - summary["conversion_rate"].min()
 
             # ─── Chart 1: Conversion-Rate Bar ───
-            buf1 = io.BytesIO()
-            plt.figure(figsize=(6,4))
+            fig1 = plt.figure(figsize=(6, 4))
             summary["conversion_rate"].plot(kind="bar", rot=0)
             plt.ylabel("Conversion Rate")
             plt.title("A/B Conversion Rates")
-            plt.tight_layout()
-            plt.savefig(buf1, format="png")
-            buf1.seek(0)
-            chart_b64 = base64.b64encode(buf1.read()).decode("utf-8")
-            plt.close()
+            conversion_rate_chart_base64 = plot_to_base64(fig1)
+            plt.close(fig1)
 
             # ─── Chart 2: Contingency Heatmap ───
-            buf2 = io.BytesIO()
-            plt.figure(figsize=(6,4))
+            fig2 = plt.figure(figsize=(6, 4))
             sns.heatmap(contingency, annot=True, fmt="d", cbar=False)
             plt.ylabel(variant_column)
             plt.xlabel(target_column)
             plt.title("Contingency Table")
-            plt.tight_layout()
-            plt.savefig(buf2, format="png")
-            buf2.seek(0)
-            heatmap_b64 = base64.b64encode(buf2.read()).decode("utf-8")
-            plt.close()
+            contingency_heatmap_base64 = plot_to_base64(fig2)
+            plt.close(fig2)
 
             # ─── Build metadata including images ───
             entry = {
@@ -6539,20 +6650,35 @@ def do_ab_test(
                     for var, rate in summary["conversion_rate"].items()
                 },
                 "insights": f"Variant '{best}' won with a {round(lift*100,2)}% lift.",
-                # ← here are your images, ready for front-end display
-                "conversion_rate_chart": chart_b64,
-                "contingency_heatmap": heatmap_b64,
+                # Visualizations in the desired format
+                "visualizations": {
+                    "conversion_rate_chart": f"data:image/png;base64,{conversion_rate_chart_base64}" if conversion_rate_chart_base64 else "",
+                    "contingency_heatmap": f"data:image/png;base64,{contingency_heatmap_base64}" if contingency_heatmap_base64 else "",
+                }
             }
 
+            # Make sure the entry is serializable to JSON
             entry = ensure_json_serializable(entry)
+
+            # Store in database or append metadata
             with master_db_cm() as db:
                 _append_limited_metadata(user_id, entry, db=db, max_entries=5)
 
-            return {"status": "success", "id": entry["id"], "user_id": user_id, **entry}
+            # Return response with visualizations in 'visualizations' key
+            response_data = {
+                "status": "success",
+                "id": entry["id"],
+                "user_id": user_id,
+                **entry,  # Include the visualizations and metadata in the response
+            }
+
+            return response_data
 
     except Exception as e:
         print(f"[⚠️] Error in run_ab_test: {e}")
         raise
+
+
 
 @celery_app.task
 def run_classification(

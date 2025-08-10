@@ -1978,9 +1978,9 @@ async def risk_analysis(
     test_file: UploadFile = File(None),
     target_column: str = Form(...),
     drop_columns: str = Form(""),
-    user_id: str = Form(...),
     current_user: User = Depends(get_current_active_user),
 ):
+    user_id = current_user.id
     # ──────────── Token check ─────────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
@@ -2020,9 +2020,9 @@ async def ab_test(
     target_column: str = Form(...),
     variant_column: str = Form("variant"),
     drop_columns: str = Form(""),
-    user_id: str = Form(...),
     current_user: User = Depends(get_current_active_user),
 ):
+    user_id = current_user.id
     # ──────────── Token check ─────────────
     MINIMUM_TOKENS = 0.1
     if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:

@@ -19,151 +19,98 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
 # Set matplotlib backend for headless environments
 plt.switch_backend('Agg')
-
 class ScenarioManager:
     """Manages different forecasting scenarios and models"""
-    
     def __init__(self):
         self.scenarios = {}
-    
+
     def add_scenario(self, name: str, description: str, models: List):
-        """Add a scenario with associated models"""
-        self.scenarios[name] = {
-            'description': description,
-            'models': models
-        }
-    
-    def run_scenario(self, scenario_name: str, series: pd.Series, periods: int) -> Dict:
-        """Run all models in a scenario"""
+        self.scenarios[name] = {'description': description, 'models': models}
+
+    def run_scenario(self, scenario_name: str, series: pd.Series, periods: int, **context) -> Dict:
+        """
+        Run all models in a scenario.
+        Extra params (e.g., freq='D', enable_backtesting=True) are passed to models.
+        """
         if scenario_name not in self.scenarios:
             raise ValueError(f"Scenario '{scenario_name}' not found")
-        
+
         results = {}
-        models = self.scenarios[scenario_name]['models']
-        
-        for model in models:
+        for model in self.scenarios[scenario_name]['models']:
+            model_name = model.__class__.__name__
             try:
-                model_name = model.__class__.__name__
+                # Forward context to models; they can accept what they need, ignore the rest
+                result = model.fit_predict(series, periods, **context)
+                results[model_name] = result
+            except TypeError:
+                # Backward-compatible: if model doesn't accept kwargs, call the old way
                 result = model.fit_predict(series, periods)
                 results[model_name] = result
             except Exception as e:
-                print(f"Model {model.__class__.__name__} failed: {e}")
-                results[model.__class__.__name__] = {
-                    "status": "error",
-                    "error": str(e),
-                    "predictions": [],
-                    "confidence_intervals": []
+                print(f"Model {model_name} failed: {e}")
+                results[model_name] = {
+                    "status": "error", "error": str(e),
+                    "predictions": [], "confidence_intervals": []
                 }
-        
         return results
-    
-    def compare_models(self, series: pd.Series) -> Dict:
-        """Compare models using backtesting"""
-        # Implementation for backtesting comparison
-        # This is a placeholder - implement your backtesting logic here
+
+    def compare_models(self, series: pd.Series, **context) -> Dict:
+        # Placeholder for your backtesting logic; **context available if needed
         return {}
 
-
 class ARIMAModel:
-    """ARIMA Model wrapper"""
-    
-    def __init__(self, auto_arima: bool = True, order: tuple = (1, 1, 1)):
+    def __init__(self, auto_arima: bool = True, order: tuple = (1, 1, 1), model_kwargs: dict | None = None):
         self.auto_arima = auto_arima
         self.order = order
-    
-    def fit_predict(self, series: pd.Series, periods: int) -> Dict:
-        """Fit ARIMA model and make predictions"""
+        self.model_kwargs = model_kwargs or {}
+
+    def fit_predict(self, series: pd.Series, periods: int, **kwargs) -> Dict:  # <— accepts extras
+        from statsmodels.tsa.arima.model import ARIMA
         try:
-            if self.auto_arima:
-                # Simple auto ARIMA implementation
-                # You might want to use pmdarima.auto_arima for better results
-                model = ARIMA(series, order=(1, 1, 1))
-            else:
-                model = ARIMA(series, order=self.order)
-            
-            fitted_model = model.fit()
-            forecast = fitted_model.forecast(steps=periods)
-            conf_int = fitted_model.get_forecast(steps=periods).conf_int()
-            
+            order = (1,1,1) if self.auto_arima else self.order
+            model = ARIMA(series, order=order, **self.model_kwargs)
+            fitted = model.fit()
+            fr = fitted.get_forecast(steps=periods)
             return {
                 "status": "success",
-                "predictions": forecast.tolist(),
-                "confidence_intervals": conf_int.values.tolist(),
-                "model_info": {
-                    "aic": fitted_model.aic,
-                    "bic": fitted_model.bic
-                }
+                "predictions": fr.predicted_mean.astype(float).tolist(),
+                "confidence_intervals": fr.conf_int().to_numpy(dtype=float).tolist(),
+                "model_info": {"aic": float(fitted.aic), "bic": float(fitted.bic)}
             }
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "predictions": [],
-                "confidence_intervals": []
-            }
-
-
+            return {"status": "error", "error": str(e), "predictions": [], "confidence_intervals": []}
 class SARIMAModel:
-    """SARIMA Model wrapper"""
-    
-    def __init__(self, order: tuple = (1, 1, 1), seasonal_order: tuple = (1, 1, 1, 12)):
+    def __init__(self, order: tuple = (1, 1, 1), seasonal_order: tuple = (1, 1, 1, 12), model_kwargs: dict | None = None):
         self.order = order
         self.seasonal_order = seasonal_order
-    
-    def fit_predict(self, series: pd.Series, periods: int) -> Dict:
-        """Fit SARIMA model and make predictions"""
+        self.model_kwargs = model_kwargs or {}
+
+    def fit_predict(self, series: pd.Series, periods: int, **kwargs) -> Dict:  # <— accepts extras
+        from statsmodels.tsa.statespace.sarimax import SARIMAX
         try:
-            from statsmodels.tsa.statespace.sarimax import SARIMAX
-            
-            model = SARIMAX(series, order=self.order, seasonal_order=self.seasonal_order)
-            fitted_model = model.fit(disp=False)
-            forecast = fitted_model.forecast(steps=periods)
-            conf_int = fitted_model.get_forecast(steps=periods).conf_int()
-            
+            model = SARIMAX(series, order=self.order, seasonal_order=self.seasonal_order, **self.model_kwargs)
+            fitted = model.fit(disp=False)
+            fr = fitted.get_forecast(steps=periods)
             return {
                 "status": "success",
-                "predictions": forecast.tolist(),
-                "confidence_intervals": conf_int.values.tolist(),
-                "model_info": {
-                    "aic": fitted_model.aic,
-                    "bic": fitted_model.bic
-                }
+                "predictions": fr.predicted_mean.astype(float).tolist(),
+                "confidence_intervals": fr.conf_int().to_numpy(dtype=float).tolist(),
+                "model_info": {"aic": float(fitted.aic), "bic": float(fitted.bic)}
             }
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "predictions": [],
-                "confidence_intervals": []
-            }
-
+            return {"status": "error", "error": str(e), "predictions": [], "confidence_intervals": []}
 
 class ExponentialSmoothingModel:
-    """Exponential Smoothing Model wrapper"""
-    
-    def fit_predict(self, series: pd.Series, periods: int) -> Dict:
-        """Fit Exponential Smoothing model and make predictions"""
+    def fit_predict(self, series: pd.Series, periods: int, **kwargs) -> Dict:  # <— accepts extras
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
         try:
-            from statsmodels.tsa.holtwinters import ExponentialSmoothing
-            
             model = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=12)
-            fitted_model = model.fit()
-            forecast = fitted_model.forecast(steps=periods)
-            
-            return {
-                "status": "success",
-                "predictions": forecast.tolist(),
-                "confidence_intervals": [],  # ExponentialSmoothing doesn't provide conf intervals by default
-                "model_info": {}
-            }
+            fitted = model.fit()
+            fc = fitted.forecast(steps=periods)
+            return {"status": "success", "predictions": fc.astype(float).tolist(),
+                    "confidence_intervals": [], "model_info": {}}
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "predictions": [],
-                "confidence_intervals": []
-            }
-
+            return {"status": "error", "error": str(e), "predictions": [], "confidence_intervals": []}
 
 class LSTMModel:
     """LSTM Model wrapper (placeholder)"""
@@ -191,60 +138,30 @@ class LSTMModel:
                 "confidence_intervals": []
             }
 
-
 class RandomForestModel:
-    """Random Forest Model wrapper"""
-    
     def __init__(self, n_estimators: int = 100, lags: int = 5):
         self.n_estimators = n_estimators
         self.lags = lags
-    
-    def fit_predict(self, series: pd.Series, periods: int) -> Dict:
-        """Fit Random Forest model and make predictions"""
+
+    def fit_predict(self, series: pd.Series, periods: int, **kwargs) -> Dict:  # <— accepts extras
+        from sklearn.ensemble import RandomForestRegressor
         try:
-            from sklearn.ensemble import RandomForestRegressor
-            
-            # Create lagged features
-            data = []
-            targets = []
-            
+            X, y = [], []
             for i in range(self.lags, len(series)):
-                data.append(series.iloc[i-self.lags:i].values)
-                targets.append(series.iloc[i])
-            
-            if len(data) == 0:
+                X.append(series.iloc[i-self.lags:i].values)
+                y.append(series.iloc[i])
+            if not X:
                 raise ValueError("Not enough data for lagged features")
-            
-            X = np.array(data)
-            y = np.array(targets)
-            
-            # Fit model
             model = RandomForestRegressor(n_estimators=self.n_estimators, random_state=42)
-            model.fit(X, y)
-            
-            # Make predictions
-            predictions = []
-            last_values = series.tail(self.lags).values
-            
+            model.fit(np.asarray(X), np.asarray(y))
+            preds, last = [], series.tail(self.lags).values
             for _ in range(periods):
-                pred = model.predict([last_values])[0]
-                predictions.append(pred)
-                # Shift window
-                last_values = np.append(last_values[1:], pred)
-            
-            return {
-                "status": "success",
-                "predictions": predictions,
-                "confidence_intervals": [],
-                "model_info": {}
-            }
+                p = float(model.predict([last])[0])
+                preds.append(p)
+                last = np.append(last[1:], p)
+            return {"status": "success", "predictions": preds, "confidence_intervals": [], "model_info": {}}
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "predictions": [],
-                "confidence_intervals": []
-            }
+            return {"status": "error", "error": str(e), "predictions": [], "confidence_intervals": []}
 
 
 def generate_scenario_visualizations(series: pd.Series, results: Dict, periods: int) -> Dict:

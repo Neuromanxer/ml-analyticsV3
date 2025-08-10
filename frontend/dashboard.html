@@ -1332,8 +1332,8 @@
 
   <script>
 
-  // const API_BASE_URL = 'http://127.0.0.1:8000';
-  const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+  const API_BASE_URL = 'http://127.0.0.1:8000';
+  // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
       // Inputs & preview elements
     const fullInput  = document.getElementById('full-input');
     const trainInput = document.getElementById('train-input');
@@ -2641,10 +2641,8 @@ function prepareAndRunAnalysis() {
    case 'ab_test':
   if (!targetCol)     return showError('Please specify a target column.');
   if (!variantCol)    return showError('Please specify a variant column.');
-  if (!filePath)      return showError('Please upload a dataset first.');
 
   callRealAPI('ab_test', {
-    file_path:       filePath,
     target_column:   targetCol,
     variant_column:  variantCol,
     drop_columns:    dropCols
@@ -3435,11 +3433,11 @@ function displayResults(endpoint, data) {
   }
 
   // Visualizations
-  if (data.conversion_rate_chart) {
-    addVisualization('Conversion Rate Chart', data.conversion_rate_chart);
+  if (data.visualizations && data.visualizations.conversion_rate_chart) {
+    addVisualization('Conversion Rate Chart', data.visualizations.conversion_rate_chart);
   }
-  if (data.contingency_heatmap) {
-    addVisualization('Contingency Heatmap', data.contingency_heatmap);
+  if (data.visualizations && data.visualizations.contingency_heatmap) {
+    addVisualization('Contingency Heatmap', data.visualizations.contingency_heatmap);
   }
   break;
       
