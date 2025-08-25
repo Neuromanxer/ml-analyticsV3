@@ -10,10 +10,10 @@ from datetime import datetime
 import uuid
 
 
-from .auth import master_db_cm, _append_limited_metadata
+# from .auth import master_db_cm, _append_limited_metadata
 
 
-# from auth import master_db_cm, _append_limited_metadata
+from auth import master_db_cm, _append_limited_metadata
 
 
 def ensure_json_serializable(obj):

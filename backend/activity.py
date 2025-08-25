@@ -30,11 +30,11 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, Path
 from pydantic import BaseModel
 from datetime import datetime
 
-from .auth import get_current_active_user, get_master_db_session, User, Base
-from .preprocessing import preprocess_data
+# from .auth import get_current_active_user, get_master_db_session, User, Base
+# from .preprocessing import preprocess_data
 
-# from auth import get_current_active_user, get_master_db_session, User, Base
-# from preprocessing import preprocess_data
+from auth import get_current_active_user, get_master_db_session, User, Base
+from preprocessing import preprocess_data
 
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -70,483 +70,19 @@ def get_activity(current_user: User = Depends(get_current_active_user), db: Sess
         .limit(10)
         .all()
     )
-def suggest_model_from_df(
-    df,
-    target_column: str,
-    summary_goal_key: str = "",
-    summary_goal_label: str = "",
-    summary_data_type_key: str = "",
-    summary_data_type_label: str = "",
-    summary_success_criteria: str = "",
-    time_column: str = ""
-):
-    import numpy as np
-    import pandas as pd
-
-    suggestions = []
-    added = set()
-    classification_priority = None
-
-    # determine time column (client-provided wins)
-    time_col = time_column if time_column in df.columns else None
-    if not time_col:
-        for c in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[c]) or "date" in c.lower() or "time" in c.lower():
-                time_col = c
-                break
-
-    def score_and_reason(model_id, needs_target=False, needs_time=False):
-        score = 2  # 0=high,1=medium,2=low
-        reasons = []
-
-        if model_id == summary_goal_key:
-            score = 0
-            reasons.append(f"High priority: aligns exactly with your goal (\"{summary_goal_label}\").")
-        elif needs_target and target_column:
-            score = min(score, 1)
-            reasons.append("Medium priority: uses your specified target column.")
-        elif needs_time and time_col:
-            score = min(score, 1)
-            reasons.append(f"Medium priority: uses your time column (\"{time_col}\").")
-        elif (summary_data_type_key and model_id in {"regression","time-series-analysis","what-if-bulk"} and summary_data_type_key.startswith("time")):
-            score = min(score, 1)
-            reasons.append(f"Medium priority: matches your data type (\"{summary_data_type_label}\").")
-
-        priority = ["high","medium","low"][score]
-        reason = " ".join(reasons) or "Low priority: may not fit your primary goal."
-        return priority, reason
-
-    # 1) Regression & Classification
-    if target_column in df.columns:
-        series = df[target_column].dropna()
-        unique = series.nunique()
-        is_num = np.issubdtype(series.dtype, np.number)
-
-        if is_num and unique >= 10:
-            p, r = score_and_reason("regression", needs_target=True)
-            suggestions.append({
-                "model_type": "Regression Model",
-                "icon": "📈",
-                "description": f"Forecast numeric outcomes like sales or costs. {r}",
-                "priority": p,
-                "endpoint": "regression",
-                "requirements": {"target_column": target_column},
-                "use_cases": ["Revenue Forecast", "Cost Prediction"]
-            })
-            added.add("regression")
-
-        if (not is_num) or unique < 10:
-            p, r = score_and_reason("classification", needs_target=True)
-            suggestions.append({
-                "model_type": "Classification Model",
-                "icon": "🎯",
-                "description": f"Group records into categories (e.g. high/low risk, Churn/No Churn). {r}",
-                "priority": p,
-                "endpoint": "classification",
-                "requirements": {"target_column": target_column},
-                "use_cases": ["Churn Flagging", "Risk Segmentation"]
-            })
-            added.add("classification")
-            classification_priority = p
-
-    # 2) Clustering
-    p_cl, r_cl = score_and_reason("clustering")
-    suggestions.append({
-        "model_type": "Clustering",
-        "icon": "🧩",
-        "description": f"Discover natural groupings in your data. {r_cl}",
-        "priority": p_cl,
-        "endpoint": "clustering",
-        "requirements": {"drop_columns": []},
-        "use_cases": ["Customer Segmentation", "Pattern Discovery"]
-    })
-    added.add("clustering")
-
-    # 3) Time Series (always include)
-    p_ts, r_ts = score_and_reason("time-series-analysis", needs_time=True)
-    suggestions.append({
-        "model_type": "Time Series Analysis",
-        "icon": "⏳",
-        "description": f"Project trends & seasonality over time. {r_ts}",
-        "priority": p_ts,
-        "endpoint": "time-series-analysis",
-        "requirements": {"time_column": time_col or "<select>", "target_column": target_column or "<select>"},
-        "use_cases": ["Traffic Forecast", "Seasonal Planning"]
-    })
-    added.add("time-series-analysis")
-
-    # 4) What-If Bulk
-    p_wi, r_wi = score_and_reason("what-if-bulk")
-    suggestions.append({
-        "model_type": "What-If Bulk",
-        "icon": "📝",
-        "description": f"Test bulk scenario changes at scale. {r_wi}",
-        "priority": p_wi,
-        "endpoint": "what_if",
-        "requirements": {"target_column": target_column or "<select>"},
-        "use_cases": ["Scenario Simulation"]
-    })
-    added.add("what-if-bulk")
-
-    # 5) Counterfactual
-    p_cf, r_cf = score_and_reason("counterfactual")
-    suggestions.append({
-        "model_type": "Counterfactual Analysis",
-        "icon": "🔄",
-        "description": f"Find smallest changes to reach a different outcome. {r_cf}",
-        "priority": p_cf,
-        "endpoint": "counterfactual",
-        "requirements": {"target_column": target_column or "<select>"},
-        "use_cases": ["Policy Testing", "A/B Analysis"]
-    })
-    added.add("counterfactual")
-
-    # 6) A/B Test
-    p_ab, r_ab = score_and_reason("ab-test")
-    suggestions.append({
-        "model_type": "A/B Test",
-        "icon": "⚗️",
-        "description": f"Compare two variants (A vs. B). {r_ab}",
-        "priority": p_ab,
-        "endpoint": "ab_test",
-        "requirements": {"variant_column": "<specify>"},
-        "use_cases": ["Email Testing", "Feature Rollout"]
-    })
-    added.add("ab-test")
-
-    # 7) Segments
-    p_se, r_se = score_and_reason("segments")
-    suggestions.append({
-        "model_type": "Customer Segments",
-        "icon": "👥",
-        "description": f"Identify distinct customer groups. {r_se}",
-        "priority": p_se,
-        "endpoint": "segments",
-        "requirements": {},
-        "use_cases": ["Targeted Campaigns"]
-    })
-    added.add("segments")
-
-    # 8) Decision Paths
-    if classification_priority == "high":
-        p_dp = "high"
-        r_dp = "High priority: classification is high-priority, so decision paths are too."
-    else:
-        p_dp, r_dp = score_and_reason("decision-paths", needs_target=True)
-    suggestions.append({
-        "model_type": "Decision Paths",
-        "icon": "🛣️",
-        "description": f"Reveal key rules & thresholds. {r_dp}",
-        "priority": p_dp,
-        "endpoint": "decision-paths",
-        "requirements": {"target_column": target_column or "<select>"},
-        "use_cases": ["Strategy Mapping"]
-    })
-    added.add("decision-paths")
-
-    # 9) Visualize Relationships
-    p_vr, r_vr = score_and_reason("visualize-relationships")
-    suggestions.append({
-        "model_type": "Visualize Relationships",
-        "icon": "📊",
-        "description": f"Spot patterns with simple charts. {r_vr}",
-        "priority": p_vr,
-        "endpoint": "visualize",
-        "requirements": {},
-        "use_cases": ["Correlation Plots"]
-    })
-    added.add("visualize-relationships")
-
-    # 10) Survival Analysis
-    p_sv, r_sv = score_and_reason("survival", needs_target=True, needs_time=True)
-    suggestions.append({
-        "model_type": "Survival Analysis",
-        "icon": "⏳",
-        "description": f"Estimate time-to-event outcomes. {r_sv}",
-        "priority": p_sv,
-        "endpoint": "survival",
-        "requirements": {"event_col": target_column or "<select>", "time_col": time_col or "<select>"},
-        "use_cases": ["Churn Timing", "Failure Prediction"]
-    })
-    added.add("survival")
-
-    # 11) Classification-Predict
-    p_cp, r_cp = score_and_reason("classification-predict", needs_target=True)
-    suggestions.append({
-        "model_type": "Classification Prediction",
-        "icon": "🤖",
-        "description": f"Predict categorical outcomes on new data. {r_cp}",
-        "priority": p_cp,
-        "endpoint": "classification-predict",
-        "requirements": {"target_column": target_column},
-        "use_cases": ["New Data Scoring"]
-    })
-    added.add("classification-predict")
-
-    # 12) Regression-Predict
-    p_rp, r_rp = score_and_reason("regression-predict", needs_target=True)
-    suggestions.append({
-        "model_type": "Regression Prediction",
-        "icon": "🔢",
-        "description": f"Predict numeric outcomes on new data. {r_rp}",
-        "priority": p_rp,
-        "endpoint": "regression-predict",
-        "requirements": {"target_column": target_column},
-        "use_cases": ["New Data Scoring"]
-    })
-    added.add("regression-predict")
-
-    return {
-        "all_model_options": suggestions,
-        "data_shape": df.shape,
-        "missing_values": int(df.isnull().sum().sum()),
-        "numeric_columns": int(df.select_dtypes(include=['number']).shape[1]),
-        "categorical_columns": int(df.select_dtypes(include=['object','category']).shape[1]),
-        "summary": {
-            "goal_key": summary_goal_key,
-            "goal_label": summary_goal_label,
-            "data_type_key": summary_data_type_key,
-            "data_type_label": summary_data_type_label,
-            "success_criteria": summary_success_criteria,
-            "time_column": time_col
-        }
-    }
 
 
-def make_json_serializable(obj):
-    """Convert numpy/pandas types to Python native types for JSON serialization."""
-    import numpy as np
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-    if isinstance(obj, (np.integer, np.int64, np.int32)):
-        return int(obj)
-    elif isinstance(obj, (np.floating, np.float64, np.float32)):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, (list, tuple)):
-        return [make_json_serializable(item) for item in obj]
-    elif isinstance(obj, dict):
-        return {k: make_json_serializable(v) for k, v in obj.items()}
-    else:
-        return obj
-
-@router.post("/suggest-model")
-async def suggest_model(
-    file: UploadFile = File(...),
-    target_column: str = Form(default=""),
-    summary_goal_key: str = Form(default=""),
-    summary_goal_label: str = Form(default=""),
-    summary_data_type_key: str = Form(default=""),
-    summary_data_type_label: str = Form(default=""),
-    time_column: str = Form(default=""),              # ← new
-    summary_success_criteria: str = Form(default="")
-):
-    """
-    Analyze uploaded dataset and suggest multiple model options with configurations.
-    Now also captures the user’s summary selections and an optional time column.
-    """
-    try:
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(400, "Only CSV files are supported")
-
-        contents = await file.read()
-        df = pd.read_csv(StringIO(contents.decode("utf-8")))
-
-        if df.empty:
-            raise HTTPException(400, "Uploaded file is empty")
-        if len(df.columns) < 2:
-            raise HTTPException(400, "Dataset must have at least 2 columns")
-
-        # Your existing preprocessing logic
-        df_cleaned, CATS, NUMS = preprocess_data(df, RMV=[])
-
-        # Pass all form fields into your core suggestion logic
-        result = suggest_model_from_df(
-            df_cleaned,
-            target_column=target_column,
-            summary_goal_key=summary_goal_key,
-            summary_goal_label=summary_goal_label,
-            summary_data_type_key=summary_data_type_key,
-            summary_data_type_label=summary_data_type_label,
-            summary_success_criteria=summary_success_criteria,
-            time_column=time_column                   # ← make sure your function signature accepts this
-        )
-
-        # Echo back what was sent
-        result["filename"]    = file.filename
-        result["time_column"] = time_column
-
-        return JSONResponse(content=make_json_serializable(result))
-
-    except pd.errors.EmptyDataError:
-        raise HTTPException(400, "CSV file is empty or corrupted")
-    except pd.errors.ParserError as e:
-        raise HTTPException(400, f"CSV parsing error: {e}")
-    except UnicodeDecodeError:
-        raise HTTPException(400, "File encoding not supported. Please use UTF-8")
-    except Exception as e:
-        logging.error(f"Model suggestion error: {e}")
-        raise HTTPException(500, f"Internal server error: {e}")
-@router.post("/ai_recommendations")
-async def get_ai_recommendations(
-    file: UploadFile = File(...),
-    goal: str = Form(...),
-    dataType: str = Form(...),
-    target: Optional[str] = Form(None),
-    success: Optional[str] = Form(None),
-    timeColumn: Optional[str] = Form(None),
-    user_plan: str = Form("Free"),
-    current_user: User = Depends(get_current_active_user)
-):
-    try:
-        import io, json, openai, numpy as np
-        from fastapi import HTTPException
-        import pandas as pd
-        MINIMUM_TOKENS = 0.1
-        if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
-            raise HTTPException(403, detail="Insufficient token balance to begin processing.")
-
-        # Read the uploaded file
-        contents = await file.read()
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
-        elif file.filename.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(io.BytesIO(contents))
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file format.")
-
-        # ───────────── Free Plan Fallback ─────────────
-        if user_plan.lower() == "free":
-            model_suggestion = suggest_model_from_df(df, target or "")
-            return {
-                "suggested_model_type": model_suggestion["suggested_model_type"],
-                "notes": model_suggestion["notes"],
-                "target_dtype": model_suggestion.get("target_dtype"),
-                "unique_values": model_suggestion.get("unique_values")
-            }
-
-        # ───────────── Pro Plan AI Recommendation ─────────────
-        data_shape = df.shape
-        columns = df.columns.tolist()
-        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        categorical_columns = df.select_dtypes(include=['object']).columns.tolist()
-        datetime_columns = []
-
-        for col in df.columns:
-            try:
-                pd.to_datetime(df[col].dropna().head(100))
-                datetime_columns.append(col)
-            except:
-                continue
-
-        target_info = ""
-        if target and target in columns:
-            target_series = df[target]
-            if target_series.dtype in ['object', 'category']:
-                unique_values = target_series.nunique()
-                target_info = f"Target '{target}' is categorical with {unique_values} unique values"
-            else:
-                target_info = f"Target '{target}' is numeric with range [{target_series.min():.2f}, {target_series.max():.2f}]"
-
-        prompt = f"""
-        As a data science advisor, analyze this dataset and recommend the best analysis approach:
-
-        DATASET INFORMATION:
-        - Shape: {data_shape[0]} rows, {data_shape[1]} columns
-        - Columns: {', '.join(columns)}
-        - Numeric columns: {', '.join(numeric_columns)}
-        - Categorical columns: {', '.join(categorical_columns)}
-        - Datetime columns: {', '.join(datetime_columns)}
-        - Target info: {target_info}
-
-        USER REQUIREMENTS:
-        - Goal: {goal}
-        - Data Type: {dataType}
-        - Target Column: {target or 'none specified'}
-        - Success Criteria: {success or 'none specified'}
-        - Time Column: {timeColumn or 'none specified'}
-
-        AVAILABLE ANALYSIS PATHS:
-        - /classification/
-        - /regression/
-        - /clustering/
-        - /forecast/
-        - /segment_analysis/
-        - /survival/
-        - /counterfactual/
-
-        Please respond in JSON with keys:
-        {{
-            "recommended_path": "...",
-            "target_variable": "...",
-            "drop_columns": [...],
-            "time_column": "...",
-            "forecast_periods": ...,
-            "impactful_features": [...],
-            "reasoning": "...",
-            "confidence": "...",
-            "alternative_approaches": [...]
-        }}
-        """
-
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful data science advisor. Always respond with valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=600
-        )
-        token_usage = completion.usage.total_tokens  # Total = prompt + completion
-                # Estimate OpenAI cost (adjust rate if you know your real cost)
-        openai_cost_per_1k_tokens = 0.04  # Approximate for GPT-4-turbo
-        actual_cost_usd = (token_usage / 1000) * openai_cost_per_1k_tokens
-
-        # Apply your profit margin
-        markup_multiplier = 4.0
-        user_token_cost = round(actual_cost_usd * markup_multiplier, 3)  # e.g., $0.05 * 4 = 0.20
-
-        ai_response = completion.choices[0].message.content.strip()
-        if ai_response.startswith("```json"):
-            ai_response = ai_response.split("```json")[1].split("```")[0].strip()
-        elif ai_response.startswith("```"):
-            ai_response = ai_response.split("```")[1].split("```")[0].strip()
-
-        recommendation = json.loads(ai_response)
-        for key in ["recommended_path", "target_variable", "drop_columns", "time_column",
-                    "forecast_periods", "impactful_features", "reasoning", "confidence", "alternative_approaches"]:
-            recommendation.setdefault(key, None)
-        if not isinstance(recommendation.get("drop_columns"), list):
-            recommendation["drop_columns"] = []
-        if not isinstance(recommendation.get("impactful_features"), list):
-            recommendation["impactful_features"] = []
-        if not isinstance(recommendation.get("alternative_approaches"), list):
-            recommendation["alternative_approaches"] = []
-
-        return {
-            "ai_recommendation": recommendation,
-            "dataset_summary": {
-                "shape": data_shape,
-                "columns": columns,
-                "numeric_columns": numeric_columns,
-                "categorical_columns": categorical_columns,
-                "datetime_columns": datetime_columns,
-                "missing_values": {k: int(v) for k, v in df.isnull().sum().items() if v > 0}
-            }
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Dict, List, Any, Optional, Union
+import pandas as pd
+import numpy as np
+from enum import Enum
+from dataclasses import dataclass
+import logging
 from pydantic import BaseModel
-from typing import Any, Dict
-from openai import OpenAI
-
-client = OpenAI(api_key="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")  # This auto-uses OPENAI_API_KEY from env
-
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 
 class AIInsightsRequest(BaseModel):
@@ -590,94 +126,6 @@ class AIInsightsRequest(BaseModel):
 
     # Feature alignment info
     feature_alignment: Optional[Dict[str, Any]] = {}
-from fastapi import APIRouter, Depends, HTTPException, Request
-
-@router.post("/ai_insights")
-async def generate_ai_insights(
-    data: AIInsightsRequest,
-    request: Request,
-    current_user: User = Depends(get_current_active_user)
-):
-    MINIMUM_TOKENS = 0.1
-    if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
-        raise HTTPException(403, detail="Insufficient token balance to begin processing.")
-
-    try:
-        messages = [
-    {
-        "role": "user",
-        "content": [
-            {
-                "type": "text",
-                "text": f"""
-You're an expert business strategist. Analyze this machine learning result and provide a concise summary of **what actions the business owner should take** to maximize profits, improve conversions, or reduce losses.
-
-Avoid technical jargon unless needed. Focus on what the data implies for the business, and make your suggestions practical and immediately actionable.
-
-Here are the inputs:
-
-• Type: {data.type}
-• Dataset: {data.dataset}
-• Target Column: {data.target_column or data.time_column}
-• Key Parameters: {data.parameters}
-• Test Scores: {data.test_scores}
-• Cross-Validation Scores: {data.cv_scores}
-• Top Influential Features: {data.top_features}
-• Business Metrics:
-    - Revenue per Customer: ${data.business_metrics.get('revenue_per_customer')}
-    - Cost per Lost Customer: ${data.business_metrics.get('cost_per_lost_customer')}
-    - Revenue per Lead: ${data.business_metrics.get('revenue_per_lead')}
-    - Average Order Value: ${data.business_metrics.get('average_order_value')}
-
-Start your response with a short executive summary. Then give 3-5 **actionable recommendations** based on the data. Include expected impact (e.g., “could improve revenue by X” or “reduce churn by Y%”) if possible.
-"""
-            }
-        ]
-    }
-]
-
-
-        # Optional: include image if available
-        if data.imageData and data.imageData.startswith("data:image"):
-            base64_content = data.imageData.split(",")[-1]
-            messages[0]["content"].append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{base64_content}"
-                }
-            })
-
-        # Generate response
-        response = client.chat.completions.create(
-            model= "gpt-4.1",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=700
-        )
-
-        insights = response.choices[0].message.content.strip()
-
-        # Optionally track token usage
-        if hasattr(response, "usage"):
-            request.state.openai_tokens_used = response.usage.total_tokens
-
-        return {
-            "entry_id": data.id,
-            "insights": insights
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI call failed: {str(e)}")
-from typing import Dict, List, Any, Optional, Union
-import pandas as pd
-import numpy as np
-from enum import Enum
-from dataclasses import dataclass
-import logging
-from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
-
 class WhatIfInputRequest(BaseModel):
     """
     Request model for what-if analysis input processing.
@@ -1262,6 +710,82 @@ async def get_bulk_editable_features(req: WhatIfInputRequest):
         raise HTTPException(status_code=500, detail={"error": "Failed to process features", "details": str(e)})
 
 
+@router.post("/ai_insights")
+async def generate_ai_insights(
+    data: AIInsightsRequest,
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    MINIMUM_TOKENS = 0.1
+    if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
+        raise HTTPException(403, detail="Insufficient token balance to begin processing.")
+
+    try:
+        messages = [
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": f"""
+You're an expert business strategist. Analyze this machine learning result and provide a concise summary of **what actions the business owner should take** to maximize profits, improve conversions, or reduce losses.
+
+Avoid technical jargon unless needed. Focus on what the data implies for the business, and make your suggestions practical and immediately actionable.
+
+Here are the inputs:
+
+• Type: {data.type}
+• Dataset: {data.dataset}
+• Target Column: {data.target_column or data.time_column}
+• Key Parameters: {data.parameters}
+• Test Scores: {data.test_scores}
+• Cross-Validation Scores: {data.cv_scores}
+• Top Influential Features: {data.top_features}
+• Business Metrics:
+    - Revenue per Customer: ${data.business_metrics.get('revenue_per_customer')}
+    - Cost per Lost Customer: ${data.business_metrics.get('cost_per_lost_customer')}
+    - Revenue per Lead: ${data.business_metrics.get('revenue_per_lead')}
+    - Average Order Value: ${data.business_metrics.get('average_order_value')}
+
+Start your response with a short executive summary. Then give 3-5 **actionable recommendations** based on the data. Include expected impact (e.g., “could improve revenue by X” or “reduce churn by Y%”) if possible.
+"""
+            }
+        ]
+    }
+]
+
+
+        # Optional: include image if available
+        if data.imageData and data.imageData.startswith("data:image"):
+            base64_content = data.imageData.split(",")[-1]
+            messages[0]["content"].append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{base64_content}"
+                }
+            })
+
+        # Generate response
+        response = client.chat.completions.create(
+            model= "gpt-4.1",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=700
+        )
+
+        insights = response.choices[0].message.content.strip()
+
+        # Optionally track token usage
+        if hasattr(response, "usage"):
+            request.state.openai_tokens_used = response.usage.total_tokens
+
+        return {
+            "entry_id": data.id,
+            "insights": insights
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenAI call failed: {str(e)}")
 @router.get("/what_if/health")
 async def health_check():
     """Health check endpoint for what-if analysis router."""

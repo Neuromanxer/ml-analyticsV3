@@ -6,18 +6,21 @@ from pathlib import Path as PathL
 import aiofiles
 import logging
 from dotenv import load_dotenv
-
+from typing import Optional, List, Tuple
 load_dotenv()
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+
+SUPABASE_PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "cosnptezznpqmzotozpt")
+FULL_BUCKET_PREFIX   = f"{SUPABASE_PROJECT_REF}/storage/buckets/{SUPABASE_BUCKET}"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 import mimetypes
 import os
 def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
     upload_path = f"{user_id}/{filename}"
-
+    print(f"[upload_file_to_supabase] user_id={user_id!r}, filename={filename!r}, key={upload_path!r}")
     # Step 1: Check if file exists
     list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
     existing_file_names = [f["name"] for f in list_response or []]
@@ -121,3 +124,28 @@ def delete_file_from_supabase(file_path: str):
         # Log the error and raise it
         logging.error(f"❌ Error deleting file '{file_path}': {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
+import os, tempfile, shutil
+from typing import Optional, List, Tuple
+from sqlalchemy import inspect
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
+from sqlalchemy.sql.schema import quoted_name
+
+
+def ensure_dirs(p: str):
+    os.makedirs(p, exist_ok=True)
+# If you already defined this earlier, reuse it:
+def user_dataset_root(user_id: int, dataset_id: int) -> str:
+    return os.path.abspath(os.path.join(".", "data", "users", str(user_id), "datasets", str(dataset_id)))
+
+
+
+def _strip_bucket_prefix(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return key
+    k = key.lstrip("/")
+    if k.startswith(SUPABASE_BUCKET + "/"):
+        return k[len(SUPABASE_BUCKET) + 1 :]
+    return k
+
+def _basename_from_key(key: str) -> str:
+    return os.path.basename(_strip_bucket_prefix(key) or key or "")

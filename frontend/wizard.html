@@ -196,7 +196,79 @@
             transition: width 0.5s ease;
             width: 25%;
         }
+        .popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  opacity: 0; visibility: hidden; transition: opacity .25s ease;
+  display: grid; place-items: center;            /* perfect centering */
+  padding: 24px;                                  /* breathing room */
+}
 
+        .popup-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .popup {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  max-width: 600px;
+  width: 90%;
+  max-height: calc(100vh - 2 * clamp(16px, 6vh, 32px)); /* fit within viewport padding */
+  overflow-y: auto;               /* inner scroll if content is tall */
+  transform: scale(.96) translateY(0);   /* subtle pop-in */
+  transition: transform .25s ease;
+  border: 1px solid rgba(255,255,255,.2);
+}
+        .details-body {
+            padding: 0 20px 20px 20px;
+        }
+        .popup-overlay.show .popup {
+            transform: scale(1) translateY(0);
+        }
+
+        /* Popup Header */
+        .popup-header {
+            padding: 24px 24px 0 24px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .popup-header h4 {
+            margin: 0;
+            color: #2d3748;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .popup-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* smooth on iOS */
+  padding: 24px;
+  flex: 1 1 auto;                    /* fill remaining space */
+}
+        .open-popup-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .open-popup-btn:hover {
+            background: #5a67d8;
+        }
         .step {
             display: none;
             animation: fadeIn 0.5s ease-in;
@@ -471,7 +543,163 @@
         .info-value {
             color: #6c757d;
         }
+        /* Actions Container */
+        #actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
 
+        .action-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            min-width: 200px;
+        }
+
+        .action-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .action-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .action-detail-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .action-detail-label {
+            font-weight: 500;
+        }
+
+        .action-detail-value {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .row {
+            margin-bottom: 32px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        label.req::after {
+            content: " *";
+            color: #e53e3e;
+        }
+
+        input[type="number"], 
+        input[type="text"], 
+        input[type="date"], 
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
+            background: #fff;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        details {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 0;
+            margin-bottom: 24px;
+        }
+
+        summary {
+            padding: 16px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #2d3748;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 12px;
+            transition: background-color 0.2s ease;
+        }
+
+        summary:hover {
+            background-color: #edf2f7;
+        }
+
+        .details-body {
+            padding: 0 20px 20px 20px;
+        }
+
+        .preset {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .preset label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+
+        .preset input[type="radio"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .open-popup-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .open-popup-btn:hover {
+            background: #5a67d8;
+        }
         /* Responsive Design */
         @media (max-width: 768px) {
             .train-test-upload-boxes {
@@ -1307,9 +1535,129 @@
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
-            
-            <!-- Step 1: Welcome & Goal Selection -->
-            <div class="step active" id="step1">
+            <!-- Step 1: Minimum Owner Inputs -->
+                <div class="step active" id="step1">
+                    <h3>
+                        Step 1 — Minimum Owner Inputs
+                        <span class="mini">Required to proceed</span>
+                    </h3>
+                    
+                    <!-- Financial Goal & Timeframe -->
+                    <div class="grid-3" style="margin-top:18px;">
+                        <div>
+                            <label for="goal_amount" class="req">Net goal ($)</label>
+                            <input type="number" id="goal_amount" placeholder="10000" />
+                        </div>
+                        <div>
+                            <label for="goal_period" class="req">Timeframe</label>
+                            <select id="goal_period">
+                                <option value="this_month" selected>This month</option>
+                                <option value="next_30d">Next 30 days</option>
+                                <option value="custom">Custom dates</option>
+                            </select>
+                        </div>
+                        <div class="grid-2" style="grid-column: span 1 / -1; display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div>
+                                <label for="goal_start" class="req">Start</label>
+                                <input type="date" id="goal_start" />
+                            </div>
+                            <div>
+                                <label for="goal_end" class="req">End</label>
+                                <input type="date" id="goal_end" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Allowed Actions -->
+                    <details open>
+                        <summary>
+                            <span>Allowed actions (hard facts)</span>
+                            <span class="badge">required</span>
+                        </summary>
+                        <div class="details-body">
+                            <div id="actions">
+                                <div class="empty-actions">No actions added yet. Click "Add Action" to get started.</div>
+                            </div>
+                            <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+                                <button class="open-popup-btn" onclick="showPopup()">+ Add Action</button>
+                                <span class="mini">Provide each channel's <b>costs</b>, <b>cooldown</b>, <b>daily cap</b>, and (optional) provider. We'll infer the rest.</span>
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <!-- Risk Tolerance -->
+                    <div class="row">
+                        <label class="req">Risk tolerance</label>
+                        <div class="preset" role="radiogroup" aria-label="Risk tolerance">
+                            <label><input type="radio" name="risk" value="conservative"> Conservative</label>
+                            <label><input type="radio" name="risk" value="balanced" checked> Balanced</label>
+                            <label><input type="radio" name="risk" value="aggressive"> Aggressive</label>
+                        </div>
+                        <div class="mini">Maps to conformal α & precision floor (see Presets panel).</div>
+                    </div>
+                    
+
+
+        
+                    <!-- Popup Overlay -->
+                    <div class="popup-overlay" id="actionPopup">
+                        <div class="popup">
+                            <div class="popup-header">
+                                <h4 id="popupTitle">Add Action</h4>
+                                <button class="close-btn" onclick="hidePopup()">×</button>
+                            </div>
+                            
+                            <form class="popup-body" id="actionForm">
+                                <div class="rowline">
+                                    <div class="form-group">
+                                        <label for="action_name" class="req">Action name</label>
+                                        <input type="text" id="action_name" placeholder="Email — Winback (90+ days)" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="action_channel">Channel</label>
+                                        <select id="action_channel">
+                                            <option>Email</option>
+                                            <option>SMS</option>
+                                            <option>Push</option>
+                                            <option>Outbound Calls</option>
+                                            <option>Direct Mail</option>
+                                            <option>Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label for="action_cost" class="req">Cost per action ($)</label>
+                                        <input type="number" id="action_cost" step="0.01" placeholder="0.50" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="action_cooldown" class="req">Cooldown (days)</label>
+                                        <input type="number" id="action_cooldown" placeholder="7" required />
+                                    </div>
+                                </div>
+                
+                                <div class="grid-2">
+                                    <div class="form-group">
+                                        <label for="action_daily_cap" class="req">Daily cap</label>
+                                        <input type="number" id="action_daily_cap" placeholder="1000" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="action_provider">Provider (optional)</label>
+                                        <input type="text" id="action_provider" placeholder="SendGrid, Twilio, etc." />
+                                    </div>
+                                </div>
+                
+                                <div class="popup-buttons">
+                                    <button type="button" class="btn btn-secondary" onclick="hidePopup()">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Save Action</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            <!-- Step 2: Welcome & Goal Selection -->
+            <div class="step" id="step2">
                 <h1>🧠 Business Goal Assistant</h1>
                 <p class="subtitle">Let's understand your business needs and find the perfect ML solution. This will take just 2-3 minutes.</p>
                 
@@ -1366,7 +1714,7 @@
             </div>
 
             <!-- Step 2: Data Upload -->
-            <div class="step" id="step2">
+            <div class="step" id="step3">
                 <div class="question">📁 Please upload your data</div>
                 
                 <div class="card">
@@ -1438,7 +1786,7 @@
             </div>
 
             <!-- Step 3: Data Context -->
-            <div class="step" id="step3">
+            <div class="step" id="step4">
                 <div class="question">What type of data are you working with?</div>
                 
                 <div class="options-grid">
@@ -1477,7 +1825,7 @@
             </div>
 
             <!-- Step 4: Specific Target -->
-            <div class="step" id="step4">
+            <div class="step" id="step5">
                 <div class="question">What specific outcome are you trying to predict or understand?</div>
                 
                 <div class="input-group">
@@ -1497,7 +1845,7 @@
             </div>
 
             <!-- Step 5: Summary & Recommendations -->
-            <div class="step" id="step5">
+            <div class="step" id="step6">
                 <div class="question">🎯 Perfect! Here's your personalized ML strategy:</div>
                 
                 <div class="summary-card">
@@ -1557,7 +1905,7 @@
 
     <script>
 let currentStep = 1;
-const totalSteps = 5;
+const totalSteps = 6;
 let selectedData = {};
 const token = localStorage.getItem('access_token');
 // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
@@ -1616,6 +1964,67 @@ const modelRecommendations = {
     'Segment Analysis'
   ]
 };
+// --- Safely coerce to string
+const s = v => (v === null || v === undefined) ? '' : String(v).trim();
+function signOutUser() {
+    // Clear tokens from localStorage or wherever you saved them
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("current_user");
+
+    // Optional: Clear session storage if used
+    sessionStorage.clear();
+
+    // Redirect to login page
+    window.location.href = "/index.html"; // Adjust the path if needed
+}
+
+// Helper function to handle authentication errors
+function handleAuthError(error) {
+  console.error('Authentication error:', error);
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html?next=gallery.html&reason=Session expired, please log in again';
+}
+
+// Helper function to make authenticated requests
+async function authenticatedFetch(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    throw new Error('No token available');
+  }
+
+  const defaultOptions = {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  };
+
+  const response = await fetch(url, { ...options, headers: defaultOptions.headers });
+  
+  if (response.status === 401) {
+    handleAuthError(new Error('Token expired or invalid'));
+    return;
+  }
+  
+  return response;
+}
+
+// Helper: is JWT expired?
+function isTokenExpired(token) {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!payload.exp) return false;
+      return (Math.floor(Date.now()/1000) + 30) >= payload.exp;
+    } catch (err) {
+      console.error('Error parsing token:', err);
+      return true;
+    }
+}
 
 
 function selectOption(element, value) {
@@ -1628,7 +2037,7 @@ function selectOption(element, value) {
   element.classList.add('selected');
 
   // 3) Store & update suggestion if on Step 1
-  if (currentStep === 1) {
+  if (currentStep == 2) {
     selectedData.goal = value;
     updateAISuggestion();
   }
@@ -1671,7 +2080,7 @@ function handleTrainTestUpload(event) {
     }
     
     // Enable next button if both files are uploaded or if we're using single file approach
-    if (currentStep === 2 && (trainFile || testFile || selectedData.uploadedFile)) {
+    if (currentStep === 3 && (trainFile || testFile || selectedData.uploadedFile)) {
         selectedData.uploadType = 'train-test';
         document.getElementById('nextBtn').disabled = false;
     }
@@ -1752,7 +2161,7 @@ function handleFileSelection(file, uploadLabel, nameElement, inputId) {
         showPreview(file);
         
         // Enable next button if on step 2
-        if (currentStep === 2) {
+        if (currentStep === 3) {
             document.getElementById('nextBtn').disabled = false;
         }
         
@@ -1777,7 +2186,7 @@ function handleFileSelection(file, uploadLabel, nameElement, inputId) {
 
 function checkTrainTestComplete() {
     // Enable next button if both train and test files are uploaded, or if we have any file uploaded
-    if (currentStep === 2) {
+    if (currentStep === 3) {
         const hasTrainTest = selectedData.trainFile && selectedData.testFile;
         const hasSingleFile = selectedData.uploadedFile;
         
@@ -1909,30 +2318,50 @@ function displayTablePreview(content, isCSV) {
     
     previewTable.innerHTML = html;
 }
-function goNext() {
-  if (currentStep < totalSteps) {
-    if (currentStep === 4) {
-      selectedData.target      = document.getElementById('targetColumn').value.trim();
-      selectedData.success     = document.getElementById('successCriteria').value.trim();
-      selectedData.timeColumn  = document.getElementById('timeColumn').value.trim();
+// Make goNext async and persist on step 1
+// Make goNext async and persist on step 1
+async function goNext() {
+  if (currentStep >= totalSteps) return;
+
+  if (currentStep === 1) {
+    // if you use period shortcuts, populate start/end now
+    typeof ensureDatesFromPeriod === "function" && ensureDatesFromPeriod();
+
+    const nextBtn = document.getElementById('nextBtn');
+    if (nextBtn) nextBtn.disabled = true;
+
+    const ok = await upsertPlanToBackend();   // boolean now
+    if (!ok) {                                // block advance on failure
+      if (nextBtn) nextBtn.disabled = false;
+      return;
     }
-
-    // move steps
-    document.getElementById(`step${currentStep}`).classList.remove('active');
-    currentStep++;
-    document.getElementById(`step${currentStep}`).classList.add('active');
-
-    updateProgress();
-    updateButtons();
-
-    // once you land on step 5, run both:
-    if (currentStep === 5) {
-      updateSummary();
-      suggestModelType();
-    }
+    if (nextBtn) nextBtn.disabled = false;
   }
-}
 
+  // Step-4 capture remains the same
+  if (currentStep === 4) {
+    selectedData.target     = (document.getElementById('targetColumn')?.value || "").trim();
+    selectedData.success    = (document.getElementById('successCriteria')?.value || "").trim();
+    selectedData.timeColumn = (document.getElementById('timeColumn')?.value || "").trim();
+  }
+
+  // Advance the wizard
+  const cur = document.getElementById(`step${currentStep}`);
+  if (cur) cur.classList.remove('active');
+  currentStep++;
+  const nxt = document.getElementById(`step${currentStep}`);
+  if (nxt) nxt.classList.add('active');
+
+  updateProgress();
+  updateButtons();
+
+  if (currentStep === 5) {
+    updateSummary?.();
+    suggestModelType?.();
+  }
+
+  updateNavigation?.();
+}
 
 function updateProgress() {
     const progress = (currentStep / totalSteps) * 100;
@@ -1958,6 +2387,43 @@ function goBack() {
     }
 }
 
+
+/* ---- Global safe default ---- */
+window.savedActions = [];
+function updateNavigation() {
+  const nextBtn = document.getElementById('nextBtn');
+  if (!nextBtn) return;
+
+  let canProceed = false;
+
+  if (currentStep === 1) {
+    const p = collectStep1FromDOM();
+    canProceed = !!p.goal_amount && !!p.start_date && !!p.end_date && !!p.risk &&
+                 Array.isArray(p.actions) && p.actions.length > 0;
+  } else {
+    canProceed = true;
+  }
+
+  nextBtn.disabled = !canProceed;
+}
+
+function validateStep1Payload(p) {
+  const errs = [];
+  if (!p.goal_amount) errs.push("Enter a Net goal ($).");
+  if (!p.start_date || !p.end_date) errs.push("Set Start and End dates.");
+  if (!p.risk) errs.push("Pick a risk tolerance.");
+  if (!Array.isArray(p.actions) || !p.actions.length) errs.push("Add at least one Action.");
+  return errs;
+}
+
+function showStep1Errors(errs) {
+  const box = document.getElementById('step1Errors');
+  if (box) {
+    box.innerHTML = errs.map(e => `<div class="error">${e}</div>`).join('');
+  } else {
+    alert(errs.join('\n'));
+  }
+}
 function updateButtons() {
     const backBtn = document.getElementById('backBtn');
     const nextBtn = document.getElementById('nextBtn');
@@ -1976,43 +2442,402 @@ function updateButtons() {
 }
 
 let userSubscription = 'Free'; // This should be set based on actual user data
+/* ---- Helpers to persist actions and refresh UI/gates ---- */
+function loadSavedActions() {
+  try {
+    const raw = localStorage.getItem('savedActions');
+    window.savedActions = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(window.savedActions)) window.savedActions = [];
+  } catch {
+    window.savedActions = [];
+  }
+}
 
-// Initialize file upload functionality
-document.addEventListener('DOMContentLoaded', function() {
-    initializeFileUpload();
+function persistActions() {
+  try { localStorage.setItem('savedActions', JSON.stringify(window.savedActions)); } catch {}
+}
+
+// 1) Render with a Delete button
+function renderActions() {
+  const actionsContainer = document.getElementById('actions');
+  const actions = window.savedActions || [];
+
+  if (!actions.length) {
+    actionsContainer.innerHTML =
+      '<div class="empty-actions">No actions added yet. Click "Add Action" to get started.</div>';
+    return;
+  }
+
+  actionsContainer.innerHTML = actions.map((action, index) => `
+    <div class="action-card">
+      <div class="action-card-header">
+        <div class="action-name">${action.name ?? ""}</div>
+        <div class="action-channel">${action.channel ?? ""}</div>
+      </div>
+
+      <div class="action-details">
+        <div class="action-detail-item">
+          <span class="action-detail-label">Cost:</span>
+          <span class="action-detail-value">$${action.cost ?? 0}</span>
+        </div>
+        <div class="action-detail-item">
+          <span class="action-detail-label">Cooldown:</span>
+          <span class="action-detail-value">${action.cooldown ?? 0}d</span>
+        </div>
+        <div class="action-detail-item">
+          <span class="action-detail-label">Daily cap:</span>
+          <span class="action-detail-value">${Number(action.dailyCap ?? 0).toLocaleString()}</span>
+        </div>
+        ${action.provider ? `
+          <div class="action-detail-item">
+            <span class="action-detail-label">Provider:</span>
+            <span class="action-detail-value">${action.provider}</span>
+          </div>` : '<div></div>'}
+      </div>
+
+      <div class="action-card-actions">
+        <button type="button" class="btn small"    onclick="showPopup(${index})">Edit</button>
+        <button type="button" class="btn small danger" onclick="deleteAction(${index})" aria-label="Delete ${action.name}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// 2) Delete handler (local → backend)
+async function deleteAction(idx) {
+  if (!confirm("Delete this action?")) return;
+  window.savedActions.splice(idx, 1);
+  persistActions();
+  refreshActionsUI();
+  try {
+    await upsertPlanToBackend(); // save_step1 will replace actions, effectively deleting the removed one
+  } catch (e) {
+    console.warn("Delete persist failed", e);
+  }
+}
+window.deleteAction = deleteAction; // so inline onclick works
+
+function refreshActionsUI() {
+  // your existing render function
+  if (typeof renderActions === 'function') renderActions();
+  updateNavigation();
+}
+/* ---------- Step-1 DOM collectors ---------- */
+function getRiskValue() {
+  const el = document.querySelector('input[name="risk"]:checked');
+  return el ? el.value : null; // "conservative" | "balanced" | "aggressive"
+}
+function getPlanId() {
+  const v = localStorage.getItem('planId');
+  return v ? Number(v) : null;
+}
+function setPlanId(id) { localStorage.setItem('planId', String(id)); }
+
+/* ---------- DOM helpers (accept both id styles) ---------- */
+function _val(id1, id2) {
+  // read value from #id1; if missing, try #id2
+  const a = document.getElementById(id1);
+  if (a && a.value != null) return a.value;
+  const b = document.getElementById(id2);
+  return b ? b.value : "";
+}
+function getRiskValue() {
+  const el = document.querySelector('input[name="risk"]:checked');
+  return el ? el.value : null; // "conservative"|"balanced"|"aggressive"
+}
+function collectStep1FromDOM() {
+  const goalAmount = parseFloat(_val('goal_amount','goal_amount')) || 0;
+  const period     = _val('period','goal_period') || "this_month";
+  const startDate  = _val('start_date','goal_start');
+  const endDate    = _val('end_date','goal_end');
+  const riskEl     = document.querySelector('input[name="risk"]:checked');
+  const risk       = riskEl ? riskEl.value : null;
+
+  const actions = (window.savedActions || []).map((a, idx) => ({
+    name: (a.name || "").trim(),
+    channel: (a.channel || "").trim(),
+    cost: Number(a.cost) || 0,
+    cooldown: Number.isFinite(Number(a.cooldown)) ? Number(a.cooldown) : null,
+    daily_cap: Number.isFinite(Number(a.dailyCap)) ? Number(a.dailyCap) : null,
+    provider: a.provider ? String(a.provider).trim() : null,
+    active: a.active !== false,
+    sort_order: Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : idx,
+  }));
+
+  return {
+    plan_id: Number(localStorage.getItem('planId')) || null,
+    goal_amount: goalAmount,
+    period,
+    start_date: startDate,
+    end_date: endDate,
+    risk,
+    actions,
+  };
+}
+async function upsertPlanToBackend() {
+  const payload = collectStep1FromDOM();   // make sure this reads goal_period/goal_start/goal_end too
+  const errs = validateStep1Payload(payload);
+  if (errs.length) {
+    showStep1Errors(errs);
+    console.warn("Not saving; missing fields:", errs, payload);
+    return false;                          // <-- explicit failure
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/actions/save_step1`, {
+      method: "POST",
+      headers: apiHeaders("POST"),         // read token at call-time
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 401) { showStep1Errors(["You’re not logged in."]); return false; }
+    if (res.status === 409) { showStep1Errors(["Duplicate Action: Name + Channel must be unique."]); return false; }
+    if (!res.ok) {
+      console.warn("save_step1 failed:", res.status, await res.text().catch(()=>"" ));
+      showStep1Errors([`Save failed (${res.status}). Check console.`]);
+      return false;
+    }
+
+    const plan = await res.json();
+    if (plan?.id) setPlanId(plan.id);
+
+    if (Array.isArray(plan.actions)) {
+      window.savedActions = plan.actions.map(a => ({
+        id: a.id, name: a.name, channel: a.channel, cost: a.cost,
+        cooldown: a.cooldown, dailyCap: a.daily_cap, provider: a.provider,
+        active: a.active, sort_order: a.sort_order,
+      }));
+      persistActions(); refreshActionsUI();
+    }
+    return true;                           // <-- explicit success
+  } catch (e) {
+    console.error("save_step1 exception:", e);
+    showStep1Errors(["Network error while saving."]);
+    return false;
+  }
+}
+function addAction(action) {
+  window.savedActions.push(action);
+  persistActions();
+  refreshActionsUI();
+  upsertPlanToBackend().catch(console.error);
+}
+function removeAction(idx) {
+  window.savedActions.splice(idx, 1);
+  persistActions();
+  refreshActionsUI();
+  upsertPlanToBackend().catch(console.error);
+}
+
+// Handle action form: update local + backend
+document.getElementById("actionForm")?.addEventListener("submit", function (e) {
+  e.preventDefault();
+
+  const actionData = {
+    name: document.getElementById("action_name").value.trim(),
+    channel: document.getElementById("action_channel").value.trim(),
+    cost: parseFloat(document.getElementById("action_cost").value) || 0,
+    cooldown: parseInt(document.getElementById("action_cooldown").value, 10),
+    dailyCap: parseInt(document.getElementById("action_daily_cap").value, 10),
+    provider: document.getElementById("action_provider").value.trim(),
+    active: true,
+  };
+
+  const idx = Number(window.editingActionIndex);
+  if (Number.isInteger(idx) && idx >= 0) {
+    window.savedActions[idx] = actionData;
+  } else {
+    window.savedActions.push(actionData);
+  }
+
+  persistActions();
+  refreshActionsUI();
+  hidePopup();
+  upsertPlanToBackend().catch(console.error);
 });
 
-function initializeFileUpload() {
-    const fileInput = document.getElementById('full-input');
-    const uploadLabel = document.getElementById('full-upload');
-    const primaryText = document.getElementById('full-name');
-    
-    // Handle file input change
-    fileInput.addEventListener('change', function(e) {
-        handleFileSelection(e.target.files[0]);
-    });
-    
-    // Handle drag and drop
-    uploadLabel.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        uploadLabel.classList.add('drag-over');
-    });
-    
-    uploadLabel.addEventListener('dragleave', function(e) {
-        e.preventDefault();
-        uploadLabel.classList.remove('drag-over');
-    });
-    
-    uploadLabel.addEventListener('drop', function(e) {
-        e.preventDefault();
-        uploadLabel.classList.remove('drag-over');
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFileSelection(files[0]);
-        }
-    });
+/* ---------- Keep backend in sync when Step-1 fields change ---------- */
+["goal_amount", "start_date", "end_date"].forEach(id => {
+  document.getElementById(id)?.addEventListener("input", () => {
+    updateNavigation?.();
+    // debounce save to avoid spam
+    queueDraftSave();
+  });
+});
+document.getElementById("period")?.addEventListener("change", () => {
+  ensureDatesFromPeriod?.();   // your helper to set dates from period
+  updateNavigation?.();
+  queueDraftSave();
+});
+document.querySelectorAll('input[name="risk"]').forEach(r => {
+  r.addEventListener("change", () => {
+    updateNavigation?.();
+    queueDraftSave();
+  });
+});
+let _autosaveArmed = false;   
+let _saveTimer = null;
+function queueDraftSave() {
+  if (!_autosaveArmed) return;           // <-- block early autosaves
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { 
+    upsertPlanToBackend(); 
+  }, 400);
 }
+
+// Wire listeners (support both id styles)
+["goal_amount","start_date","end_date","goal_start","goal_end"].forEach(id => {
+  document.getElementById(id)?.addEventListener("input", () => {
+    updateNavigation?.();
+    queueDraftSave();
+  });
+});
+["period","goal_period"].forEach(id => {
+  document.getElementById(id)?.addEventListener("change", () => {
+    ensureDatesFromPeriod?.();
+    updateNavigation?.();
+    queueDraftSave();
+  });
+});
+document.querySelectorAll('input[name="risk"]').forEach(r => {
+  r.addEventListener("change", () => { updateNavigation?.(); queueDraftSave(); });
+});
+
+let savedActions = [];
+let editingActionIndex = -1;
+let currentPlanId = null;
+
+function apiHeaders(method = "GET") {
+  const t = localStorage.getItem("access_token");  // read fresh
+  const h = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  if (method !== "GET" && method !== "HEAD") h["Content-Type"] = "application/json";
+  return h;
+}
+
+
+function getSelectedRisk() {
+  const r = document.querySelector('input[name="risk"]:checked');
+  return r ? r.value : "balanced";
+}
+
+function ensureDatesFromPeriod() {
+  const period = document.getElementById("goal_period").value;
+  const startEl = document.getElementById("goal_start");
+  const endEl = document.getElementById("goal_end");
+
+  if (period === "custom") {
+    startEl.removeAttribute("disabled");
+    endEl.removeAttribute("disabled");
+    return;
+  }
+
+  // Auto-fill for non-custom periods; keep it simple client-side.
+  const today = new Date();
+  let start = new Date(today);
+  let end = new Date(today);
+
+  if (period === "this_month") {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (period === "next_30d") {
+    start = today;
+    end = new Date(today);
+    end.setDate(end.getDate() + 30);
+  }
+
+  function toYMD(d) {
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const day = d.getDate().toString().padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  startEl.value = toYMD(start);
+  endEl.value = toYMD(end);
+  startEl.setAttribute("disabled", "disabled");
+  endEl.setAttribute("disabled", "disabled");
+}
+function showPopup(actionIndex = -1) {
+  const popup = document.getElementById("actionPopup");
+  const title = document.getElementById("popupTitle");
+  const form = document.getElementById("actionForm");
+  editingActionIndex = actionIndex;
+
+  if (actionIndex >= 0) {
+    title.textContent = "Edit Action";
+    const action = window.savedActions[actionIndex];
+    document.getElementById("action_name").value      = action.name || "";
+    document.getElementById("action_channel").value   = action.channel || "";
+    document.getElementById("action_cost").value      = action.cost ?? "";
+    document.getElementById("action_cooldown").value  = action.cooldown ?? "";
+    document.getElementById("action_daily_cap").value = action.dailyCap ?? "";
+    document.getElementById("action_provider").value  = action.provider || "";
+  } else {
+    title.textContent = "Add Action";
+    form.reset();
+  }
+  popup.classList.add("show");
+}
+function hidePopup() {
+  document.getElementById("actionPopup").classList.remove("show");
+  editingActionIndex = -1;
+}
+document.getElementById("actionForm")?.addEventListener("submit", function (e) {
+  e.preventDefault();
+  const actionData = {
+    name: document.getElementById("action_name").value.trim(),
+    channel: document.getElementById("action_channel").value.trim(),
+    cost: parseFloat(document.getElementById("action_cost").value) || 0,
+    cooldown: parseInt(document.getElementById("action_cooldown").value, 10),
+    dailyCap: parseInt(document.getElementById("action_daily_cap").value, 10),
+    provider: document.getElementById("action_provider").value.trim(),
+    active: true,
+  };
+  const idx = Number(editingActionIndex);
+  if (Number.isInteger(idx) && idx >= 0) window.savedActions[idx] = actionData;
+  else window.savedActions.push(actionData);
+
+  persistActions();
+  refreshActionsUI();
+  hidePopup();
+  upsertPlanToBackend().catch(console.error);
+});
+
+
+
+// ======= UX niceties =======
+document.getElementById("goal_period")?.addEventListener("change", ensureDatesFromPeriod);
+document.getElementById("actionPopup")?.addEventListener("click", (e) => { if (e.target === e.currentTarget) hidePopup(); });
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") hidePopup();
+});
+function initializeFileUpload() {
+  const fileInput   = document.getElementById('full-input');
+  const uploadLabel = document.getElementById('full-upload');
+  const nameEl      = document.getElementById('full-name');
+
+  if (!fileInput || !uploadLabel || !nameEl) return;
+
+  // input change
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) handleFileSelection(f, uploadLabel, nameEl, 'full-input');
+  });
+
+  // drag & drop
+  uploadLabel.addEventListener('dragover', (e) => { e.preventDefault(); uploadLabel.classList.add('drag-over'); });
+  uploadLabel.addEventListener('dragleave', (e) => { e.preventDefault(); uploadLabel.classList.remove('drag-over'); });
+  uploadLabel.addEventListener('drop', (e) => {
+    e.preventDefault(); uploadLabel.classList.remove('drag-over');
+    const f = e.dataTransfer.files?.[0];
+    if (f) {
+      fileInput.files = e.dataTransfer.files;
+      handleFileSelection(f, uploadLabel, nameEl, 'full-input');
+    }
+  });
+}
+
 async function suggestModelType() {
     if (!selectedData.uploadedFile) return null;
 
@@ -2196,7 +3021,7 @@ function updateSummary() {
 }
 
 function validateInputs() {
-    if (currentStep === 3) {
+    if (currentStep === 4) {
         const target = document.getElementById('targetColumn').value.trim();
         const success = document.getElementById('successCriteria').value.trim();
         
@@ -2283,6 +3108,7 @@ function showPreview(file) {
     };
     reader.readAsText(file);
 }
+
 
 function updateFileInfo(file, rowCount, columnCount) {
     const fileInfo = document.getElementById('file-info');
@@ -2745,10 +3571,123 @@ function sortByPriority(models) {
         container.appendChild(modelDiv);
     });
 }
+function safeStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        console.error(`Error getting ${key}:`, error);
+        return null;
+    }
+}
+function safeStorageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { console.error(`Error setting ${key}:`, e); }
+}
+async function hydrateLatestPlan() {
+  const pid = getPlanId?.();
+  const url = pid ? `${API_BASE_URL}/actions/plan/${pid}`
+                  : `${API_BASE_URL}/actions/plan/latest`;
 
+  try {
+    const res = await fetch(url, { headers: apiHeaders("GET") });
+    if (!res.ok) {
+      const txt = await res.text().catch(()=>"");
+      console.warn("Hydrate failed", res.status, txt);  // <-- this will show 422 detail
+      return;
+    }
+    const plan = await res.json();
+
+    if (plan?.id) setPlanId?.(plan.id);
+
+    // Use .value, not setAttribute
+    const elGoal   = document.getElementById('goal_amount');
+    const elPeriod = document.getElementById('period');
+    const elStart  = document.getElementById('start_date');
+    const elEnd    = document.getElementById('end_date');
+
+    if (elGoal)   elGoal.value   = String(plan.goal_amount ?? "");
+    if (elPeriod) elPeriod.value = plan.period ?? "";
+    if (elStart)  elStart.value  = plan.start_date ?? "";
+    if (elEnd)    elEnd.value    = plan.end_date ?? "";
+
+    const riskEl = document.querySelector(`input[name="risk"][value="${plan.risk}"]`);
+    if (riskEl) riskEl.checked = true;
+
+    if (Array.isArray(plan.actions)) {
+      window.savedActions = plan.actions.map(a => ({
+        id: a.id, name: a.name, channel: a.channel, cost: a.cost,
+        cooldown: a.cooldown, dailyCap: a.daily_cap, provider: a.provider,
+        active: a.active, sort_order: a.sort_order,
+      }));
+      persistActions?.(); refreshActionsUI?.();
+    }
+  } catch (e) {
+    console.warn("hydrate error", e);
+  }
+}
 
 // Input validation for text fields
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function () {
+    try {
+        const token = safeStorageGet('access_token');
+        const userLoggedIn = safeStorageGet('userLoggedIn');
+
+        const isLoggedIn = (userLoggedIn === true || userLoggedIn === 'true');
+        let tokenExpired = false;
+        if (token) {
+        try { tokenExpired = isTokenExpired(token); }
+        catch (e) { console.warn('Token parse error, treating as expired', e); tokenExpired = true; }
+        }
+
+        console.log('Wizard auth check:', {
+        token: token ? 'Present' : 'Missing',
+        isLoggedIn,
+        tokenExpired
+        });
+
+        const hasValidToken = Boolean(token) && !tokenExpired;
+
+        // If we have a valid token but login flag is missing, set it and continue
+        if (hasValidToken && !isLoggedIn) {
+        console.log('Valid token found but login flag missing; setting it.');
+        safeStorageSet('userLoggedIn', 'true');
+        // NOTE: do NOT return; continue to normal init
+        }
+
+        // Redirect if not authenticated
+        if (!hasValidToken || !isLoggedIn) {
+        console.log('Authentication failed, redirecting to login...');
+        // Clear potentially corrupted auth state (use your safe helper if needed)
+        ['access_token','refresh_token','userLoggedIn','userName','userEmail','user_id','user']
+            .forEach(k => localStorage.removeItem(k));
+        const next = encodeURIComponent('wizard.html');
+        const reason = encodeURIComponent('Your session has expired.');
+        // Use replace to avoid back-button loop
+        window.location.replace(`login.html?next=${next}&reason=${reason}`);
+        return;
+        }
+    } catch (err) {
+        console.error('Auth gate error:', err);
+        // Failsafe: go to login
+        const next = encodeURIComponent('wizard.html');
+        const reason = encodeURIComponent('Auth error; please log in again.');
+        window.location.replace(`login.html?next=${next}&reason=${reason}`);
+    }
+    loadSavedActions();            // <- you asked "how to call" — do it first
+      refreshActionsUI?.();
+
+  await hydrateLatestPlan();
+
+  // If your select already has a default like "this_month", fill dates now
+  const periodEl = document.getElementById('goal_period') || document.getElementById('period');
+  if (periodEl && periodEl.value && periodEl.value !== 'custom') {
+    typeof ensureDatesFromPeriod === "function" && ensureDatesFromPeriod();
+  }
+
+  _autosaveArmed = true;   // arm after hydrate/defaults
+    updateNavigation?.();
+
+    renderActions();
+    initializeFileUpload();
     const textInputs = document.querySelectorAll('.text-input');
     const waitForEl = (selector, cb, tries = 10) => {
         const el = document.querySelector(selector);
@@ -2763,7 +3702,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     textInputs.forEach(input => {
         input.addEventListener('input', function() {
-            if (currentStep === 3) {
+            if (currentStep === 4) {
                 const nextBtn = document.getElementById('nextBtn');
                 nextBtn.disabled = !validateInputs();
             }
@@ -2811,6 +3750,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    try {
+    const raw = localStorage.getItem('savedActions');
+    if (raw) window.savedActions = JSON.parse(raw);
+  } catch {}
+  renderActions?.();
 });
 
 function toggleSidebar() {

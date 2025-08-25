@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Upload & Clean Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+
+        /* Global Header */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .env-badge {
+            background: #dbeafe;
+            color: #1d4ed8;
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            border: 1px solid;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .btn-secondary:hover {
+            background: #f9fafb;
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 300px 1fr 320px;
+            gap: 1rem;
+            padding: 1rem;
+            min-height: calc(100vh - 80px);
+        }
+
+        /* Left Panel - Uploads */
+        .uploads-panel {
+            position: sticky;
+            top: 100px;
+            height: fit-content;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .dataset-card {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .dataset-card:hover {
+            background: #f8fafc;
+        }
+
+        .dataset-card.active {
+            background: #eff6ff;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .dataset-card:last-child {
+            border-bottom: none;
+        }
+
+        .dataset-name {
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .dataset-meta {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        .progress-pills {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .pill.completed {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .pill.current {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .pill.pending {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .dataset-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        /* Center Panel - Health */
+        .health-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .summary-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .summary-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .summary-label {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .issues-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .issues-table th,
+        .issues-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .issues-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .severity-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .severity-error {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .severity-warn {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .severity-info {
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        /* Right Panel - Actions */
+        .actions-panel {
+            position: sticky;
+            top: 100px;
+            height: fit-content;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .action-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 0.5rem;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+            position: relative;
+        }
+
+        .modal-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #64748b;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .preview-table th,
+        .preview-table td {
+            padding: 0.5rem;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        .preview-table th {
+            background: #f8fafc;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .uploads-panel,
+            .actions-panel {
+                position: static;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .header {
+                padding: 1rem;
+            }
+
+            .main-container {
+                padding: 0.5rem;
+            }
+
+            .summary-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .btn {
+                font-size: 0.75rem;
+                padding: 0.375rem 0.75rem;
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #64748b;
+        }
+        .header-actions .spinner[hidden] { display: none; }
+.header-actions .spinner { margin-left: .5rem; }
+
+    </style>
+</head>
+<body>
+    <!-- Global Header -->
+    <header class="header">
+        <div class="header-title">
+            Data Upload & Clean Center
+            <span class="env-badge">Demo</span>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary">Re-run all</button>
+              <button id="btn-preprocess-clean" class="btn btn-secondary" data-state="idle" title="Run preprocessing & cleaning now">
+                <span class="label">Preprocess &amp; Clean</span>
+                <span class="spinner" aria-hidden="true" hidden>⏳</span>
+            </button>
+            <button class="btn btn-secondary">Schedule pipeline</button>
+            <a href="/runs" class="btn btn-secondary">View run history</a>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Panel - Uploads -->
+        <div class="uploads-panel">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Datasets</h2>
+                </div>
+                <div id="datasets-container">
+                    <!-- Dataset cards will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel - Health -->
+        <div class="health-panel">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Data Health Summary</h2>
+                </div>
+                <div id="health-content">
+                    <div class="empty-state">
+                        <p>Select a dataset to view health information</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel - Actions -->
+        <div class="actions-panel">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">Actions</h2>
+                </div>
+                <div style="padding: 1rem;">
+                    <div id="actions-content">
+                        <div class="empty-state">
+                            <p>Select a dataset to see available actions</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Data Preview</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body" style="padding: 1rem;">
+                <!-- Preview content -->
+            </div>
+        </div>
+    </div>
+
+<script>
+/* =============================
+   Config & toggles
+============================= */
+const API_BASE_URL = 'http://127.0.0.1:8000';
+const USE_MOCK = false; // toggle demo mode on/off
+
+/* =============================
+   State & lookups
+============================= */
+let dataSource = null;  // always shaped like mockData, whether mock or live
+const idByKey = Object.create(null);
+const keyById = Object.create(null);
+let activeKey = null;
+
+/* =============================
+   Helpers
+============================= */
+function slugify(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 40);
+}
+
+function safeStorageGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
+function safeStorageSet(k,v){ try { localStorage.setItem(k,v); } catch {} }
+
+function clearAuthStorage() {
+  try {
+    const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail'];
+    keys.forEach(key => localStorage.removeItem(key));
+    console.log('Cleared authentication storage');
+  } catch (error) {
+    console.error('Error clearing auth storage:', error);
+  }
+}
+
+// Correct Base64URL decoder
+function decodeBase64Url(str) {
+  str = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+  const pad = str.length % 4;
+  if (pad) str += '='.repeat(4 - pad);
+  return atob(str);
+}
+
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(decodeBase64Url(token.split('.')[1]));
+    if (!payload.exp) return false;
+    const currentTime = Math.floor(Date.now() / 1000);
+    return payload.exp < currentTime - 30; // small buffer
+  } catch (error) {
+    console.error('Error parsing token:', error);
+    return true;
+  }
+}
+
+function checkAuthentication() {
+  const token = safeStorageGet('access_token');
+  const userLoggedIn = safeStorageGet('userLoggedIn');
+
+  const hasValidToken = token && !isTokenExpired(token);
+  const hasLoginFlag = userLoggedIn === 'true';
+
+  if (hasValidToken && !hasLoginFlag) {
+    safeStorageSet('userLoggedIn', 'true');
+    return true;
+  }
+  if (hasLoginFlag && !hasValidToken) {
+    clearAuthStorage();
+    return false;
+  }
+  return hasValidToken && hasLoginFlag;
+}
+
+function redirectToLogin(reason) {
+  const next = encodeURIComponent(location.pathname + location.search);
+  const r = encodeURIComponent(reason || 'Please log in to view your datasets');
+  window.location.href = `login.html?next=${next}&reason=${r}`;
+}
+
+// Fixed refresh token function
+async function refreshUserToken() {
+  const refreshToken = safeStorageGet('refresh_token');
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error('Token refresh failed');
+  }
+
+  const data = await response.json();
+  if (data.access_token) {
+    safeStorageSet('access_token', data.access_token);
+    if (data.refresh_token) {
+      safeStorageSet('refresh_token', data.refresh_token);
+    }
+    return data.access_token;
+  }
+  
+  throw new Error('No access token in refresh response');
+}
+
+async function fetchWithTokenRefresh(url, options = {}) {
+  // Always include cookies if you need them
+  const opts = { ...options, credentials: 'include' };
+
+  // 1️⃣ First attempt
+  let response = await fetch(url, opts);
+  if (response.ok || (response.status !== 401 && response.status !== 403)) {
+    return response;
+  }
+
+  console.warn('Auth failed, attempting refresh…');
+  try {
+    // 2️⃣ Try your verified refresh routine
+    await refreshUserToken();
+
+    // 3️⃣ On success, retry the original request with the new access token
+    const newToken = safeStorageGet('access_token');
+    const retryOpts = {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        'Authorization': `Bearer ${newToken}`
+      }
+    };
+    const retryResp = await fetch(url, retryOpts);
+    if (retryResp.ok) {
+      return retryResp;
+    }
+    console.error(`Retry after refresh also failed: ${retryResp.status}`);
+  } catch (refreshError) {
+    console.error('Token refresh failed:', refreshError.message);
+  }
+
+  // 4️⃣ If we get here, both original and refresh→retry failed
+  // Give the user 3s to see any on-screen message, then redirect:
+  setTimeout(() => {
+    clearAuthStorage();  // wipe out stale tokens
+    window.location.href =
+      `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+  }, 2000);
+
+  throw new Error('Authentication and refresh both failed');
+}
+
+function authHeaders() {
+  const token = safeStorageGet('access_token');
+  return { 'Authorization': `Bearer ${token}` };
+}
+
+async function apiFetch(path, opts = {}) {
+  const url = `${API_BASE_URL}${path}`;
+  const res = await fetchWithTokenRefresh(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+    ...opts
+  });
+  if (res.status === 401 || res.status === 403) {
+    clearAuthStorage();
+    redirectToLogin('Your session expired. Please log in again.');
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error(await res.text());
+  return res;
+}
+
+function escapeHtml(v) {
+  if (v == null) return '';
+  return String(v)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'",'&#039;');
+}
+
+/* =============================
+   Mock data (unchanged)
+============================= */
+const mockData = {
+  uploads: {
+    customers: { filename: 'customers_2024.csv', size: '2.4MB', uploaded: '2024-08-20T10:30:00Z' },
+    orders: { filename: 'orders_q3.csv', size: '8.1MB', uploaded: '2024-08-20T09:15:00Z' },
+    marketing: { filename: 'campaigns.csv', size: '1.8MB', uploaded: '2024-08-20T11:45:00Z' }
+  },
+  file_health: {
+    customers: {
+      status: 'ready',
+      row_count: 15420,
+      duplicate_keys: 23,
+      missing_required: 12,
+      null_rate: 0.08,
+      date_range: { min: '2024-01-01', max: '2024-08-19' },
+      preview: [
+        { id: 1, name: 'John Doe', email: 'john@example.com', created: '2024-01-15' },
+        { id: 2, name: 'Jane Smith', email: 'jane@example.com', created: '2024-01-16' },
+        { id: 3, name: 'Bob Wilson', email: 'bob@example.com', created: '2024-01-17' }
+      ],
+      issues: [
+        { severity: 'error', field: 'email', message: 'Invalid email format in 12 rows', count: 12 },
+        { severity: 'warn', field: 'phone', message: 'Missing phone numbers', count: 45 },
+        { severity: 'info', field: 'address', message: 'Inconsistent address formatting', count: 78 }
+      ]
+    },
+    orders: {
+      status: 'ready',
+      row_count: 45230,
+      duplicate_keys: 0,
+      missing_required: 5,
+      null_rate: 0.03,
+      date_range: { min: '2024-07-01', max: '2024-08-20' },
+      preview: [
+        { order_id: 'ORD-001', customer_id: 1, amount: 299.99, date: '2024-07-15' },
+        { order_id: 'ORD-002', customer_id: 2, amount: 149.50, date: '2024-07-16' },
+        { order_id: 'ORD-003', customer_id: 1, amount: 599.00, date: '2024-07-17' }
+      ],
+      issues: [
+        { severity: 'error', field: 'amount', message: 'Negative amounts found', count: 5 },
+        { severity: 'info', field: 'status', message: 'Status updates needed', count: 23 }
+      ]
+    }
+  },
+  schema_contract: {
+    customers: { required: ['id', 'name', 'email'] },
+    orders: { required: ['order_id', 'customer_id', 'amount'] },
+    marketing: { required: ['campaign_id', 'name'] }
+  },
+  used_mapping: {
+    customers: { id: 'id', name: 'name', email: 'email' },
+    orders: { order_id: 'order_id', customer_id: 'customer_id', amount: 'amount' }
+  },
+  modified_csvs: {
+    customers: { public_url: 'https://example.com/cleaned/customers.csv' }
+  },
+  derived: { customers: { last_computed: '2024-08-20T12:00:00Z' } },
+  stages: {} // Add stages to mock data
+};
+
+const STAGE_ORDER = ['uploaded', 'profiled', 'mapped', 'processed', 'computed'];
+
+// Boot-safe init so later code can always do dataSource.stages etc.
+function initDataSource() {
+  // Ensure dataSource is a non-null plain object
+  if (dataSource == null || typeof dataSource !== 'object' || Array.isArray(dataSource)) {
+    dataSource = {};
+  }
+
+  // Use nullish checks instead of `in` to avoid errors on null
+  if (dataSource.uploads == null)         dataSource.uploads = {};
+  if (dataSource.file_health == null)     dataSource.file_health = {};
+  if (dataSource.stages == null)          dataSource.stages = {};
+  if (dataSource.schema_contract == null) dataSource.schema_contract = {};
+  if (dataSource.used_mapping == null)    dataSource.used_mapping = {};
+  if (dataSource.modified_csvs == null)   dataSource.modified_csvs = {};
+  if (dataSource.derived == null)         dataSource.derived = {};
+}
+
+// Always call getDS() instead of touching dataSource directly
+function getDS() {
+  initDataSource(); // Ensure dataSource is properly initialized
+  return dataSource;
+}
+
+// Utilities
+function normalizeStageList(arr) {
+  const seen = new Set();
+  const cleaned = [];
+  (arr || []).forEach(s => {
+    const v = String(s || '').trim().toLowerCase();
+    if (!v) return;
+    if (!STAGE_ORDER.includes(v)) return;  // ignore unknown stages
+    if (!seen.has(v)) { seen.add(v); cleaned.push(v); }
+  });
+  // sort according to STAGE_ORDER to keep visuals consistent
+  cleaned.sort((a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b));
+  return cleaned;
+}
+
+function mergeStages(existing, toAdd) {
+  return normalizeStageList([...(existing || []), ...(toAdd || [])]);
+}
+
+function findKeyByDatasetId(datasetId) {
+  const entries = Object.entries(dataSource.uploads || {});
+  for (const [key, u] of entries) {
+    if (String(u?.datasetId) === String(datasetId)) return key;
+  }
+  return null;
+}
+
+function rerenderDatasets() {
+  if (typeof renderDatasets === 'function') renderDatasets();
+}
+
+// ---- Local state mutations (with optimistic sync) ----
+function setDatasetStages(key, next, options = {}) {
+  const ds = getDS();
+  ds.stages[key] = Array.from(new Set(next));
+  if (options.render) {
+    rerenderDatasets();
+  }
+}
+
+function pushStages(key, toAdd) {
+  const ds = getDS();
+  const curr = getDatasetStage(ds, key);
+  setDatasetStages(key, [...curr, ...toAdd]);
+}
+
+async function pushStagesAndSync(key, toAdd = [], currentStage = null) {
+  // Optimistic update
+  const before = getDatasetStage(dataSource, key);
+  const optimistic = mergeStages(before, toAdd);
+  setDatasetStages(key, optimistic, { render: true });
+
+  try {
+    const serverList = await patchServerStages(key, { add: toAdd, stage: currentStage });
+    if (Array.isArray(serverList) && serverList.length) {
+      setDatasetStages(key, serverList, { render: true });
+    }
+  } catch (e) {
+    console.warn('Stage sync failed; reverting local stages', e);
+    setDatasetStages(key, before, { render: true });
+  }
+}
+
+/* =============================
+   Adapter: API -> mock-like
+============================= */
+function toMockLikeFromApiList(apiDatasets) {
+  const uploads = {};
+  const file_health = {};
+  const schema_contract = {};
+  const used_mapping = {};
+  const modified_csvs = {};
+  const derived = {};
+  const stages = {};
+
+  apiDatasets.forEach(ds => {
+    const key = `${slugify(ds.name || 'dataset')}-${ds.id}`;
+    idByKey[key] = ds.id;
+    keyById[ds.id] = key;
+
+    uploads[key] = {
+      filename: ds.name || `dataset_${ds.id}.csv`,
+      size: ds.size || '—',
+      uploaded: ds.created_at || null,
+      datasetId: ds.id // Add datasetId to uploads
+    };
+    file_health[key] = null; // lazy hydrate
+    stages[key] = []; // Initialize empty stages
+  });
+
+  return { uploads, file_health, schema_contract, used_mapping, modified_csvs, derived, stages };
+}
+
+function normalizeHealth(h) {
+  if (!h) return null;
+  return {
+    status: h.status || 'ready',
+    row_count: h.row_count ?? h.rows ?? null,
+    duplicate_keys: h.duplicate_keys ?? 0,
+    missing_required: h.missing_required ?? 0,
+    null_rate: h.null_rate ?? null,
+    date_range: h.date_range || (h.min_date || h.max_date ? { min: h.min_date, max: h.max_date } : null),
+    issues: Array.isArray(h.issues) ? h.issues.map(i => ({
+      severity: i.severity || 'info',
+      field: i.field || '',
+      message: i.message || '',
+      count: i.count ?? ''
+    })) : [],
+    preview: Array.isArray(h.preview) ? h.preview : null
+  };
+}
+
+async function fetchDatasetHealth(datasetId) {
+  const res = await apiFetch(`/datasets/${encodeURIComponent(datasetId)}/health`, { method: 'GET' });
+  try { return await res.json(); } catch { return {}; }
+}
+
+async function hydrateHealthForKey(key, fetchFn) {
+  const id = idByKey[key];
+  if (!id) return;
+  try {
+    const res = await fetchFn(`/datasets/${id}/health`);
+    const health = await res.json();
+    dataSource.file_health[key] = normalizeHealth(health);
+  } catch (e) {
+    console.warn('Health fetch failed for', key, e);
+    dataSource.file_health[key] = null;
+  }
+}
+function escapeHtml(v) {
+  const s = String(v ?? '');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function headersFromRows(rows) {
+  // union of keys across all objects (stable order: first-seen)
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    if (r && typeof r === 'object' && !Array.isArray(r)) {
+      for (const k of Object.keys(r)) {
+        if (!seen.has(k)) { seen.add(k); out.push(k); }
+      }
+    }
+  }
+  return out;
+}
+
+async function showPreviewByKey(key) {
+  let datasetId;
+  try {
+    datasetId = resolveDatasetId(key);
+  } catch (e) {
+    console.error(e);
+    alert(e.message || 'Could not resolve dataset id.');
+    return;
+  }
+
+  const modal = document.getElementById('preview-modal');
+  const modalBody = document.getElementById('modal-body');
+  const titleEl = document.getElementById('preview-title'); // optional
+  if (!modal || !modalBody) {
+    console.warn('Preview modal elements not found (need #preview-modal and #modal-body).');
+    return;
+  }
+
+  modal.classList.add('active');
+  modalBody.innerHTML = '<div class="mini">Loading preview…</div>';
+
+  try {
+    // Backend already limits to 5; do NOT send ?limit=
+    const res = await apiFetch(`/datasets/${encodeURIComponent(datasetId)}/preview`, { method: 'GET' });
+
+    // More helpful errors
+    if (!res.ok) {
+      let msg = 'Failed to load preview.';
+      try {
+        const err = await res.json();
+        if (err?.detail) msg = err.detail;
+      } catch {}
+      modalBody.innerHTML = `<div class="mini">${escapeHtml(msg)}</div>`;
+      return;
+    }
+
+    const data = await res.json();
+    const rows = Array.isArray(data?.preview_data) ? data.preview_data : [];
+
+    if (titleEl) {
+      const createdStr = data?.created_at ? ` • ${escapeHtml(data.created_at)}` : '';
+      titleEl.textContent = data?.name ? `${data.name}${createdStr}` : `Dataset ${datasetId}${createdStr}`;
+    }
+
+    if (!rows.length) {
+      modalBody.innerHTML = '<div class="mini">No preview rows available.</div>';
+      return;
+    }
+
+    const headers = headersFromRows(rows);
+    if (!headers.length) {
+      // Fallback: render raw JSON if rows aren’t plain objects
+      modalBody.innerHTML = `<pre class="mini">${escapeHtml(JSON.stringify(rows.slice(0, 5), null, 2))}</pre>`;
+      return;
+    }
+
+    const thead = `<thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`;
+    const tbody = `<tbody>${
+      rows.map(r => `<tr>${
+        headers.map(h => {
+          const v = r?.[h];
+          const str = (v != null && typeof v === 'object') ? JSON.stringify(v) : v;
+          return `<td>${escapeHtml(str)}</td>`;
+        }).join('')
+      }</tr>`).join('')
+    }</tbody>`;
+
+    modalBody.innerHTML = `<table class="preview-table">${thead}${tbody}</table>`;
+  } catch (e) {
+    console.error(e);
+    modalBody.innerHTML = '<div class="mini">Failed to load preview.</div>';
+  }
+}
+
+async function loadLiveDatasets() {
+  const listEl = document.getElementById('datasets-container') || document.getElementById('datasetsList');
+  if (listEl) {
+    listEl.innerHTML = '<div class="col-12"><p>Loading datasets...</p></div>';
+  }
+
+  const res = await apiFetch('/datasets/');
+  const data = await res.json();
+  const arr = Array.isArray(data?.datasets) ? data.datasets : [];
+
+  if (arr.length === 0) {
+    if (listEl) {
+      listEl.innerHTML = '<div class="col-12"><p>No datasets available. Upload your first dataset above.</p></div>';
+    }
+    return;
+  }
+
+  const mapped = toMockLikeFromApiList(arr);
+
+  // normalize existing ds, then merge to preserve stages/etc
+  const dsPrev = getDS();
+  dataSource = Object.assign({ uploads:{}, file_health:{}, stages:{} }, dsPrev, mapped);
+  initDataSource(); // re-normalize to ensure fields exist
+
+  renderDatasets();               // safe to render now
+  await hydrateStagesFromServer(); // then hydrate server stages
+
+  const keys = Object.keys(getDS().uploads);
+  if (keys.length) {
+    selectDataset(keys[0]);
+    await hydrateHealthForKey(keys[0], (p) => apiFetch(p));
+    if (keys[0] === activeKey) renderHealthPanel(activeKey);
+  }
+}
+
+function getDatasetStage(src, key) {
+  // Option B: prefer server-persisted stages
+  const persisted = Array.isArray(src?.stages?.[key]) ? src.stages[key] : [];
+  if (Array.isArray(persisted) && persisted.length) return normalizeStageList(persisted);
+
+  // Fallback heuristic (only if server has nothing yet)
+  const fallback = [];
+  if (src?.uploads?.[key]) fallback.push('uploaded');
+  const h = src?.file_health?.[key];
+  if (h && h.status === 'ready') fallback.push('profiled');
+  return normalizeStageList(fallback);
+}
+
+// ---- Server calls ----
+async function fetchServerStages(key) {
+  const id = resolveDatasetId(key);
+  const res = await apiFetch(`/datasets/${id}/stages`);
+  const json = await res.json(); // { dataset_id, stage, stages: [] }
+  const list = normalizeStageList(json?.stages || []);
+  // If "stage" is provided and not in list, append it respecting order
+  const current = json?.stage ? normalizeStageList([json.stage])[0] : null;
+  const merged = current && !list.includes(current) ? mergeStages(list, [current]) : list;
+  return merged;
+}
+
+async function patchServerStages(key, { add = [], stage = null } = {}) {
+  const id = resolveDatasetId(key);
+  const body = {};
+  const addNorm = normalizeStageList(add);
+  if (addNorm.length) body.add = addNorm;
+  if (stage) {
+    const sNorm = normalizeStageList([stage])[0];
+    if (sNorm) body.stage = sNorm;
+  }
+  if (!Object.keys(body).length) return null;
+
+  const res = await apiFetch(`/datasets/${id}/stages`, {
+    method: 'PATCH',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json(); // { dataset_id, stage, stages: [] }
+  return normalizeStageList(json?.stages || []);
+}
+
+async function hydrateStagesFromServer() {
+  const uploads = (dataSource && dataSource.uploads) || {};
+  const keys = Object.keys(uploads);
+  if (!keys.length) return;
+
+  // Fetch in parallel but don't explode on single failures
+  const results = await Promise.allSettled(keys.map(async (key) => {
+    const serverStages = await fetchServerStages(key);
+    setDatasetStages(key, serverStages, { render: false });
+    return true;
+  }));
+
+  // Optionally log errors for visibility
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.warn('Failed to hydrate stages for', keys[i], r.reason);
+  });
+
+  rerenderDatasets();
+}
+
+function renderDatasets() {
+  const ds = getDS(); // <- normalize dataSource
+  const container = document.getElementById('datasets-container');
+  if (!container) return;
+
+  const uploads = ds.uploads || {};
+  const keys = Object.keys(uploads);
+
+  if (!keys.length) {
+    container.innerHTML = '<div class="col-12"><p>No datasets available.</p></div>';
+    return;
+  }
+
+  container.innerHTML = keys.map(key => {
+    const upload = uploads[key];
+    if (!upload) {
+      // Gracefully skip or render a placeholder card
+      return `
+        <div class="dataset-card" data-key="${escapeHtml(key)}">
+          <div class="dataset-name">${escapeHtml(key)}</div>
+          <div class="dataset-meta">—</div>
+          <div class="progress-pills"></div>
+        </div>`;
+    }
+
+    const stages = getDatasetStage(ds, key);
+    const pills = STAGE_ORDER
+      .map((stage, idx) => {
+        const completed = stages.includes(stage);
+        const current = !completed && (idx === stages.length);
+        const cls = 'pill ' + (completed ? 'completed' : current ? 'current' : 'pending');
+        return `<span class="${cls}">${escapeHtml(stage)}</span>`;
+      }).join('');
+
+    const fname = escapeHtml(upload.filename ?? '');
+    const fsize = escapeHtml(upload.size ?? '—');
+    const fdate = upload.uploaded ? new Date(upload.uploaded).toLocaleDateString() : '';
+
+    return `
+      <div class="dataset-card ${activeKey === key ? 'active' : ''}" onclick="selectDataset('${key}')">
+        <div class="dataset-name">${escapeHtml(key)}</div>
+        <div class="dataset-meta">
+          ${fname} • ${fsize} • ${fdate}
+        </div>
+        <div class="progress-pills">${pills}</div>
+        <div class="dataset-actions">
+          <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); replaceFile('${key}')">Replace file</button>
+          <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showPreviewByKey('${key}')">View preview</button>
+          <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); downloadOriginal('${key}')">Download File</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectDataset(key) {
+  activeKey = key;
+  renderDatasets();
+  renderHealthPanel(key);
+  renderActionsPanel(key);
+}
+
+function renderHealthPanel(key) {
+  const container = document.getElementById('health-content');
+  if (!container) return;
+  
+  const health = key ? dataSource.file_health[key] : null;
+
+  if (!health) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>${key ? 'No health loaded yet.' : 'No health data available.'}</p>
+        ${key ? `<button class="btn btn-primary" onclick="hydrateHealthForKey('${key}', (p)=>apiFetch(p)).then(()=>renderHealthPanel('${key}'))">Load health</button>` : ''}
+      </div>`;
+    return;
+  }
+
+  const summaryCardsHtml = `
+    <div class="summary-cards">
+      <div class="summary-card"><div class="summary-value">${health.row_count?.toLocaleString?.() ?? health.row_count ?? '—'}</div><div class="summary-label">Total Rows</div></div>
+      <div class="summary-card"><div class="summary-value">${health.duplicate_keys ?? '—'}</div><div class="summary-label">Duplicate Keys</div></div>
+      <div class="summary-card"><div class="summary-value">${health.missing_required ?? '—'}</div><div class="summary-label">Missing Required</div></div>
+      <div class="summary-card"><div class="summary-value">${health.null_rate != null ? (health.null_rate * 100).toFixed(1) + '%' : '—'}</div><div class="summary-label">Null Rate</div></div>
+      ${health.date_range ? `
+        <div class="summary-card"><div class="summary-value">${health.date_range.min}</div><div class="summary-label">Earliest Date</div></div>
+        <div class="summary-card"><div class="summary-value">${health.date_range.max}</div><div class="summary-label">Latest Date</div></div>
+      ` : ''}
+    </div>`;
+
+  const issuesTableHtml = Array.isArray(health.issues) && health.issues.length ? `
+    <div class="panel" style="margin-top: 1rem;">
+      <div class="panel-header"><h3 class="panel-title">Data Issues</h3></div>
+      <div style="overflow-x:auto;">
+        <table class="issues-table">
+          <thead><tr><th>Severity</th><th>Field</th><th>Issue</th><th>Count</th></tr></thead>
+          <tbody>
+            ${health.issues.map(issue => `
+              <tr>
+                <td><span class="severity-badge severity-${issue.severity}">${String(issue.severity || '').toUpperCase()}</span></td>
+                <td>${escapeHtml(issue.field || '')}</td>
+                <td>${escapeHtml(issue.message || '')}</td>
+                <td>${issue.count ?? ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  container.innerHTML = summaryCardsHtml + issuesTableHtml;
+}
+
+function resolveDatasetId(key) {
+  if (typeof key === 'number') return key;
+  const s = String(key);
+
+  // already numeric?
+  if (/^\d+$/.test(s)) return Number(s);
+
+  // extract trailing number from slugs like "nike_sales-4"
+  const m = s.match(/(\d+)(?!.*\d)/);
+  if (m) return Number(m[1]);
+
+  // fallback: if your uploads map stores ids
+  const id =
+    dataSource?.uploads?.[s]?.datasetId ??
+    dataSource?.uploads?.[s]?.id;
+
+  if (typeof id === 'number') return id;
+
+  throw new Error(`Cannot resolve numeric dataset id from key "${key}"`);
+}
+
+function parseErrorMessage(err) {
+  if (!err) return 'Unknown error';
+  const msg = err.message || String(err);
+  try {
+    const j = JSON.parse(msg);
+    return j?.detail || j?.message || msg;
+  } catch {
+    return msg;
+  }
+}
+async function runPreprocessAndClean({ datasetId, button }) {
+  if (!datasetId) {
+    alert('No dataset selected.');
+    return;
+  }
+
+  // UI state
+  const label   = button?.querySelector?.('.label') || button;
+  const spinner = button?.querySelector?.('.spinner');
+  if (button)  button.disabled = true;
+  if (spinner) spinner.hidden = false;
+  const original = label?.textContent;
+  if (label)   label.textContent = 'Processing…';
+
+  try {
+    const res = await apiFetch(`/datasets/${encodeURIComponent(datasetId)}/preprocess`, {
+      method: 'POST',
+      body: JSON.stringify({ clean: true, save: true })
+    });
+
+    let payload = {};
+    try { payload = await res.json(); } catch {}
+
+    // Advance status: profiled → mapped → processed (aka "preprocessed" stage in your copy)
+    const key = findKeyByDatasetId(datasetId) || datasetId; // fall back if key==id
+    pushStages(key, ['profiled', 'mapped', 'processed']);
+
+    // Try to refresh health/preview so "View preview" can enable
+    try {
+      const health = await fetchDatasetHealth(datasetId);
+      dataSource.file_health[key] = health;
+    } catch (e) {
+      console.warn('Health refresh failed:', e);
+    }
+
+    // Re-render and broadcast
+    rerenderDatasets();
+    window.dispatchEvent(new CustomEvent('dataset:preprocessed', { detail: { datasetId, payload, key } }));
+
+    console.log('Preprocess & Clean completed', payload);
+    alert('Preprocess & Clean completed successfully.');
+  } catch (err) {
+    console.error(err);
+    alert(`Preprocess & Clean failed: ${parseErrorMessage(err)}`);
+  } finally {
+    if (label && original != null) label.textContent = original;
+    if (spinner) spinner.hidden = true;
+    if (button) button.disabled = false;
+  }
+}
+
+
+// ---------- Actions panel (injects the Preprocess & Clean button) ----------
+function renderActionsPanel(key) {
+  const container = document.getElementById('actions-content');
+  const stages = key ? getDatasetStage(dataSource, key) : [];
+  const canRun = stages.includes('mapped') || stages.includes('profiled') || stages.includes('uploaded');
+  const isProcessed = stages.includes('processed');
+
+  container.innerHTML = `
+    <div class="action-group">
+      <h4 style="margin-bottom:.5rem; color:#374151;">Data Processing</h4>
+      <button id="btn-parse-profile" class="btn btn-primary" ${stages.includes('uploaded') ? '' : 'disabled'}>Parse &amp; Profile</button>
+      <button id="btn-configure-mapping" class="btn btn-secondary" ${stages.includes('profiled') ? '' : 'disabled'}>Configure Mapping</button>
+
+      <button id="btn-preprocess-clean" class="btn btn-secondary" data-state="idle" title="Run preprocessing &amp; cleaning now" ${canRun ? '' : 'disabled'}>
+        <span class="label">Preprocess &amp; Clean</span>
+        <span class="spinner" aria-hidden="true" hidden>⏳</span>
+      </button>
+    </div>
+
+    <div class="action-group">
+      <h4 style="margin-bottom:.5rem; color:#374151;">Quality Control</h4>
+      <button id="btn-run-validation" class="btn btn-secondary" ${isProcessed ? '' : 'disabled'}>Run Validation</button>
+      <button id="btn-generate-report" class="btn btn-secondary" ${isProcessed ? '' : 'disabled'}>Generate Report</button>
+    </div>
+
+    <div class="action-group">
+      <h4 style="margin-bottom:.5rem; color:#374151;">Export</h4>
+      <button id="btn-download-clean" class="btn btn-secondary" ${isProcessed ? '' : 'disabled'}>Download Clean CSV</button>
+      <button id="btn-export-db" class="btn btn-secondary" ${isProcessed ? '' : 'disabled'}>Export to Database</button>
+    </div>
+  `;
+
+  // Wire up Preprocess & Clean
+  const preprocessBtn = container.querySelector('#btn-preprocess-clean');
+  if (preprocessBtn) {
+    const datasetId = resolveDatasetId(key);
+    preprocessBtn.addEventListener('click', () => {
+      if (preprocessBtn.disabled) return;
+      runPreprocessAndClean({ datasetId, button: preprocessBtn });
+    });
+  }
+
+  // (Optional) wire other buttons here (parse/profile, mapping, etc.)
+}
+
+async function safeErrorMessage(res) {
+  try {
+    const t = await res.text();
+    try { return JSON.parse(t)?.detail || JSON.parse(t)?.message || t; }
+    catch { return t; }
+  } catch { return ''; }
+}
+
+
+  
+
+// ---------- Replace File ----------
+async function replaceFile(key) {
+  const upload = dataSource.uploads[key];
+  const datasetId = resolveDatasetId(key);
+  if (!datasetId) return alert('Missing dataset id for replace.');
+  // Pick a file
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,.tsv,.txt,application/vnd.ms-excel,text/csv';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    document.body.removeChild(input);
+    if (!file) return;
+
+    try {
+      // Upload replace (adjust endpoint to your API)
+      const fd = new FormData();
+      fd.append('file', file);
+
+      const res = await fetch(
+        (window.API_BASE_URL || '') + `/datasets/${encodeURIComponent(datasetId)}/file`,
+        {
+          method: 'PUT',
+          headers: window.authToken ? { 'Authorization': `Bearer ${window.authToken}` } : undefined,
+          body: fd
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Update local metadata
+      upload.filename = file.name;
+      upload.size     = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+      upload.uploaded = Date.now();
+      setDatasetStages(key, ['uploaded']);
+
+      // Clear cached health/preview
+      if (dataSource.file_health) delete dataSource.file_health[key];
+
+      rerenderDatasets();
+      alert('File replaced successfully. Re-run preprocess when ready.');
+    } catch (e) {
+      console.error(e);
+      alert(`Replace failed: ${parseErrorMessage(e)}`);
+    }
+  };
+
+  input.click();
+}
+
+// ---------- Download Original ----------
+async function downloadOriginal(key) {
+  const upload = dataSource.uploads[key];
+  if (!upload?.datasetId) return alert('Missing dataset id for download.');
+  const datasetId = resolveDatasetId(key);
+
+  try {
+    // Prefer a direct signed URL if you have one on the upload object
+    if (upload.signedUrl) {
+      const a = document.createElement('a');
+      a.href = upload.signedUrl;
+      a.download = upload.filename || 'original.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
+    // Otherwise stream a blob from your API
+    const res = await apiFetch(`/datasets/${encodeURIComponent(datasetId)}/original?download=1`, { method: 'GET' });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = upload.filename || 'original.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error(e);
+    alert(`Download failed: ${parseErrorMessage(e)}`);
+  }
+}
+
+
+(function wireModalClose(){
+  const modal = document.getElementById('preview-modal');
+  if (!modal) return;
+  modal.addEventListener('click', (e) => { if (e.target.id === 'preview-modal') modal.classList.remove('active'); });
+})();
+// ---------- Events ----------
+// When preprocess completes, push and sync stages
+window.addEventListener('dataset:preprocessed', (e) => {
+  const key = e.detail?.key ?? String(e.detail?.datasetId ?? '');
+  if (!key) return;
+  // Advance through pipeline and persist to server
+  pushStagesAndSync(key, ['profiled', 'mapped', 'processed'], 'processed');
+});
+
+
+// Optional: close preview modal handler (if you have a close button with id)
+document.getElementById('preview-close')?.addEventListener('click', () => {
+  const modal = document.getElementById('preview-modal');
+  if (modal) modal.hidden = true;
+});
+
+/* =============================
+   Boot
+============================= */
+document.addEventListener('DOMContentLoaded', async () => {
+  if (USE_MOCK) {
+    dataSource = mockData;
+    // Seed ids so buttons work in demo
+    Object.keys(mockData.uploads).forEach((k, idx) => { idByKey[k] = idx + 1; keyById[idx + 1] = k; });
+    renderDatasets();
+    selectDataset(Object.keys(mockData.uploads)[0]);
+    return;
+  }
+  // Live
+  try {
+    if (!checkAuthentication()) return redirectToLogin('Please log in to view your datasets');
+    await loadLiveDatasets();
+  } catch (e) {
+    console.error(e);
+    // Fallback to mock if live fails
+    dataSource = mockData;
+    renderDatasets();
+    selectDataset(Object.keys(mockData.uploads)[0]);
+  }
+  
+});
+</script>
+
+</body>
+</html>

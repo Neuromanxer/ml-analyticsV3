@@ -56,95 +56,33 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 
 
-from .ai import generate_insights
-from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
-from .ecs_launcher import launch_job_on_ecs
-from .worker import make_json_safe
-from .auth import Base, master_engine, decode_user_from_request
-from .tokens import TokenUsageLogResponse, TokenUsageLog
-from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-from .preprocessing import preprocess_data
-from .survival import calculate_business_metrics
-from .anomaly_detection import train_best_anomaly_detection
-from .datasets import (
-    Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
-    get_user_db,
-
-)
-from .datasets import init_db as init_dataset_master_db
-from .activity import router as activity_router
-from .account import router as a_router
-from .target import router as t_router
-from .auth import _load_metadata, _save_metadata
-from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
-# These names should match exactly what you export from auth.py
-from .auth import (
-    # Authentication & token utilities
-    get_current_active_user,
-    get_current_user,
-    create_access_token,
-    authenticate_user,
-    Dataset,
-    # Pydantic schemas for auth
-    UserCreate,
-    UserResponse,
-    Token,
-    AuthTokenResponse,
-    RegisterResponse,
-    
-    # Database/session helpers
-    DatasetResponse,
-    DatasetCreate,
-    register_dataset,
-    create_user_database,
-    get_dataset_by_id,
-    get_dataset_data,
-    delete_dataset_crud,
-    query_dataset,
-    get_user_session,
-    get_user_session_direct,
-    get_user_engine,
-    get_master_db_session,
-    get_user_by_email,
-    master_db_cm,
-    Base,
-    User
-
-)
-from .auth import get_master_db_session
-from .auth import router as auth_router
-from .tokens import router as token_router
-from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
-
-
-
-
-# from ai import generate_insights
-# from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
-# from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
-# from ecs_launcher import launch_job_on_ecs
-# from worker import make_json_safe
-# from auth import Base, master_engine, decode_user_from_request
-# from tokens import TokenUsageLogResponse, TokenUsageLog
-
-# from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
-# from preprocessing import preprocess_data
-# from survival import calculate_business_metrics
-# from anomaly_detection import train_best_anomaly_detection
-# from datasets import (
+# from .ai import generate_insights
+# from .worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+# from .worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
+# from .ecs_launcher import launch_job_on_ecs
+# from .worker import make_json_safe
+# from .auth import Base, master_engine, decode_user_from_request
+# from .tokens import TokenUsageLogResponse, TokenUsageLog
+# from .classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+# from .preprocessing import preprocess_data
+# from .survival import calculate_business_metrics
+# from .anomaly_detection import train_best_anomaly_detection
+# from .datasets import (
 #     Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
-#     get_user_db,
+#     get_user_db, 
 
 # )
-# from datasets import init_db as init_dataset_master_db
-# from activity import router as activity_router
-# from account import router as a_router
-# from target import router as t_router
-# from auth import _load_metadata, _save_metadata
-# from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+#from datasets import router as d_router
+# from .datasets import init_db as init_dataset_master_db
+# from .activity import router as activity_router
+# from .target import router as t_router
+# from .auth import _load_metadata, _save_metadata
+# from .account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
 # # These names should match exactly what you export from auth.py
-# from auth import (
+# from .datasets import register_dataset,get_dataset_by_id, get_dataset_data, query_dataset
+
+# from .actions import router as a_router
+# from .auth import (
 #     # Authentication & token utilities
 #     get_current_active_user,
 #     get_current_user,
@@ -161,12 +99,8 @@ from .storage import upload_file_to_supabase, download_file_from_supabase, handl
 #     # Database/session helpers
 #     DatasetResponse,
 #     DatasetCreate,
-#     register_dataset,
+
 #     create_user_database,
-#     get_dataset_by_id,
-#     get_dataset_data,
-#     delete_dataset_crud,
-#     query_dataset,
 #     get_user_session,
 #     get_user_session_direct,
 #     get_user_engine,
@@ -177,17 +111,84 @@ from .storage import upload_file_to_supabase, download_file_from_supabase, handl
 #     User
 
 # )
-# from auth import get_master_db_session
-# from auth import router as auth_router
-# from tokens import router as token_router
-# from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from .auth import get_master_db_session
+# from .auth import router as auth_router
+# from .tokens import router as token_router
+# from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+# from .planner_router import router as planner_router
+# from .datasets import _key_only, _bytes_from_supabase_download, _build_supabase_key
+# from .storage import _basename_from_key, supabase,  _strip_bucket_prefix, SUPABASE_BUCKET
+# from .actions import router as actions_router
+
+
+from ai import generate_insights
+from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
+from ecs_launcher import launch_job_on_ecs
+from worker import make_json_safe
+from auth import Base, master_engine, decode_user_from_request
+from tokens import TokenUsageLogResponse, TokenUsageLog
+
+from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
+from preprocessing import preprocess_data
+from survival import calculate_business_metrics
+from anomaly_detection import train_best_anomaly_detection
+from datasets import (
+    Base as DatasetBase,           # in case you want to do Base.metadata.create_all for per-user DBs
+    get_user_db,
+
+)
+from datasets import init_db as init_dataset_master_db
+from datasets import router as d_router
+from activity import router as activity_router
+from account import router as a_router
+from actions import router as actions_router
+from target import router as t_router
+from auth import _load_metadata, _save_metadata
+from account import APIStats, SubscriptionInfo, ProfileInfo, APIKeysInfo, BillingInfo, DashboardOut
+# These names should match exactly what you export from auth.py
+from datasets import register_dataset,get_dataset_by_id, get_dataset_data, query_dataset
+from datasets import _key_only, _bytes_from_supabase_download, _build_supabase_key
+from storage import _basename_from_key, supabase,  _strip_bucket_prefix, SUPABASE_BUCKET
+
+from auth import (
+    # Authentication & token utilities
+    get_current_active_user,
+    get_current_user,
+    create_access_token,
+    authenticate_user,
+    Dataset,
+    # Pydantic schemas for auth
+    UserCreate,
+    UserResponse,
+    Token,
+    AuthTokenResponse,
+    RegisterResponse,
+    
+    # Database/session helpers
+    DatasetResponse,
+    DatasetCreate,
+
+    create_user_database,
+    get_user_session,
+    get_user_session_direct,
+    get_user_engine,
+    get_master_db_session,
+    get_user_by_email,
+    master_db_cm,
+    Base,
+    User
+
+)
+from auth import get_master_db_session
+from auth import router as auth_router
+from tokens import router as token_router
+from storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
+from planner_router import router as planner_router
 
 
 
 
-# Create a directory for storing uploaded CSV files if it doesn't exist
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 IMAGES_DIR = "images"
 # Auth configuration - move to environment variables in production
@@ -221,9 +222,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# File upload directory
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "./uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -562,9 +560,12 @@ app.add_middleware(LoggingMiddleware)
 # Include Routers
 app.include_router(auth_router)
 app.include_router(activity_router)
-app.include_router(a_router)
+app.include_router(actions_router)
 app.include_router(token_router)
 app.include_router(t_router)
+app.include_router(planner_router)
+app.include_router(d_router)
+app.include_router(a_router)
 # Dataset models
 # Serve the frontend folder as static files
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -630,102 +631,224 @@ def infer_sqlalchemy_column(name, dtype):
         return Column(name, Float)
     else:
         return Column(name, String)
+import os
+import io
+import re
+import math
+import time
+from typing import Dict, Any, List, Optional, Iterable, Tuple
+ALLOWED_EXTS = {'.csv', '.tsv', '.xlsx', '.xls', '.parquet', '.json', '.jsonl'}
 
-@app.post("/datasets/", status_code=status.HTTP_201_CREATED)
-async def upload_dataset(
-    file: UploadFile = File(...),
-    name: str = Form(...),
-    description: Optional[str] = Form(None),
-    current_user=Depends(get_current_active_user)
-):
-    logger.info(f"Current user type: {type(current_user)}, content: {current_user}")
+# ---------- helpers ----------
 
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
-
-    temp_path = None  # needed for cleanup
+def _read_csv_robust(path: str, delimiter: Optional[str] = None) -> pd.DataFrame:
+    """
+    CSV/TSV reader with delimiter sniffing + header heuristic.
+    delimiter can be '\t', ',' or any one-char; if 'tab' is passed use '\t'.
+    """
+    sep = '\t' if delimiter == 'tab' else (delimiter if delimiter else None)
     try:
-        # 1. Save the uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            temp_path = tmp.name
+        df = pd.read_csv(path, sep=sep, engine="python")  # sep=None => sniff
+    except Exception:
+        df = pd.read_csv(path)  # fallback
 
-        # 2. Upload to Supabase storage (organized by user)
-        supabase_path = upload_file_to_supabase(
-            user_id=str(current_user.id),
-            file_path=temp_path,
-            filename=file.filename
-        )
+    # Header heuristic: if most "headers" look like data (numeric/date-ish), treat as no header.
+    cols = list(df.columns)
+    def looks_like_data_token(x: Any) -> bool:
+        s = str(x).strip()
+        if not s:
+            return False
+        if s.replace('.', '', 1).isdigit():
+            return True
+        # dd-mm-YYYY or dd/mm/YYYY
+        return bool(re.match(r'^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$', s))
 
-        # 3. Read the CSV file BEFORE deleting it
-        df = pd.read_csv(temp_path)
+    if cols and sum(looks_like_data_token(c) for c in cols) / len(cols) >= 0.7:
+        df = pd.read_csv(path, header=None, sep=sep, engine="python")
+        df.columns = [f"col_{i+1}" for i in range(df.shape[1])]
+    return df
 
-        # Now safe to remove temp file
-        os.remove(temp_path)
+def _read_excel(path: str) -> pd.DataFrame:
+    try:
+        # openpyxl handles .xlsx; xlrd<2.0 handled .xls, but often better to use openpyxl for both if installed
+        return pd.read_excel(path)  # pandas will pick engine
+    except ImportError as e:
+        raise HTTPException(status_code=400, detail="Excel support requires 'openpyxl' installed") from e
 
-        # 4. Prepare the data
-        if 'id' not in df.columns:
-            df.insert(0, 'id', range(1, len(df) + 1))
-        row_count, column_count = df.shape
-        file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)  # Still valid even after reading
+def _read_parquet(path: str) -> pd.DataFrame:
+    try:
+        return pd.read_parquet(path)  # needs pyarrow or fastparquet
+    except ImportError as e:
+        raise HTTPException(status_code=400, detail="Parquet support requires 'pyarrow' or 'fastparquet'") from e
 
-        table_name = name.replace(" ", "_").lower()
-        dataset_info = None
+def _read_json_any(path: str, fmt: Optional[str]) -> pd.DataFrame:
+    # If client says jsonl, prefer lines=True
+    if fmt == 'jsonl':
+        return pd.read_json(path, lines=True)
+    # Try normal JSON first, fall back to JSONL
+    try:
+        return pd.read_json(path)
+    except ValueError:
+        return pd.read_json(path, lines=True)
 
-        # 5. Register dataset in user database
-        with get_user_db(current_user) as db:
-            metadata = MetaData()
-            columns = [infer_sqlalchemy_column(col, df[col].dtype) for col in df.columns]
-            dataset_table = Table(table_name, metadata, *columns)
+def _detect_format_from_name(filename: str) -> str:
+    return (PathL(filename).suffix.lower().lstrip('.') or '').strip()
 
-            dataset_table.create(bind=db.bind, checkfirst=True)
-            df_records = df.replace({np.nan: None}).to_dict(orient="records")
-            db.execute(dataset_table.insert(), df_records)
+def _read_any_table(path: str, fmt: str, delimiter: Optional[str]) -> pd.DataFrame:
+    fmt = fmt.lower()
+    if fmt in ('csv', 'tsv'):
+        delim = delimiter or ('\t' if fmt == 'tsv' else None)
+        # allow 'tab' keyword from client
+        if delim == 'tab': delim = '\t'
+        return _read_csv_robust(path, delimiter=delim)
+    if fmt in ('xlsx', 'xls'):
+        return _read_excel(path)
+    if fmt == 'parquet':
+        return _read_parquet(path)
+    if fmt in ('json', 'jsonl'):
+        return _read_json_any(path, fmt)
+    # unknown
+    raise HTTPException(status_code=400, detail=f"Unsupported format '{fmt}'")
+import os, tempfile, shutil
+from typing import Optional, List, Tuple
+from sqlalchemy import inspect
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
+from sqlalchemy.sql.schema import quoted_name
 
-            schema = {col: str(df[col].dtype) for col in df.columns}
-            dataset = register_dataset(
-                db=db,
-                name=name,
-                description=description,
-                table_name=table_name,
-                file_path=supabase_path,
-                row_count=row_count,
-                column_count=column_count,
-                schema=schema,
-                overwrite_existing=True
-            )
 
-            db.commit()
-            db.refresh(dataset)
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
 
-            dataset_info = {
-                "id": dataset.id,
-                "name": dataset.name,
-                "row_count": dataset.row_count,
-                "column_count": dataset.column_count
-            }
+def _download_object_to_temp(object_key: str, *, user_id: int, dataset_id: int) -> str:
+    """Download object from Supabase to a temp file and return its path."""
+    
+    if not supabase or not object_key:
+        raise FileNotFoundError("Supabase storage not configured or no object key provided")
 
-        # 6. Update user’s storage usage in master database
-        with master_db_cm() as master_db:
-            master_db.execute(text("""
-                UPDATE users
-                SET storage_used = storage_used + :additional
-                WHERE id = :user_id
-            """), {"additional": file_size_mb, "user_id": current_user.id})
+    bucket = SUPABASE_BUCKET
+    
+    # Build the candidates for the storage key
+    candidates = []
+    
+    # 1. Try the key as-is (stripped of bucket prefix)
+    raw_key = _key_only(object_key, bucket)
+    if raw_key:
+        candidates.append(raw_key)
+    
+    # 2. Try building the correct key with current user_id
+    filename = _basename_from_key(object_key)
+    if filename:
+        correct_key = _build_supabase_key(user_id, filename)
+        if correct_key not in candidates:
+            candidates.append(correct_key)
+    
+    # 3. If object_key looks like "old_user_id/filename", try with current user_id
+    if "/" in raw_key:
+        parts = raw_key.split("/", 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            old_user_id, file_part = parts
+            if old_user_id != str(user_id):
+                corrected_key = f"{user_id}/{file_part}"
+                if corrected_key not in candidates:
+                    candidates.append(corrected_key)
+    
+    logger.info(f"Attempting Supabase download for user {user_id}, candidates: {candidates}")
 
-        return {
-            "message": "Dataset uploaded, saved, and registered successfully",
-            "dataset_id": dataset_info["id"],
-            "name": dataset_info["name"],
-            "rows": dataset_info["row_count"],
-            "columns": dataset_info["column_count"]
-        }
+    last_err = None
+    for key in candidates:
+        try:
+            logger.info(f"Downloading from Supabase bucket={bucket} key={key}")
+            resp = supabase.storage.from_(bucket).download(key)
+            data_bytes = _bytes_from_supabase_download(resp)
+            
+            if not data_bytes:
+                raise RuntimeError("Empty download payload")
 
-    except Exception as e:
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
-        logger.error(f"Error processing dataset: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing dataset: {str(e)}")
+            # Create temp file with appropriate extension
+            file_ext = os.path.splitext(filename)[1] if filename else ".csv"
+            fd, temp_path = tempfile.mkstemp(suffix=file_ext)
+            os.close(fd)
+            
+            with open(temp_path, "wb") as f:
+                f.write(data_bytes)
+            
+            # Verify the file was written correctly
+            if os.path.getsize(temp_path) == 0:
+                os.remove(temp_path)
+                raise RuntimeError("Downloaded file is empty")
+            
+            logger.info(f"Successfully downloaded {len(data_bytes)} bytes to {temp_path}")
+            return temp_path
+            
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Supabase download failed for key '{key}': {e}")
+
+    # If we got here, all candidates failed
+    raise RuntimeError(f"Could not download '{object_key}' from bucket '{bucket}' for user {user_id}: {last_err}")
+
+
+# Fix 2: Improve the key resolution logic
+def _resolve_object_key(object_key: str, user_id: int) -> str:
+    """
+    Resolve the correct object key for download, handling different storage patterns.
+    """
+    if not object_key:
+        return ""
+    
+    # If it's already a full path with user ID, use it
+    if object_key.startswith(f"{user_id}/"):
+        return object_key
+    
+    # If it's just a user ID and filename (like "1/Nike_Sales_Uncleaned.csv")
+    # but the user_id doesn't match, prepend the correct user_id
+    parts = object_key.split("/", 1)
+    if len(parts) == 2:
+        stored_user_id, filename = parts
+        if stored_user_id != str(user_id):
+            logger.info(f"Key user ID mismatch: stored={stored_user_id}, current={user_id}")
+            # Try both the original key and the corrected one
+            return object_key
+    
+    # Default: prepend user_id if not present
+    if not object_key.startswith(f"{user_id}/"):
+        return f"{user_id}/{object_key.lstrip('/')}"
+    
+    return object_key
+def _try_preview_from_keys(keys, limit, *, user_id: int, dataset_id: int):
+    for key in [k for k in keys if k]:
+        tmp = None
+        try:
+            logger.info(f"Attempting to preview key: {key}")
+            tmp = _download_object_to_temp(key, user_id=user_id, dataset_id=dataset_id)
+            
+            # Add file size check
+            if not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+                logger.warning(f"Preview: downloaded file is empty for key {key}")
+                continue
+                
+            rows = fetch_preview_data(tmp)
+            logger.info(f"Preview: fetch_preview_data returned type {type(rows)} for key {key}")
+            
+            if rows is None:
+                logger.warning(f"Preview: fetch_preview_data returned None for key {key}")
+                continue
+            if not isinstance(rows, list):
+                logger.warning(f"Preview: unexpected rows type {type(rows)} for key {key}")
+                continue
+            if len(rows) == 0:
+                logger.warning(f"Preview: no rows found for key {key}")
+                continue
+                
+            return rows[:limit], key
+        except Exception as e:
+            logger.error(f"Preview: failed reading {key}: {e}", exc_info=True)
+        finally:
+            if tmp and os.path.exists(tmp):
+                try: 
+                    os.remove(tmp)
+                except Exception as cleanup_e: 
+                    logger.warning(f"Failed to cleanup temp file {tmp}: {cleanup_e}")
+    return None, None
 @app.get("/datasets/")
 def list_datasets(current_user = Depends(get_current_active_user)):
     try:
@@ -750,6 +873,106 @@ def list_datasets(current_user = Depends(get_current_active_user)):
     except Exception as e:
         logger.error(f"Error listing datasets: {str(e)}")  # Log the error
         raise HTTPException(status_code=500, detail=f"Error listing datasets: {str(e)}")
+@app.post("/datasets/", status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    current_user = Depends(get_current_active_user),
+):
+    logger.info(f"Current user type: {type(current_user)}, content: {current_user}")
+
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    temp_path = None
+    try:
+        # ✅ ensure we preserve extension and reset stream
+        suffix = PathL(file.filename).suffix or ".csv"
+        await file.seek(0)
+
+        # 1) Persist upload to a real file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_path = tmp.name
+
+        # ✅ compute size BEFORE any deletion (and keep one cleanup in finally)
+        file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)
+
+        # 2) Upload to Supabase
+        supabase_path = upload_file_to_supabase(
+            user_id=str(current_user.id),
+            file_path=temp_path,
+            filename=file.filename,
+        )
+
+        # 3) Read CSV from temp
+        df = pd.read_csv(temp_path)
+
+        # 4) Prepare data frame
+        if "id" not in df.columns:
+            df.insert(0, "id", range(1, len(df) + 1))
+        row_count, column_count = df.shape
+
+        table_name = name.replace(" ", "_").lower()
+
+        # 5) Register dataset in user DB
+        with get_user_db(current_user) as db:
+            metadata = MetaData()
+            columns = [infer_sqlalchemy_column(col, df[col].dtype) for col in df.columns]
+            dataset_table = Table(table_name, metadata, *columns)
+            dataset_table.create(bind=db.bind, checkfirst=True)
+
+            df_records = df.replace({np.nan: None}).to_dict(orient="records")
+            if df_records:
+                db.execute(dataset_table.insert(), df_records)
+
+            schema = {col: str(df[col].dtype) for col in df.columns}
+            dataset = register_dataset(
+                db=db,
+                name=name,
+                description=description,
+                table_name=table_name,
+                file_path=supabase_path,      # remote object key in Supabase
+                row_count=row_count,
+                column_count=column_count,
+                schema=schema,
+                overwrite_existing=True,
+            )
+            db.commit()
+            db.refresh(dataset)
+
+        # 6) Update master storage usage
+        with master_db_cm() as master_db:
+            master_db.execute(
+                text("""
+                    UPDATE users
+                    SET storage_used = storage_used + :additional
+                    WHERE id = :user_id
+                """),
+                {"additional": file_size_mb, "user_id": current_user.id},
+            )
+
+        return {
+            "message": "Dataset uploaded, saved, and registered successfully",
+            "dataset_id": dataset.id,
+            "name": dataset.name,
+            "rows": row_count,
+            "columns": column_count,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing dataset: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing dataset: {e}")
+    finally:
+        # ✅ single, reliable cleanup
+        try:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
 
 @app.get("/datasets/{dataset_id}")
 async def get_dataset_metadata(
@@ -769,38 +992,105 @@ async def get_dataset_metadata(
             "row_count": dataset.row_count,
             "column_count": dataset.column_count,
         }
-
+from fastapi import Query, HTTPException, Depends
+from sqlalchemy import MetaData, Table, select, inspect
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
+from sqlalchemy.sql.schema import quoted_name
+# Updated dataset preview endpoint
 @app.get("/datasets/{dataset_id}/preview")
 def get_dataset_preview(
-    dataset_id: int, 
-    current_user = Depends(get_current_active_user)
+    dataset_id: int,
+    limit: int = Query(20, gt=1, le=200),
+    current_user = Depends(get_current_active_user),
 ):
     try:
-        with get_user_db(current_user) as user_db:
-            dataset = user_db.query(Dataset).filter(Dataset.id == dataset_id).first()
-            if not dataset:
+        # Who am I (for storage keys)
+        uid = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthenticated")
+
+        # Open the tenant DB and load the dataset row
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            if not ds:
                 raise HTTPException(status_code=404, detail="Dataset not found")
 
-            formatted_created_at = dataset.created_at.strftime('%Y-%m-%d') if dataset.created_at else 'Unknown date'
+            created_at_str = ds.created_at.strftime("%Y-%m-%d") if ds.created_at else "Unknown date"
+            engine = db.bind  # keep a handle for reflection as a last resort
 
-            # Reflect only the target table (no `bind=` needed in SQLAlchemy 2.0)
-            dataset_table = Table(dataset.table_name, MetaData(), autoload_with=user_db.bind)
+        # 1) PROCESSED FIRST (use either explicit processed path or current pointer)
+        processed_keys = []
+        if getattr(ds, "processed_file_path", None):
+            processed_keys.append(ds.processed_file_path)
+        if getattr(ds, "file_path", None):
+            processed_keys.append(ds.file_path)
+        # de-dup while preserving order
+        seen = set()
+        processed_keys = [k for k in processed_keys if k and not (k in seen or seen.add(k))]
 
-            stmt = dataset_table.select().limit(5)
-            result = user_db.execute(stmt)
-            preview_data = [dict(row._mapping) for row in result]
+        rows, _used_key = _try_preview_from_keys(processed_keys, limit, user_id=uid, dataset_id=dataset_id)
+        if rows:
+            return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
 
-            return {
-                "name": dataset.name,
-                "created_at": formatted_created_at,
-                "preview_data": preview_data
-            }
+        # 2) ORIGINAL FALLBACK
+        original_keys = []
+        if getattr(ds, "original_file_path", None):
+            original_keys.append(ds.original_file_path)
+        original_keys = [k for k in original_keys if k and k not in processed_keys]
 
+        rows, _used_key = _try_preview_from_keys(original_keys, limit, user_id=uid, dataset_id=dataset_id)
+        if rows:
+            return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
+
+        # 3) DB REFLECTION (last resort)
+        table_name = getattr(ds, "table_name", None)
+        table_schema = getattr(ds, "table_schema", None) or getattr(ds, "schema", None)
+        if table_name and engine is not None:
+            md = MetaData()
+            t = None
+            try:
+                t = Table(
+                    quoted_name(table_name, True),
+                    md,
+                    schema=quoted_name(table_schema, True) if table_schema else None,
+                    autoload_with=engine,
+                )
+            except (NoSuchTableError, ProgrammingError, OperationalError):
+                t = None
+            except Exception:
+                t = None
+
+            if t is None:
+                # Probe other schemas if needed
+                try:
+                    insp = inspect(engine)
+                    for sch in insp.get_schema_names():
+                        if sch in ("pg_catalog", "information_schema"):
+                            continue
+                        if table_name in set(insp.get_table_names(schema=sch)):
+                            t = Table(
+                                quoted_name(table_name, True), md,
+                                schema=quoted_name(sch, True),
+                                autoload_with=engine,
+                            )
+                            break
+                except Exception as e:
+                    logger.warning(f"Schema probe failed in preview: {e}")
+
+            if t is not None:
+                with engine.connect() as conn:
+                    result = conn.execute(select(t).limit(limit))
+                    rows = [dict(r._mapping) for r in result]
+                return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
+
+        # Nothing available
+        raise HTTPException(status_code=404, detail="File not available for preview")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting dataset preview: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting dataset preview: {str(e)}")
-
-
+        logger.error(f"Error getting dataset preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting dataset preview: {e}")
 @app.get("/datasets/{dataset_id}/data")
 async def get_dataset_data(
     dataset_id: int, 
@@ -866,17 +1156,96 @@ async def query_dataset(
     except Exception as e:
         logger.error(f"Error executing query on dataset {dataset_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error executing query: {str(e)}")
+import csv
+import pandas as pd
+import csv
+import pandas as pd
 
-# Helper function to fetch preview data
-def fetch_preview_data(file_path: str):
+def fetch_preview_data(file_path: str, max_rows: int = 100) -> list:
     """
-    Fetch preview data from a CSV file
+    Safely read preview data from a CSV file.
+    Returns a list of dictionaries, or empty list if file cannot be read.
     """
+    if not file_path or not os.path.exists(file_path):
+        logger.warning(f"Preview file does not exist: {file_path}")
+        return []
+    
     try:
-        df = pd.read_csv(file_path, nrows=10)  # Read first 10 rows for preview
-        return df.to_dict(orient='records')
+        # Check file size first
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            logger.warning(f"Preview file is empty: {file_path}")
+            return []
+        
+        logger.info(f"Reading preview from {file_path} (size: {file_size} bytes)")
+        
+        # Try pandas first (more robust for various CSV formats)
+        try:
+            df = pd.read_csv(file_path, nrows=max_rows, encoding='utf-8')
+            if df.empty:
+                logger.warning(f"CSV file contains no data: {file_path}")
+                return []
+            logger.info(f"Successfully read {len(df)} rows with pandas")
+            return df.fillna('').to_dict('records')
+        except UnicodeDecodeError:
+            # Try different encodings
+            for encoding in ['latin1', 'cp1252', 'iso-8859-1']:
+                try:
+                    df = pd.read_csv(file_path, nrows=max_rows, encoding=encoding)
+                    if df.empty:
+                        continue
+                    logger.info(f"Successfully read {len(df)} rows with pandas using {encoding} encoding")
+                    return df.fillna('').to_dict('records')
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(f"Pandas CSV read failed: {e}")
+        
+        # Fallback to standard csv module
+        rows = []
+        encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+        
+        for encoding in encodings_to_try:
+            try:
+                with open(file_path, 'r', encoding=encoding, newline='') as f:
+                    # Try to detect if file has headers
+                    sample = f.read(1024)
+                    f.seek(0)
+                    
+                    sniffer = csv.Sniffer()
+                    has_header = sniffer.has_header(sample)
+                    
+                    reader = csv.DictReader(f) if has_header else csv.reader(f)
+                    
+                    for i, row in enumerate(reader):
+                        if i >= max_rows:
+                            break
+                            
+                        if isinstance(row, dict):
+                            # DictReader case
+                            rows.append(row)
+                        else:
+                            # Regular reader case - convert to dict
+                            if i == 0 and not has_header:
+                                # Create generic column names
+                                headers = [f'col_{j}' for j in range(len(row))]
+                                rows.append(dict(zip(headers, row)))
+                            else:
+                                # This shouldn't happen with proper logic above
+                                continue
+                
+                if rows:
+                    logger.info(f"Successfully read {len(rows)} rows with csv module using {encoding} encoding")
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"CSV read failed with {encoding}: {e}")
+                continue
+        
+        return rows[:max_rows]
+        
     except Exception as e:
-        logger.error(f"Error reading CSV file: {str(e)}")
+        logger.error(f"Failed to read CSV preview from {file_path}: {e}", exc_info=True)
         return []
 
 API_BASE_PATH = "/datasets"

@@ -926,11 +926,15 @@
         </div>
         
         <div class="datasets-section">
-            <h3>Available Datasets</h3>
-            <div id="datasetsList"></div>
-            <div class="error-message">
-                Error loading datasets. Please try again later.
-            </div>
+        <div class="d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">Available Datasets</h3>
+            <a href="data_cleaner.html" class="btn btn-success">
+            <i class="fas fa-broom"></i> Open Data Cleaner
+            </a>
+        </div>
+
+        <div id="datasetsList" class="row g-3"></div>
+        <div class="error-message">Error loading datasets. Please try again later.</div>
         </div>
 
         <!-- Target Variable Selection Wizard - Now positioned after datasets -->
@@ -1121,8 +1125,8 @@
         let selectedColumns = [];
         let selectedBusinessGoal = '';
         let selectedTargetVariable = '';
-        // const API_BASE_URL = 'http://127.0.0.1:8000';
-        const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+        // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
         // Add this code to the beginning of your datasets.html JavaScript
     function signOutUser() {
     // Clear tokens from localStorage or wherever you saved them
@@ -1953,6 +1957,42 @@ function loadDatasetsWithAuth() {
     });
 }
 let currentQueryDatasetId = null;
+function renderDatasetCards(datasets) {
+  const container = getListEl();
+  container.innerHTML = '';
+
+  datasets.forEach(dataset => {
+    container.insertAdjacentHTML('beforeend', `
+      <div class="col-md-6 col-lg-4">
+        <div class="card dataset-card" data-id="${dataset.id}">
+          <div class="card-body">
+            <h5 class="card-title">${escapeHtml(dataset.name)}</h5>
+            <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
+            <p class="card-text">${escapeHtml(dataset.description || 'No description provided')}</p>
+            <div class="dataset-actions">
+              <button class="btn btn-outline-primary btn-preview" data-id="${dataset.id}">
+                <i class="fas fa-eye"></i> Preview
+              </button>
+              <button class="btn btn-outline-primary download-btn" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+                <i class="fas fa-download"></i> Download
+              </button>
+              <button class="btn btn-outline-info btn-query" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+                <i class="fas fa-search"></i> Query
+              </button>
+              <!-- NEW -->
+              <button class="btn btn-success btn-cleaner" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+                <i class="fas fa-magic"></i> Open in Cleaner
+              </button>
+              <button class="btn btn-outline-danger btn-delete" data-id="${dataset.id}">
+                <i class="fas fa-trash"></i> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  });
+}
 
 function openQueryModal(datasetId, datasetName) {
   currentQueryDatasetId = datasetId;
@@ -2126,76 +2166,106 @@ function showUploadStatus(message, type = 'success') {
     statusDiv.textContent = message;
     statusDiv.style.display = 'block';
 }
+// Allowed types & sane size limit
+const ALLOWED_EXTENSIONS = new Set(['csv','tsv','xlsx','xls','parquet','json','jsonl']);
+const MAX_FILE_MB = 200; // adjust to your plan limits
 
-function uploadDataset(event) {
-
-    event.preventDefault();  // Prevent default form submission
-
-    const form = document.getElementById('uploadForm');
-    const fileInput = form.querySelector('input[type="file"]');
-    const nameInput = form.querySelector('input[name="name"]');
-
-    // Validate required fields
-    if (!fileInput.files[0]) {
-        showUploadStatus('Please select a file to upload', 'danger');
-        return;
-    }
-
-    if (!nameInput.value.trim()) {
-        showUploadStatus('Please provide a dataset name', 'danger');
-        return;
-    }
-
-    const formData = new FormData(form);
-    const statusDiv = document.getElementById('uploadStatus');
-
-    showUploadStatus('Uploading dataset...', 'info');
-
-    const token = safeStorageGet('access_token');
-
-    fetch(`${API_BASE_URL}/datasets`, {
-    method: 'POST',
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json'  // optional but recommended
-    },
-    body: formData,
-    credentials: 'include'
-    })
-
-    .then(response => {
-        if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                throw new Error('Authentication failed');
-            }
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data && data.dataset_id) {
-            showUploadStatus(
-                `Dataset "${data.name}" uploaded successfully with ${data.rows} rows and ${data.columns} columns!`, 
-                'success'
-            );
-            form.reset();
-            loadDatasetsWithAuth();
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 100);
-        } else {
-            showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
-        }
-    })
-    .catch(error => {
-        console.error('Error uploading dataset:', error);
-        if (error.message === 'Authentication failed') {
-            window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
-        } else {
-            showUploadStatus('Error uploading dataset. Please try again.', 'danger');
-        }
-    });
+function extOf(filename='') {
+  const m = /\.(\w+)$/.exec(filename.toLowerCase());
+  return m ? m[1] : '';
 }
+
+function detectFileKind(file) {
+  // Prefer extension (more reliable across browsers than MIME)
+  const ext = extOf(file.name);
+  if (ALLOWED_EXTENSIONS.has(ext)) return ext;
+
+  // Fallback: MIME hints (not all browsers set these)
+  const mime = (file.type || '').toLowerCase();
+  if (mime.includes('csv')) return 'csv';
+  if (mime.includes('spreadsheet') || mime.includes('excel')) return 'xlsx';
+  if (mime.includes('parquet')) return 'parquet';
+  if (mime.includes('json')) {
+    // distinguish jsonl vs json if you want: keep as 'json' and detect server-side
+    return 'json';
+  }
+  return ''; // unknown
+}
+
+async function uploadDataset(event) {
+  event.preventDefault();
+
+  const form = document.getElementById('uploadForm');
+  const fileInput = form.querySelector('input[type="file"]');
+  const nameInput = form.querySelector('input[name="name"]');
+  const statusDiv = document.getElementById('uploadStatus');
+
+  const file = fileInput.files[0];
+  if (!file) return showUploadStatus('Please select a file to upload', 'danger');
+  if (!nameInput.value.trim()) return showUploadStatus('Please provide a dataset name', 'danger');
+
+  // Validate kind + size
+  const kind = detectFileKind(file);
+  if (!kind) {
+    return showUploadStatus('Unsupported file type. Allowed: CSV, TSV, XLSX/XLS, Parquet, JSON, JSONL.', 'danger');
+  }
+  const sizeMb = file.size / (1024 * 1024);
+  if (sizeMb > MAX_FILE_MB) {
+    return showUploadStatus(`File too large (${sizeMb.toFixed(1)} MB). Max ${MAX_FILE_MB} MB.`, 'danger');
+  }
+
+  const fd = new FormData(form);          // includes name, description, file
+  fd.append('format', kind);              // hint for backend
+  // Optional: if you know delimiter for TSV, supply it:
+  if (kind === 'tsv') fd.append('delimiter', 'tab');
+
+  showUploadStatus('Uploading dataset...', 'info');
+
+  const token = safeStorageGet('access_token');
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/datasets/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+        // DO NOT set Content-Type when sending FormData
+      },
+      body: fd,
+      credentials: 'include'
+    });
+
+    // Try to extract detail on failure
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const t = await res.text();
+        if (t) detail += ` - ${t}`;
+      } catch {}
+      if (res.status === 401 || res.status === 403) {
+        return (window.location.href = 'login.html?next=datasets.html&reason=Your session has expired');
+      }
+      throw new Error(detail);
+    }
+
+    const data = await res.json();
+    if (data?.dataset_id) {
+      showUploadStatus(
+        `Dataset "${data.name}" uploaded with ${data.rows} rows and ${data.columns} columns.`,
+        'success'
+      );
+      form.reset();
+      loadDatasetsWithAuth?.();
+      setTimeout(() => { statusDiv.style.display = 'none'; }, 1500);
+    } else {
+      showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
+    }
+  } catch (err) {
+    console.error('Error uploading dataset:', err);
+    showUploadStatus('Error uploading dataset. Please try again.', 'danger');
+  }
+}
+
 
 function closePreviewModal() {
   document.getElementById('datasetPreviewModal').style.display = 'none';
@@ -2255,6 +2325,54 @@ async function previewDataset(datasetId, options = {}) {
     handlePreviewError(error);
   }
 }
+function slugify(s){
+  return String(s||'').trim().toLowerCase()
+    .replace(/[^\w\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').slice(0,40);
+}
+
+function renderDatasetCards(datasets) {
+  const container = document.getElementById('datasetsList');
+  container.classList.add('row','g-3');
+  container.innerHTML = '';
+
+  datasets.forEach(dataset => {
+    const key = `${slugify(dataset.name)}-${dataset.id}`;
+    const card = document.createElement('div');
+    card.className = 'col-md-6 col-lg-4';
+    card.innerHTML = `
+      <div class="card dataset-card">
+        <div class="card-body">
+          <h5 class="card-title">${escapeHtml(dataset.name)}</h5>
+          <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
+          <p class="card-text">${escapeHtml(dataset.description || 'No description provided')}</p>
+          <div class="dataset-actions">
+            <button class="btn btn-outline-primary btn-preview" data-id="${dataset.id}">
+              <i class="fas fa-eye"></i> Preview
+            </button>
+            <button class="btn btn-outline-primary download-btn" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+              <i class="fas fa-download"></i> Download
+            </button>
+            <button class="btn btn-outline-info btn-query" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+              <i class="fas fa-search"></i> Query
+            </button>
+
+            <!-- New: link to data_cleaner.html with ID (and friendly key) -->
+            <a class="btn btn-success"
+               href="data_cleaner.html?id=${dataset.id}&key=${encodeURIComponent(key)}">
+              <i class="fas fa-broom"></i> Open in Cleaner
+            </a>
+
+            <button class="btn btn-outline-danger btn-delete" data-id="${dataset.id}">
+              <i class="fas fa-trash"></i> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
 function validatePreviewData(data) {
   if (!data || !data.preview_data || !Array.isArray(data.preview_data)) {
     throw new Error('Invalid preview data format');
