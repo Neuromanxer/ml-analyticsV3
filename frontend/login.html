@@ -581,7 +581,7 @@ const signinSuccess = document.getElementById('signin-success');
 const signupSuccess = document.getElementById('signup-success');
 
 const urlParams = new URLSearchParams(window.location.search);
-const nextPage = urlParams.get('next') || 'datasets.html';
+const nextPage = urlParams.get('next') || "http://localhost:3000/";
 
 // Panel switching
 signUpButton.addEventListener('click', () => {
@@ -753,6 +753,22 @@ function showForgotPasswordModal() {
       }
     });
   }
+// Put near the top of your <script> tag
+const DEFAULT_NEXT = urlParams.get('next') || "http://127.0.0.1:3000/"; // use same host style as your Next app
+
+function redirectWithTokens(nextUrl, tokenData) {
+  const u = new URL(nextUrl);
+  const params = new URLSearchParams();
+
+  if (tokenData.access_token) params.set("access_token", tokenData.access_token);
+  if (tokenData.refresh_token) params.set("refresh_token", tokenData.refresh_token);
+  if (tokenData.name) params.set("name", tokenData.name);
+  if (tokenData.email) params.set("email", tokenData.email);
+
+  // send via URL **hash** so the app can ingest it safely
+  u.hash = params.toString();
+  window.location.href = u.toString();
+}
 
 function hideForgotPasswordModal() {
     console.log("Closing modal");
@@ -1030,21 +1046,23 @@ signinForm.addEventListener('submit', async function(event) {
 
         showSuccess('signin-success', 'Login successful! Redirecting...');
         
-        // FIXED: Add verification before redirect
         setTimeout(() => {
-            // Verify authentication state before redirecting
-            const isLoggedIn = safeStorageGet('userLoggedIn') === 'true';
-            const hasToken = !!safeStorageGet('access_token');
-            
-            console.log('Auth verification:', { isLoggedIn, hasToken }); // Debug log
-            
-            if (isLoggedIn && hasToken) {
-                window.location.href = nextPage;
-            } else {
-                showError('signin-error', 'Authentication verification failed. Please try again.');
-                clearAuthStorage(); // Clear potentially corrupted state
-            }
-        }, 2000); // Increased delay
+        const isLoggedIn = safeStorageGet('userLoggedIn') === 'true';
+        const at = safeStorageGet('access_token');
+        if (isLoggedIn && at) {
+          // forward tokens to the app so it can ingest and persist on its origin
+          redirectWithTokens(nextPage || DEFAULT_NEXT, {
+            access_token: at,
+            refresh_token: safeStorageGet('refresh_token'),
+            name: email,
+            email
+          });
+        } else {
+          showError('signin-error', 'Authentication verification failed. Please try again.');
+          clearAuthStorage();
+        }
+      }, 2000);
+
         
     } catch (err) {
         console.error('Login failed:', err);
@@ -1169,14 +1187,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // FIXED: Add verification before redirect
         setTimeout(() => {
-            if (safeStorageGet('userLoggedIn') === 'true' && safeStorageGet('access_token')) {
-                const cleanUrl = window.location.pathname;
-                window.history.replaceState({}, document.title, cleanUrl);
-                window.location.href = nextPage;
-            } else {
-                alert('OAuth authentication verification failed.');
-            }
-        }, 1000);
+          const at = safeStorageGet('access_token');
+          if (safeStorageGet('userLoggedIn') === 'true' && at) {
+            const cleanUrl = window.location.pathname; // remove query secrets
+            window.history.replaceState({}, document.title, cleanUrl);
+            redirectWithTokens(nextPage || DEFAULT_NEXT, {
+              access_token: at,
+              refresh_token: safeStorageGet('refresh_token'),
+              name: safeStorageGet('userName'),
+              email: safeStorageGet('userEmail')
+            });
+          } else {
+            alert('OAuth authentication verification failed.');
+          }
+        }, 600);
         return;
     }
 

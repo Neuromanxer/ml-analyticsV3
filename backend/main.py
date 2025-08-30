@@ -50,9 +50,8 @@ import json
 from io import StringIO
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error
-
-
-
+import base64
+from io import BytesIO
 
 
 
@@ -111,7 +110,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 #     User
 
 # )
-# from .auth import get_master_db_session
+# from .auth import get_master_db_session, delete_user
 # from .auth import router as auth_router
 # from .tokens import router as token_router
 # from .storage import upload_file_to_supabase, download_file_from_supabase, handle_file_upload, download_file_from_supabase, list_user_files, delete_file_from_supabase, get_file_url
@@ -119,14 +118,16 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 # from .datasets import _key_only, _bytes_from_supabase_download, _build_supabase_key
 # from .storage import _basename_from_key, supabase,  _strip_bucket_prefix, SUPABASE_BUCKET
 # from .actions import router as actions_router
-
-
+# from .ai import router as ai_router
+# from .score import router as score_router
+from score import router as score_router
 from ai import generate_insights
+from ai import router as ai_router
 from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
 from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
 from ecs_launcher import launch_job_on_ecs
 from worker import make_json_safe
-from auth import Base, master_engine, decode_user_from_request
+from auth import Base, master_engine, decode_user_from_request, delete_user
 from tokens import TokenUsageLogResponse, TokenUsageLog
 
 from classification import ModelClassifyingTrainer, lgb_params_c, cat_params_c, xgb_params_c
@@ -320,8 +321,6 @@ async def try_get_current_user(request: Request) -> User | None:
         return user
 
     except ExpiredSignatureError:
-        return None
-    except PyJWTError:
         return None
     except Exception as e:
         print(f"Middleware get_current_user error: {e}")
@@ -557,15 +556,22 @@ app.add_middleware(UsageTrackerMiddleware)
 app.add_middleware(LoggingMiddleware)
 
 
-# Include Routers
-app.include_router(auth_router)
-app.include_router(activity_router)
-app.include_router(actions_router)
-app.include_router(token_router)
-app.include_router(t_router)
-app.include_router(planner_router)
-app.include_router(d_router)
-app.include_router(a_router)
+routers = [
+    auth_router,
+    activity_router,
+    actions_router,
+    token_router,
+    t_router,
+    planner_router,
+    ai_router,
+    d_router,
+    a_router,
+    score_router,
+]
+
+for r in routers:
+    app.include_router(r)
+
 # Dataset models
 # Serve the frontend folder as static files
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -849,6 +855,112 @@ def _try_preview_from_keys(keys, limit, *, user_id: int, dataset_id: int):
                 except Exception as cleanup_e: 
                     logger.warning(f"Failed to cleanup temp file {tmp}: {cleanup_e}")
     return None, None
+# Tunables to avoid heavy ingestion inline
+MAX_INLINE_MB   = 25           # if file > this, skip DB ingest
+MAX_INLINE_ROWS = 200_000      # if rows > this, skip DB ingest
+SAMPLE_ROWS     = 5_000        # sample for profiling
+
+def safe_table_name(name: str) -> str:
+    return name.strip().replace(" ", "_").lower()
+
+def _profile_light(path: str, fmt: str) -> Dict[str, Any]:
+    """
+    Lightweight schema + row_count estimate without fully reading huge files.
+    Uses your readers where possible, but prefers sampling.
+    """
+    fmt = fmt.lower()
+
+    # CSV / TSV: sample + cheap line count
+    if fmt in ("csv", "tsv"):
+        sep = "\t" if fmt == "tsv" else None
+        try:
+            df_sample = pd.read_csv(path, nrows=SAMPLE_ROWS, sep=sep, engine="python")
+        except Exception:
+            df_sample = pd.read_csv(path, nrows=SAMPLE_ROWS, sep=sep)
+
+        try:
+            with open(path, "rb") as f:
+                total_lines = sum(1 for _ in f)
+            # header line present if pandas inferred header
+            est_rows = max(total_lines - 1, len(df_sample))
+        except Exception:
+            est_rows = len(df_sample)
+
+        schema = {c: str(df_sample[c].dtype) for c in df_sample.columns}
+        return {"schema": schema, "row_estimate": est_rows, "sample": df_sample}
+
+    # XLSX/XLS: sample first sheet (pandas supports nrows)
+    if fmt in ("xlsx", "xls"):
+        df_sample = pd.read_excel(path, nrows=SAMPLE_ROWS)
+        schema = {c: str(df_sample[c].dtype) for c in df_sample.columns}
+        return {"schema": schema, "row_estimate": None, "sample": df_sample}
+
+    # Parquet: try pyarrow metadata (no full read)
+    if fmt == "parquet":
+        try:
+            import pyarrow.parquet as pq
+            pf = pq.ParquetFile(path)
+            row_count = pf.metadata.num_rows if pf.metadata else None
+            # schema via arrow
+            arrow_schema = pf.schema_arrow if hasattr(pf, "schema_arrow") else None
+            schema = {f.name: str(f.type) for f in (arrow_schema or [])}
+            # sample: read first row group, but bounded
+            sample_df = None
+            if pf.metadata and pf.metadata.num_row_groups > 0:
+                tb = pf.read_row_group(0)
+                # cap to SAMPLE_ROWS if needed
+                if tb.num_rows > SAMPLE_ROWS:
+                    tb = tb.slice(0, SAMPLE_ROWS)
+                sample_df = tb.to_pandas()
+            return {"schema": schema, "row_estimate": row_count, "sample": sample_df}
+        except Exception:
+            # fallback: minimal info
+            return {"schema": {}, "row_estimate": None, "sample": None}
+
+    # JSON/JSONL: sample without loading all
+    if fmt in ("jsonl", "json"):
+        # JSONL: read first N lines
+        if fmt == "jsonl":
+            rows = []
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for i, line in enumerate(f):
+                        if i >= SAMPLE_ROWS: break
+                        line = line.strip()
+                        if not line: continue
+                        try:
+                            rows.append(json.loads(line))
+                        except Exception:
+                            continue
+                df = pd.DataFrame(rows) if rows else pd.DataFrame()
+                schema = {c: str(df[c].dtype) for c in df.columns}
+                # estimate by counting lines
+                try:
+                    with open(path, "rb") as f:
+                        row_estimate = sum(1 for _ in f)
+                except Exception:
+                    row_estimate = len(rows) or None
+                return {"schema": schema, "row_estimate": row_estimate, "sample": df}
+            except Exception:
+                return {"schema": {}, "row_estimate": None, "sample": None}
+        else:
+            # plain JSON: try to read and normalize a small slice
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    part = data[:SAMPLE_ROWS]
+                    df = pd.json_normalize(part) if part else pd.DataFrame()
+                    row_estimate = len(data)
+                else:
+                    df = pd.json_normalize(data)
+                    row_estimate = 1
+                schema = {c: str(df[c].dtype) for c in df.columns}
+                return {"schema": schema, "row_estimate": row_estimate, "sample": df}
+            except Exception:
+                return {"schema": {}, "row_estimate": None, "sample": None}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported format '{fmt}'")
 @app.get("/datasets/")
 def list_datasets(current_user = Depends(get_current_active_user)):
     try:
@@ -878,71 +990,109 @@ async def upload_dataset(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: Optional[str] = Form(None),
+    delimiter: Optional[str] = Form(None),   # allow "tab" or "," (only relevant to csv/tsv if you later want it)
+    fmt_hint: Optional[str] = Form(None),    # allow client to say "jsonl" vs "json", etc.
     current_user = Depends(get_current_active_user),
 ):
-    logger.info(f"Current user type: {type(current_user)}, content: {current_user}")
+    logger.info(f"Upload by user={getattr(current_user,'id',None)}: {file.filename}")
 
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+    ext = PathL(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}"
+        )
+
+    fmt = (fmt_hint or _detect_format_from_name(file.filename)).lower()  # csv/tsv/xlsx/xls/parquet/json/jsonl
+    if fmt == "":  # no suffix somehow
+        fmt = "csv"
 
     temp_path = None
     try:
-        # ✅ ensure we preserve extension and reset stream
-        suffix = PathL(file.filename).suffix or ".csv"
+        # 1) Persist to disk
         await file.seek(0)
-
-        # 1) Persist upload to a real file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext or ".bin") as tmp:
             shutil.copyfileobj(file.file, tmp)
             temp_path = tmp.name
 
-        # ✅ compute size BEFORE any deletion (and keep one cleanup in finally)
         file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)
 
-        # 2) Upload to Supabase
+        # 2) Upload to Supabase as-is
         supabase_path = upload_file_to_supabase(
             user_id=str(current_user.id),
             file_path=temp_path,
             filename=file.filename,
         )
 
-        # 3) Read CSV from temp
-        df = pd.read_csv(temp_path)
+        # 3) Lightweight profiling (no full read)
+        prof = _profile_light(temp_path, fmt)
+        schema = prof.get("schema") or {}
+        row_estimate = prof.get("row_estimate")
+        sample_df: Optional[pd.DataFrame] = prof.get("sample")
 
-        # 4) Prepare data frame
-        if "id" not in df.columns:
-            df.insert(0, "id", range(1, len(df) + 1))
-        row_count, column_count = df.shape
+        table_name = safe_table_name(name)
 
-        table_name = name.replace(" ", "_").lower()
+        # 4) Decide whether to inline-ingest
+        do_ingest = (
+            file_size_mb <= MAX_INLINE_MB and
+            (row_estimate is None or row_estimate <= MAX_INLINE_ROWS) and
+            sample_df is not None and not sample_df.empty
+        )
 
-        # 5) Register dataset in user DB
+        # 5) Register + optional ingest
         with get_user_db(current_user) as db:
-            metadata = MetaData()
-            columns = [infer_sqlalchemy_column(col, df[col].dtype) for col in df.columns]
-            dataset_table = Table(table_name, metadata, *columns)
-            dataset_table.create(bind=db.bind, checkfirst=True)
+            dataset_meta = {}
 
-            df_records = df.replace({np.nan: None}).to_dict(orient="records")
-            if df_records:
-                db.execute(dataset_table.insert(), df_records)
+            if do_ingest:
+                metadata = MetaData()
+                cols = [infer_sqlalchemy_column(col, sample_df[col].dtype) for col in sample_df.columns]
+                dataset_table = Table(table_name, metadata, *cols)
+                dataset_table.create(bind=db.bind, checkfirst=True)
 
-            schema = {col: str(df[col].dtype) for col in df.columns}
+                # For CSV/TSV small files you can attempt a full read; otherwise just insert the sample
+                df_to_insert = sample_df
+                if fmt in ("csv", "tsv") and row_estimate and row_estimate <= MAX_INLINE_ROWS:
+                    try:
+                        # cautious “maybe full read”
+                        df_full = pd.read_csv(temp_path, sep=("\t" if fmt == "tsv" else None), engine="python")
+                        df_to_insert = df_full
+                    except Exception:
+                        pass
+
+                if "id" not in df_to_insert.columns:
+                    df_to_insert.insert(0, "id", range(1, len(df_to_insert) + 1))
+
+                records = df_to_insert.replace({np.nan: None}).to_dict(orient="records")
+                if records:
+                    db.execute(dataset_table.insert(), records)
+
+                dataset_meta.update({
+                    "row_count": len(df_to_insert),
+                    "column_count": df_to_insert.shape[1],
+                    "external_only": False,
+                })
+            else:
+                dataset_meta.update({
+                    "row_count": row_estimate,
+                    "column_count": len(schema) if schema else None,
+                    "external_only": True,
+                })
+
             dataset = register_dataset(
                 db=db,
                 name=name,
                 description=description,
-                table_name=table_name,
-                file_path=supabase_path,      # remote object key in Supabase
-                row_count=row_count,
-                column_count=column_count,
+                table_name=table_name if not dataset_meta["external_only"] else None,
+                file_path=supabase_path,
+                row_count=dataset_meta["row_count"],
+                column_count=dataset_meta["column_count"],
                 schema=schema,
                 overwrite_existing=True,
             )
             db.commit()
             db.refresh(dataset)
 
-        # 6) Update master storage usage
+        # 6) Update storage used
         with master_db_cm() as master_db:
             master_db.execute(
                 text("""
@@ -954,20 +1104,23 @@ async def upload_dataset(
             )
 
         return {
-            "message": "Dataset uploaded, saved, and registered successfully",
+            "message": "Dataset uploaded successfully",
             "dataset_id": dataset.id,
             "name": dataset.name,
-            "rows": row_count,
-            "columns": column_count,
+            "rows": row_estimate,
+            "columns": len(schema) if schema else None,
+            "external_only": dataset_meta["external_only"],
+            "size_mb": round(file_size_mb, 2),
+            "path": supabase_path,
+            "ingested_inline": not dataset_meta["external_only"],
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error processing dataset: {e}")
+        logger.exception("Error processing dataset")
         raise HTTPException(status_code=500, detail=f"Error processing dataset: {e}")
     finally:
-        # ✅ single, reliable cleanup
         try:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -1323,33 +1476,25 @@ async def upload_csv(
 
     except ValueError as ve:
         logger.warning(f"⚠️ Value error in /upload_csv: {str(ve)}")
-        return JSONResponse(
-            status_code=HTTP_400_BAD_REQUEST,
-            content={"message": "Invalid form data", "error": str(ve)}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your message here"
         )
-
     except OSError as ioe:
         # Common for: I/O operation on closed file
         logger.error(f"❌ I/O error in /upload_csv: {str(ioe)}")
         logger.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=HTTP_400_BAD_REQUEST,
-            content={
-                "message": "I/O error: It looks like the file stream was closed or corrupted. "
-                           "Please reupload your file and try again.",
-                "error": str(ioe)
-            }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your message here"
         )
 
     except Exception as e:
         logger.error(f"❌ Unexpected error in /upload_csv: {str(e)}")
         logger.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "message": "Unexpected error storing CSV data. Please try again.",
-                "error": str(e)
-            }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your message here"
         )
 @app.post("/classification/")
 async def classification(

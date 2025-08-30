@@ -7,6 +7,10 @@ import aiofiles
 import logging
 from dotenv import load_dotenv
 from typing import Optional, List, Tuple
+from typing import Optional, Any, Dict, List
+import logging
+import shutil
+logger = logging.getLogger(__name__)
 load_dotenv()
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
@@ -18,13 +22,29 @@ FULL_BUCKET_PREFIX   = f"{SUPABASE_PROJECT_REF}/storage/buckets/{SUPABASE_BUCKET
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 import mimetypes
 import os
-def upload_file_to_supabase(user_id: str, file_path: str, filename: str) -> str:
+def upload_file_to_supabase(
+     user_id: str,
+     file_path: str,
+     filename: Optional[str] = None,
+     dest_path: Optional[str] = None,   # ← back-compat
+ ) -> str:
+    # Back-compat: allow old callers that used dest_path
+    if not filename and dest_path:
+         filename = dest_path
+    if not filename:
+        raise ValueError("upload_file_to_supabase: filename (or dest_path) is required")
     upload_path = f"{user_id}/{filename}"
     print(f"[upload_file_to_supabase] user_id={user_id!r}, filename={filename!r}, key={upload_path!r}")
     # Step 1: Check if file exists
+     # The supabase client can return a dict {data, error} or a list.
     list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
-    existing_file_names = [f["name"] for f in list_response or []]
-
+    if isinstance(list_response, dict):
+        if list_response.get("error"):
+            raise Exception(f"List failed: {list_response['error'].get('message', list_response['error'])}")
+        files = list_response.get("data") or []
+    else:
+         files = getattr(list_response, "data", list_response) or []
+    existing_file_names = [f.get("name") for f in files if isinstance(f, dict)]
     if filename in existing_file_names:
         delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
         if isinstance(delete_response, dict) and delete_response.get("error"):
@@ -149,3 +169,178 @@ def _strip_bucket_prefix(key: Optional[str]) -> Optional[str]:
 
 def _basename_from_key(key: str) -> str:
     return os.path.basename(_strip_bucket_prefix(key) or key or "")
+def _intake_paths(dataset_id: int) -> dict:
+    base = f"datasets/{dataset_id}/intake"
+    return {
+        "meta": f"{base}/meta.json",
+        "stats": f"{base}/stats.json",
+        "preview_norm": f"{base}/preview.normalized.json",
+        "preview_raw": f"{base}/preview.raw.json",            # optional
+        "artifacts": f"{base}/artifacts.json",                # optional
+    }
+import json
+import numpy as np
+import pandas as pd
+from typing import Any
+
+def _json_default(o: Any):
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        v = float(o)
+        # avoid NaN in JSON
+        return None if (v != v) else v
+    if isinstance(o, (np.ndarray,)):
+        return o.tolist()
+    if isinstance(o, (pd.Timestamp,)):
+        return o.isoformat()
+    if isinstance(o, (pd.Series, pd.Index)):
+        return o.tolist()
+    if isinstance(o, (pd.DataFrame,)):
+        return o.to_dict(orient="records")
+    return str(o)
+
+def _dumps(obj: Any) -> str:
+    return json.dumps(obj, default=_json_default, ensure_ascii=False)
+
+import tempfile, os
+
+def save_intake_artifacts(
+    *,
+    dataset_id: int,
+    meta: dict,
+    stats: dict,
+    preview: dict,          # {"raw": [...], "normalized": [...]}
+    artifacts: dict = None  # optional; whatever you want to reference
+) -> dict:
+    """
+    Writes JSON blobs to temp files and uploads them to Supabase under
+    datasets/{id}/intake/*.json. Returns a dict of uploaded paths.
+    """
+    paths = _intake_paths(dataset_id)
+    uploaded = {}
+
+    # (1) meta.json
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+        tmp.write(_dumps(meta).encode("utf-8"))
+        tmp.flush()
+        uploaded["meta"] = upload_file_to_supabase(file_path=tmp.name,
+                                                   filename=os.path.basename(paths["meta"]),
+                                                   user_id="system",  # or current_user.id
+                                                   dest_path=paths["meta"])
+    # (2) stats.json
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+        tmp.write(_dumps(stats).encode("utf-8"))
+        tmp.flush()
+        uploaded["stats"] = upload_file_to_supabase(file_path=tmp.name,
+                                                    filename=os.path.basename(paths["stats"]),
+                                                    user_id="system",
+                                                    dest_path=paths["stats"])
+    # (3) preview.normalized.json
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+        norm = preview.get("normalized") or []
+        tmp.write(_dumps(norm).encode("utf-8"))
+        tmp.flush()
+        uploaded["preview_norm"] = upload_file_to_supabase(file_path=tmp.name,
+                                                           filename=os.path.basename(paths["preview_norm"]),
+                                                           user_id="system",
+                                                           dest_path=paths["preview_norm"])
+
+    # (4) preview.raw.json (optional)
+    raw = preview.get("raw")
+    if raw is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(_dumps(raw).encode("utf-8"))
+            tmp.flush()
+            uploaded["preview_raw"] = upload_file_to_supabase(file_path=tmp.name,
+                                                              filename=os.path.basename(paths["preview_raw"]),
+                                                              user_id="system",
+                                                              dest_path=paths["preview_raw"])
+
+    # (5) artifacts.json (optional)
+    if artifacts is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(_dumps(artifacts).encode("utf-8"))
+            tmp.flush()
+            uploaded["artifacts"] = upload_file_to_supabase(file_path=tmp.name,
+                                                            filename=os.path.basename(paths["artifacts"]),
+                                                            user_id="system",
+                                                            dest_path=paths["artifacts"])
+
+    return uploaded
+def _download_json(path: str) -> dict | list:
+    # Your helper returns bytes
+    blob = download_file_from_supabase(path)
+    return json.loads(blob.decode("utf-8"))
+
+def load_intake_artifacts(dataset_id: int) -> dict:
+    """
+    Returns:
+    {
+      "meta": {...},
+      "stats": {...},
+      "preview": {"normalized": [...], "raw": [...]},
+      "artifacts": {...}     # optional
+    }
+    """
+    paths = _intake_paths(dataset_id)
+
+    # Required:
+    meta = _download_json(paths["meta"])
+    stats = _download_json(paths["stats"])
+    preview_norm = _download_json(paths["preview_norm"])
+
+    # Optional:
+    preview_raw = []
+    artifacts = {}
+
+    try:
+        preview_raw = _download_json(paths["preview_raw"])
+    except Exception:
+        pass
+
+    try:
+        artifacts = _download_json(paths["artifacts"])
+    except Exception:
+        pass
+
+    return {
+        "meta": meta,
+        "stats": stats,
+        "preview": {"normalized": preview_norm, "raw": preview_raw},
+        "artifacts": artifacts,
+    }
+def delete_supabase_prefix(prefix: str) -> int:
+    """Delete all objects under prefix in SUPABASE_BUCKET. Return count deleted."""
+    sb = supabase
+    if not sb:
+        return 0
+    try:
+        storage = sb.storage.from_(SUPABASE_BUCKET)
+        # List paginated; delete by chunks
+        page = 0
+        deleted = 0
+        while True:
+            res = storage.list(path=prefix, search="", limit=1000, offset=page * 1000)
+            files = res or []
+            if not files:
+                break
+            keys = [f"{prefix.rstrip('/')}/{obj['name']}" for obj in files if obj.get("name")]
+            if keys:
+                storage.remove(keys)
+                deleted += len(keys)
+            page += 1
+        return deleted
+    except Exception as e:
+        logger.warning(f"[Supabase] Delete prefix '{prefix}' failed: {e}")
+        return 0
+# 5) Local artifacts
+ARTIFACTS_ROOT = PathL("artifacts")  # matches your training code
+
+def delete_local_artifacts_for_user(user_id: int) -> None:
+    p = ARTIFACTS_ROOT / str(user_id)
+    try:
+        if p.exists():
+            shutil.rmtree(p, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"[Artifacts] Failed removing {p}: {e}")

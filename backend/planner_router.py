@@ -13,9 +13,11 @@ import io, os, re, mimetypes, tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-
+import uuid
 from auth import get_current_active_user, User
 from storage import upload_file_to_supabase
+from planner import compile_plan
+#from .planner import compile_plan  # import your function
 # from .auth import get_current_active_user
 # from .storage import upload_file_to_supabase
 router = APIRouter(prefix="/api/plan", tags=["planner"])
@@ -977,3 +979,94 @@ async def derive_columns(
         },
         "modified_csvs": modified_csvs,  # if you added CSV export earlier
     }
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field, conint, confloat
+from typing import Any, Dict, List, Optional
+
+# --------- IO Schemas (mirror your dataclasses) ----------
+class IntentIn(BaseModel):
+    goal: str = Field(
+        "predict",
+        pattern="^(predict|uplift|forecast|segment|survival|what_if|ab_test)$"  # ✅ v2 compatible
+    )
+    mode: str = Field("train", pattern="^(train|predict|analyze)$")
+
+    risk_preset: str = Field("balanced", pattern="^(conservative|balanced|aggressive)$")
+    constraints: Dict[str, Any] = {}
+
+class SignalsIn(BaseModel):
+    hasLabel: Optional[bool] = None
+    labelType: Optional[str] = Field(None, pattern="^(binary|multiclass|numeric)$")
+    hasTime: Optional[bool] = None
+    isCensored: Optional[bool] = None
+    horizonDays: Optional[conint(ge=1, le=3650)] = None  
+    eventRate: Optional[confloat(ge=0.0, le=1.0)] = None  
+    rows: Optional[int] = None
+    cols: Optional[int] = None
+    tsColumn: Optional[str] = None
+    idColumn: Optional[str] = None
+
+class ArtifactsIn(BaseModel):
+    classification: bool = False
+    regression: bool = False
+    forecast: bool = False
+    survival: bool = False
+    clustering: bool = False
+
+class CompileRequest(BaseModel):
+    intent: IntentIn
+    signals: SignalsIn
+    artifacts: ArtifactsIn
+    top_k: int = 1
+
+# --------- Response Schemas (shape returned by compile_plan) ----------
+class PlanStepOut(BaseModel):
+    idx: int
+    name: str
+    endpoint: str
+    depends_on: List[str]
+    produces: List[str]
+    consumes: List[str]
+    est_cost: float
+    est_latency_ms: int
+    est_risk: float
+    idempotent: bool
+    once_per_dataset: bool
+    family: str
+    headers: Dict[str, Any]
+
+class PlanSummaryOut(BaseModel):
+    score: float
+    value: float
+    total_cost: float
+    total_latency_ms: int
+    total_risk: float
+    families: List[str]
+    chosen_core: Optional[str] = None
+
+class CompileResponse(BaseModel):
+    steps: List[PlanStepOut]
+    summary: PlanSummaryOut
+
+@router.post("/compile", response_model=CompileResponse)
+def compile_route(payload: CompileRequest, current_user=Depends(get_current_active_user)):
+    try:
+        plan = compile_plan(
+            intent=payload.intent.model_dump(),
+            signals=payload.signals.model_dump(),
+            artifacts=payload.artifacts.model_dump(),
+            top_k=payload.top_k,
+        )
+        # plan.summary is a dataclass; expose a JSONable dict
+        summary = {
+            "score": plan.summary.score,
+            "value": plan.summary.value,
+            "total_cost": plan.summary.total_cost,
+            "total_latency_ms": plan.summary.total_latency_ms,
+            "total_risk": plan.summary.total_risk,
+            "families": list(plan.summary.families),
+            "chosen_core": plan.summary.chosen_core,
+        }
+        return {"steps": plan.steps, "summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

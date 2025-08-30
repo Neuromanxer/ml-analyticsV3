@@ -903,7 +903,14 @@
                 </div>
                 <div class="input-group">
                     <label for="file">CSV File</label>
-                    <input class="form-control" type="file" id="file" name="file" accept=".csv" required>
+                     <input 
+                        class="form-control" 
+                        type="file" 
+                        id="file" 
+                        name="file" 
+                        accept=".csv,.tsv,.xlsx,.xls,.parquet,.json,.jsonl"
+                        required
+                    >
                 </div>
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-upload"></i> Upload Dataset
@@ -1469,7 +1476,7 @@ ${generatePythonCode(selectedTargetVariable)}</code></pre>
         
         <h5 style="margin-top: 20px;">Next Step:</h5>
         <p>Upload your CSV file to generate the target variable and preview the results.</p>
-        <input type="file" id="csvUploadInput" accept=".csv" onchange="updateNextButton()" />
+        <input type="file" id="csvUploadInput" accept=".csv,.tsv,.xlsx,.xls,.parquet,.json,.jsonl" onchange="updateNextButton()" />
     `;
 }
 
@@ -1890,6 +1897,33 @@ function formatDate(dateString) {
         const day = date.getDate().toString().padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
+const MAX_FILE_MB = 200; // or whatever your limit is
+
+function detectFileKind(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  // Normalize a few aliases here if you want
+  if (ext === 'jsonl' || ext === 'ndjson') return 'jsonl';
+  return ['csv', 'tsv', 'xlsx', 'xls', 'parquet', 'json', 'jsonl'].includes(ext) ? ext : null;
+}
+
+function sanitizeDatasetName(raw) {
+  return (raw || '')
+    .trim()
+    .replace(/\.[^.]+$/, '')     // drop extension
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .toLowerCase()
+    .slice(0, 60);
+}
+
+function showUploadStatus(msg, kind) {
+  const el = document.getElementById('uploadStatus');
+  if (!el) return;
+  el.style.display = 'block';
+  el.className = `alert alert-${kind}`; // or your own classes
+  el.textContent = msg;
+}
+
 function loadDatasetsWithAuth() {
     // Show loading indicator
     const errorDiv = document.querySelector('.error-message');
@@ -2168,7 +2202,6 @@ function showUploadStatus(message, type = 'success') {
 }
 // Allowed types & sane size limit
 const ALLOWED_EXTENSIONS = new Set(['csv','tsv','xlsx','xls','parquet','json','jsonl']);
-const MAX_FILE_MB = 200; // adjust to your plan limits
 
 function extOf(filename='') {
   const m = /\.(\w+)$/.exec(filename.toLowerCase());
@@ -2191,7 +2224,6 @@ function detectFileKind(file) {
   }
   return ''; // unknown
 }
-
 async function uploadDataset(event) {
   event.preventDefault();
 
@@ -2202,7 +2234,11 @@ async function uploadDataset(event) {
 
   const file = fileInput.files[0];
   if (!file) return showUploadStatus('Please select a file to upload', 'danger');
-  if (!nameInput.value.trim()) return showUploadStatus('Please provide a dataset name', 'danger');
+
+  if (!nameInput.value.trim()) {
+    // auto-suggest a sane name from file if user left it empty
+    nameInput.value = sanitizeDatasetName(file.name);
+  }
 
   // Validate kind + size
   const kind = detectFileKind(file);
@@ -2214,9 +2250,16 @@ async function uploadDataset(event) {
     return showUploadStatus(`File too large (${sizeMb.toFixed(1)} MB). Max ${MAX_FILE_MB} MB.`, 'danger');
   }
 
-  const fd = new FormData(form);          // includes name, description, file
-  fd.append('format', kind);              // hint for backend
-  // Optional: if you know delimiter for TSV, supply it:
+  // Build multipart form
+  // IMPORTANT: ensure your file input has name="file"
+  // e.g. <input type="file" name="file" ... />
+  const fd = new FormData(form);       // includes: file, name, description (if present)
+  fd.set('name', sanitizeDatasetName(nameInput.value)); // enforce sanitized name
+
+  // FIX: backend expects fmt_hint, not "format"
+  fd.append('fmt_hint', kind);
+
+  // Optional: delimiter hint for TSV
   if (kind === 'tsv') fd.append('delimiter', 'tab');
 
   showUploadStatus('Uploading dataset...', 'info');
@@ -2227,7 +2270,7 @@ async function uploadDataset(event) {
     const res = await fetch(`${API_BASE_URL}/datasets/`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         'Accept': 'application/json'
         // DO NOT set Content-Type when sending FormData
       },
@@ -2235,7 +2278,7 @@ async function uploadDataset(event) {
       credentials: 'include'
     });
 
-    // Try to extract detail on failure
+    // Handle non-OK with best-effort detail
     if (!res.ok) {
       let detail = `${res.status} ${res.statusText}`;
       try {
@@ -2249,23 +2292,26 @@ async function uploadDataset(event) {
     }
 
     const data = await res.json();
+
     if (data?.dataset_id) {
+      const rows = data.rows ?? data.row_count ?? '?';
+      const cols = data.columns ?? data.column_count ?? '?';
       showUploadStatus(
-        `Dataset "${data.name}" uploaded with ${data.rows} rows and ${data.columns} columns.`,
+        `Dataset "${data.name}" uploaded with ${rows} rows and ${cols} columns.`,
         'success'
       );
       form.reset();
-      loadDatasetsWithAuth?.();
-      setTimeout(() => { statusDiv.style.display = 'none'; }, 1500);
+      // Refresh your list, if you have a function for it
+      if (typeof loadDatasetsWithAuth === 'function') loadDatasetsWithAuth();
+      setTimeout(() => { if (statusDiv) statusDiv.style.display = 'none'; }, 1500);
     } else {
       showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
     }
   } catch (err) {
     console.error('Error uploading dataset:', err);
-    showUploadStatus('Error uploading dataset. Please try again.', 'danger');
+    showUploadStatus(`Error uploading dataset. ${err?.message || ''}`, 'danger');
   }
 }
-
 
 function closePreviewModal() {
   document.getElementById('datasetPreviewModal').style.display = 'none';

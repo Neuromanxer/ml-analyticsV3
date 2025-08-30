@@ -1,12 +1,3 @@
-"""
-Intake & Normalization (Part 1) — Universal sniffing, header normalization, type inference, value standardization.
-
-Drop-in usage:
-    result = intake_and_normalize(file_path, base_currency="USD", country_hint="US")
-    df_raw         = result.df_raw
-    df_normalized  = result.df_normalized
-    meta           = result.meta   # dialect, header_map, types, tags, currency/units info, anomalies, etc.
-"""
 
 from __future__ import annotations
 
@@ -30,6 +21,21 @@ try:
     import chardet  # type: ignore
 except Exception:
     chardet = None  # not required
+
+
+
+# # --- your project imports (adjust paths as needed)
+# from .auth import get_current_active_user, get_user_db, Dataset
+# from .storage import upload_file_to_supabase
+# from .storage import save_intake_artifacts
+
+
+
+
+# --- your project imports (adjust paths as needed)
+from auth import get_current_active_user, get_user_db, Dataset
+from storage import upload_file_to_supabase
+from storage import save_intake_artifacts
 
 # -----------------------------
 # Data structures
@@ -698,114 +704,6 @@ from typing import Any, Dict
 import json, os, tempfile, shutil
 import pandas as pd
 from dataclasses import asdict
-
-# --- your project imports (adjust paths as needed)
-from auth import get_current_active_user, get_user_db, Dataset
-from storage import upload_file_to_supabase
-from datasets import resolve_and_cache_dataset_csv   # if you have this helper
-
-router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-@router.post("/{dataset_id}/intake")
-def run_intake_and_normalization(
-    dataset_id: int,
-    base_currency: str = Query("USD"),
-    country_hint: str = Query("US"),
-    preview_rows: int = Query(50, ge=1, le=500),
-    current_user = Depends(get_current_active_user),
-):
-    """
-    Reads the dataset CSV for `dataset_id`, runs Intake & Normalization,
-    stores artifacts, and returns a JSON-friendly summary + table previews.
-    """
-    user_id = getattr(current_user, "id", getattr(current_user, "user_id", None))
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Unauthenticated")
-
-    # 1) Resolve the *local* CSV path for this dataset
-    # Prefer your existing helper if available:
-    src_csv_path = None
-    try:
-        with get_user_db(current_user) as db:
-            src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Failed to resolve dataset CSV: {e}")
-
-    # Fallback example (if you don't have resolve_and_cache_dataset_csv here):
-    # with get_user_db(current_user) as db:
-    #     ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
-    #     if not ds:
-    #         raise HTTPException(status_code=404, detail="Dataset not found")
-    #     # Download from Supabase to a temp file
-    #     src_csv_path = _download_dataset_csv_to_temp(ds.file_path, user_id=user_id, dataset_id=dataset_id)
-
-    if not src_csv_path or not os.path.exists(src_csv_path):
-        raise HTTPException(status_code=404, detail="Local CSV for dataset not found")
-
-    # 2) Run Intake & Normalization (from prior code)
-    try:
-        result = intake_and_normalize(
-            src_csv_path,
-            base_currency=base_currency,
-            country_hint=country_hint,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Intake & normalization failed: {e}")
-
-    # 3) Persist artifacts (normalized CSV + meta JSON) to Supabase
-    artifacts: Dict[str, Any] = {}
-    temp_dir = tempfile.mkdtemp(prefix=f"d{dataset_id}_intake_")
-    try:
-        # Save normalized CSV (full)
-        norm_csv = os.path.join(temp_dir, f"dataset_{dataset_id}_normalized.csv")
-        result.df_normalized.to_csv(norm_csv, index=False)
-
-        # Save meta JSON (JSON-friendly)
-        meta_json_path = os.path.join(temp_dir, f"dataset_{dataset_id}_intake_meta.json")
-        meta_dict = _meta_to_json(result.meta)
-        with open(meta_json_path, "w", encoding="utf-8") as f:
-            json.dump(meta_dict, f, ensure_ascii=False, indent=2)
-
-        # Upload artifacts to Supabase
-        supa_norm = upload_file_to_supabase(
-            user_id=str(user_id),
-            file_path=norm_csv,
-            filename=f"{dataset_id}/intake/normalized.csv",
-        )
-        supa_meta = upload_file_to_supabase(
-            user_id=str(user_id),
-            file_path=meta_json_path,
-            filename=f"{dataset_id}/intake/intake_meta.json",
-        )
-        artifacts["normalized_csv"] = supa_norm
-        artifacts["intake_meta_json"] = supa_meta
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist artifacts: {e}")
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    # 4) Build lightweight previews (do NOT return full DataFrames)
-    preview_raw = _preview_table(result.df_raw, n=preview_rows)
-    preview_norm = _preview_table(result.df_normalized, n=preview_rows)
-
-    # 5) Response
-    return {
-        "ok": True,
-        "dataset_id": dataset_id,
-        "artifacts": artifacts,
-        "meta": meta_dict,
-        "preview": {
-            "raw": preview_raw,
-            "normalized": preview_norm,
-        },
-        "stats": {
-            "raw_rows": int(result.df_raw.shape[0]),
-            "raw_cols": int(result.df_raw.shape[1]),
-            "normalized_rows": int(result.df_normalized.shape[0]),
-            "normalized_cols": int(result.df_normalized.shape[1]),
-        },
-    }
 
 
 # ---------------------------
