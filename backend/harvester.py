@@ -709,20 +709,96 @@ from dataclasses import asdict
 # ---------------------------
 # Helpers
 # ---------------------------
+import math
+import numpy as np
+import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype, is_timedelta64_dtype
 
 def _preview_table(df: pd.DataFrame, n: int = 50):
-    # Convert an n-row sample to JSON records; keep types simple
+    """
+    Returns {"columns": [...], "rows": [...]}
+    - limits to first n rows
+    - converts datetimes to ISO strings
+    - converts timedeltas to ISO 8601 durations
+    - replaces NaN/Inf/-Inf/NaT with None
+    - converts numpy scalars to native Python types
+    """
     if df is None or df.empty:
         return {"columns": [], "rows": []}
-    sample = df.head(n).copy()
-    # Ensure datetimes are ISO strings; numpy types → Python
+
+    sample = df.head(n).copy().reset_index(drop=True)
+
+    # ---- Normalize datetime columns -> ISO strings ----
     for c in sample.columns:
-        if str(sample[c].dtype).startswith("datetime"):
-            sample[c] = sample[c].astype("datetime64[ns]").dt.strftime("%Y-%m-%dT%H:%M:%S")
+        if is_datetime64_any_dtype(sample[c]):
+            # If tz-aware, convert to UTC for consistent 'Z' suffix
+            try:
+                if getattr(sample[c].dt, "tz", None) is not None:
+                    sample[c] = sample[c].dt.tz_convert("UTC")
+                else:
+                    sample[c] = sample[c].dt.tz_localize(None)
+            except Exception:
+                # In case of mixed/invalid, coerce then localize
+                sample[c] = pd.to_datetime(sample[c], errors="coerce").dt.tz_localize(None)
+
+            # Format ISO8601 (no ms); add 'Z' if tz was UTC
+            sample[c] = sample[c].dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+        elif is_timedelta64_dtype(sample[c]):
+            # Convert timedeltas to ISO 8601 durations (approximate)
+            sample[c] = sample[c].apply(
+                lambda td: _td_to_iso(td) if pd.notna(td) else None
+            )
+
+    # ---- Replace non-finite numbers with None ----
+    num_cols = sample.select_dtypes(include=[np.number]).columns
+    for c in num_cols:
+        col = sample[c]
+        # map NaN/Inf -> None while preserving ints/floats
+        sample[c] = col.apply(lambda x: x if (isinstance(x, (int, float)) and math.isfinite(x)) else (None if pd.isna(x) or isinstance(x, float) else x))
+
+    # ---- Ensure objects/others don't carry np.* scalars or NaN ----
+    def _py_simplify(v):
+        # numpy scalar -> Python
+        if isinstance(v, (np.generic,)):
+            v = v.item()
+        # floats: kill NaN/Inf
+        if isinstance(v, float):
+            return v if math.isfinite(v) else None
+        # pandas NA / None
+        if pd.isna(v):
+            return None
+        return v
+
+    sample = sample.applymap(_py_simplify)
+
+    # Build JSON-friendly structure
     return {
-        "columns": list(sample.columns),
-        "rows": sample.where(pd.notnull(sample), None).to_dict(orient="records"),
+        "columns": [str(c) for c in sample.columns],
+        "rows": sample.to_dict(orient="records"),
     }
+
+def _td_to_iso(td: pd.Timedelta) -> str:
+    """Convert pandas Timedelta to an ISO 8601 duration string like 'P3DT4H5M6S'."""
+    if pd.isna(td):
+        return None
+    total_seconds = int(td.total_seconds())
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+    s = "P"
+    if days:
+        s += f"{days}D"
+    # time part
+    if hours or minutes or seconds:
+        s += "T"
+        if hours:
+            s += f"{hours}H"
+        if minutes:
+            s += f"{minutes}M"
+        if seconds or (not hours and not minutes):
+            s += f"{seconds}S"
+    return s
 
 def _meta_to_json(meta) -> Dict[str, Any]:
     """Turn IntakeMeta into JSON-safe dict."""

@@ -1,5 +1,12 @@
+from __future__ import annotations
 from openai import OpenAI  # Or whatever LLM or inference engine you use
 import json
+# Reuse your models / stores / auth
+from planner_router import IntentIn, SignalsIn, ArtifactsIn, TargetSpecModel, PREVIEW_STORE, SIGNALS_STORE
+from auth import get_current_active_user
+
+# from .planner_router import IntentIn, SignalsIn, ArtifactsIn, TargetSpecModel, PREVIEW_STORE, SIGNALS_STORE
+# from .auth import get_current_active_user
 def generate_insights(task_type: str, payload: dict) -> str:
     """
     Generates business recommendations from model results.
@@ -244,4 +251,190 @@ def apply_patch(req: PatchRequest):  # keep your auth dep
         applied_files=applied_files,
         logs=combined_logs,
         run_results=run_results or None,
+    )
+# backend/ai_router.py
+
+import hashlib, json, os, re, textwrap
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, validator
+from auth import get_current_active_user  # your auth dep
+
+# --- If you use OpenAI, wire your client here. Stub provided.
+from openai import AsyncOpenAI
+openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ---------- Request/Response models ----------
+class AIIntakeRequest(BaseModel):
+    dataset_id: int
+    header_map: Dict[str, str] = Field(default_factory=dict)
+    inferred_types: Dict[str, str] = Field(default_factory=dict)
+    anomalies: List[Any] = Field(default_factory=list)
+    preview_raw: List[Dict[str, Any]] = Field(default_factory=list)
+    preview_normalized: List[Dict[str, Any]] = Field(default_factory=list)
+    instructions: Optional[str] = None
+
+    @validator("preview_raw", "preview_normalized", pre=True)
+    def _cap_rows(cls, v):
+        # Hard cap to keep prompts small (frontend already slices, this is defense-in-depth)
+        return list(v or [])[:8]
+
+class AIIntakeResponse(BaseModel):
+    patch: str
+    summary: str
+    warnings: List[str] = []
+    usage: Optional[Dict[str, Any]] = None
+    idempotency_key: Optional[str] = None
+
+# ---------- Helpers ----------
+PII_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+PII_PHONE = re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b")
+PII_CC    = re.compile(r"\b(?:\d[ -]*?){13,19}\b")  # crude CC-like
+
+def mask_pii(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    s = value
+    s = PII_EMAIL.sub("[email]", s)
+    s = PII_PHONE.sub("[phone]", s)
+    s = PII_CC.sub("[card]", s)
+    return s
+
+def rows_to_csv(rows: List[Dict[str, Any]], max_chars=2000) -> str:
+    if not rows:
+        return ""
+    # Build header
+    cols = list(rows[0].keys())
+    lines = [",".join(map(str, cols))]
+    for r in rows:
+        vals = []
+        for c in cols:
+            v = mask_pii(r.get(c, ""))
+            if isinstance(v, (dict, list)):
+                v = json.dumps(v, ensure_ascii=False)
+            s = str(v).replace("\n", " ").replace("\r", " ")
+            # simple CSV escaping for commas/quotes
+            if ("," in s) or ('"' in s):
+                s = '"' + s.replace('"', '""') + '"'
+            vals.append(s)
+        lines.append(",".join(vals))
+        if sum(len(x) for x in lines) > max_chars:
+            lines.append("# …truncated…")
+            break
+    return "\n".join(lines)
+
+def compact_json(obj: Any, max_chars=2000) -> str:
+    s = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    if len(s) > max_chars:
+        s = s[: max_chars - 20] + "… (truncated)"
+    return s
+
+UNIFIED_DIFF_RE = re.compile(r"(?m)^(---\s+a/.*\n\+\+\+\s+b/.*\n@@)", re.DOTALL)
+
+def looks_like_unified_diff(text: str) -> bool:
+    return bool(UNIFIED_DIFF_RE.search(text))
+
+DEFAULT_INSTRUCTIONS = (
+    "Suggest a minimal set of runnable code changes (patch) to improve robustness of "
+    "intake/normalization. Output a single unified diff. Avoid boilerplate and commentary."
+)
+
+def make_prompt(payload: AIIntakeRequest) -> Dict[str, str]:
+    user_msg = textwrap.dedent(f"""
+    You are reviewing an ingestion/normalization pipeline. Propose a **single unified diff** that fixes robustness issues
+    discovered during intake. Keep the diff minimal and runnable.
+
+    ## Constraints
+    - Output only one patch, in unified diff format with '--- a/…' / '+++ b/…' and @@ hunks.
+    - Do not include prose inside the diff. Provide a separate short summary outside the diff.
+    - Prefer small, targeted fixes (schema coercion, dtype guards, missing-column handling, duplicate ID resolution,
+      timezone-safe parsing, CSV sniffing).
+    - The repo is Python/FastAPI + pandas. Focus changes in files like `planner_router.py`, `intake.py`, `normalize.py`.
+
+    ## Dataset context
+    dataset_id: {payload.dataset_id}
+    header_map: {compact_json(payload.header_map)}
+    inferred_types: {compact_json(payload.inferred_types)}
+    anomalies: {compact_json(payload.anomalies, 1200)}
+
+    ### Preview (raw)
+    {rows_to_csv(payload.preview_raw)}
+
+    ### Preview (normalized)
+    {rows_to_csv(payload.preview_normalized)}
+
+    ## Task
+    {payload.instructions or DEFAULT_INSTRUCTIONS}
+
+    Return JSON with keys: summary (string), patch (string). The patch must be a single unified diff.
+    """).strip()
+
+    system_msg = (
+        "You are a senior Python data engineer. Be precise, conservative, and ensure the patch applies cleanly. "
+        "Never invent files that don't exist; modify plausible targets only."
+    )
+    return {"system": system_msg, "user": user_msg}
+
+async def call_llm_for_patch(system: str, user: str) -> Dict[str, Any]:
+    """
+    Call your LLM. Return {"summary": str, "patch": str, "usage": {...}}.
+    Replace stub with your provider (OpenAI, Anthropic, etc.).
+    """
+    # ---- STUB IMPLEMENTATION (replace with your actual client) ----
+    # Example with OpenAI responses as JSON:
+    
+    resp = await openai.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0.2,
+        response_format={"type": "json_object"},
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
+    )
+    data = json.loads(resp.choices[0].message.content)
+    return {"summary": data.get("summary",""), "patch": data.get("patch",""), "usage": resp.usage}
+    
+    # For now return an empty patch to keep the stub safe.
+    return {"summary": "No-op stub (wire your LLM).", "patch": "", "usage": None}
+
+# ---------- Endpoint ----------
+@router.post("/api/ai/analyze-intake", response_model=AIIntakeResponse)
+async def analyze_intake(payload: AIIntakeRequest, current_user=Depends(get_current_active_user)):
+    # Build an idempotency key so repeated identical requests short-circuit upstream (optional)
+    idem_body = json.dumps(payload.dict(), sort_keys=True, default=str).encode("utf-8")
+    idem_key = "ai-intake:" + hashlib.sha256(idem_body).hexdigest()[:16]
+
+    # Compose prompt
+    msgs = make_prompt(payload)
+
+    # Call the LLM
+    try:
+        out = await call_llm_for_patch(msgs["system"], msgs["user"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+
+    patch = (out.get("patch") or "").strip()
+    summary = (out.get("summary") or "").strip()
+    usage = out.get("usage") or None
+
+    # Validate + guardrails
+    warnings: List[str] = []
+    if not patch:
+        warnings.append("Model returned an empty patch.")
+    elif not looks_like_unified_diff(patch):
+        warnings.append("Patch is not a valid unified diff (expected --- a/... +++ b/... with @@ hunks).")
+
+    # Optional: tightly enforce diff format
+    if not patch:
+        # Hard fail if you prefer strictness
+        # raise HTTPException(status_code=422, detail="Model did not return a unified diff.")
+        pass
+
+    if not summary:
+        summary = "Targeted changes based on the dataset sample."
+
+    return AIIntakeResponse(
+        patch=patch,
+        summary=summary,
+        warnings=warnings,
+        usage=usage,
+        idempotency_key=idem_key,
     )

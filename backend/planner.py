@@ -113,6 +113,7 @@ def get_registry() -> Dict[str, StepSpec]:
         base_cost=2.0,
         base_latency_ms=20000,
         family="aux",
+        once_per_dataset=True,
         produces=("mappings","options","actions","target_horizon","capacity","budget"),
         when=lambda i,s,a: True
     ))
@@ -149,17 +150,20 @@ def get_registry() -> Dict[str, StepSpec]:
         depends_on=("classification","regression","forecast","survival"),
         produces=("shap_summary","drivers"),
         base_cost=3.5, base_latency_ms=30000, family="analysis",
-        when=lambda i,s,a: i.mode!="predict" and (a.classification or a.regression or a.forecast or a.survival)))
+        when=lambda i,s,a: i.mode!="predict" and (
+        (s.hasLabel and s.labelType in ("binary","multiclass","numeric")) or
+        a.classification or a.regression or a.forecast or a.survival
+    )))
     reg(StepSpec("risk_analysis", "/risk_analysis/",
         depends_on=("classification",),
         produces=("ece","coverage","abstention","stops"),
         base_cost=2.0, base_latency_ms=15000, family="analysis",
-        when=lambda i,s,a: a.classification))
+        when=lambda i,s,a: (s.hasLabel and s.labelType in ("binary","multiclass")) or a.classification))
     reg(StepSpec("decision_paths", "/decision_paths/",
         depends_on=("classification",),
         produces=("tree_paths","surrogate_rules"),
         base_cost=2.5, base_latency_ms=20000, family="analysis",
-        when=lambda i,s,a: a.classification))
+        when=lambda i,s,a: (s.hasLabel and s.labelType in ("binary","multiclass")) or a.classification))
     reg(StepSpec("segment_analysis", "/segment_analysis/",
         depends_on=("derive",),
         produces=("segments","lifts"),
@@ -167,21 +171,38 @@ def get_registry() -> Dict[str, StepSpec]:
         when=lambda i,s,a: i.mode!="predict"))
 
     # Inference / what-if / counterfactuals / predict
-    reg(StepSpec("classification_predict", "/classification/predict/",
-        depends_on(("classification",) if not Artifacts.classification else tuple(),),
-        produces=("scores","predictions"),
-        base_cost=1.5, base_latency_ms=8000, family="inference",
-        when=lambda i,s,a: i.mode in ("predict","analyze") and (a.classification or s.hasLabel and s.labelType in ("binary","multiclass"))))
-    reg(StepSpec("regression_predict", "/regression/predict/",
-        depends_on(("regression",) if not Artifacts.regression else tuple(),),
-        produces=("scores","predictions"),
-        base_cost=1.5, base_latency_ms=8000, family="inference",
-        when=lambda i,s,a: i.mode in ("predict","analyze") and (a.regression or s.labelType=="numeric")))
+    reg(StepSpec(
+        name="classification_predict",
+        endpoint="/classification/predict/",
+        depends_on=("classification",),  # keyword arg ✅
+        produces=("scores", "predictions"),
+        base_cost=1.5,
+        base_latency_ms=8000,
+        family="inference",
+        when=lambda i, s, a: i.mode in ("predict", "analyze") and (
+            a.classification or (s.hasLabel and s.labelType in ("binary", "multiclass"))
+        ),
+    ))
+    reg(StepSpec(
+        name="regression_predict",
+        endpoint="/regression/predict/",
+        depends_on=("regression",),  # keyword arg ✅
+        produces=("scores", "predictions"),
+        base_cost=1.5,
+        base_latency_ms=8000,
+        family="inference",
+        when=lambda i, s, a: i.mode in ("predict", "analyze") and (
+            a.regression or s.labelType == "numeric"
+        ),
+    ))
     reg(StepSpec("what_if", "/what_if/",
         depends_on=("classification","regression"),
         produces=("counterfactual_eval","elasticities"),
         base_cost=2.0, base_latency_ms=12000, family="inference",
-        when=lambda i,s,a: i.goal in ("what_if","predict","uplift") and (a.classification or a.regression)))
+        when=lambda i,s,a: i.goal in ("what_if","predict","uplift") and (
+        (s.hasLabel and s.labelType in ("binary","multiclass","numeric")) or
+        a.classification or a.regression
+    )))
     reg(StepSpec("counterfactual", "/counterfactual/",
         depends_on=("classification","regression"),
         produces=("dice_examples","recourse"),
@@ -326,10 +347,22 @@ def compile_plan(intent: Dict[str, Any], signals: Dict[str, Any], artifacts: Dic
     i = Intent(**intent)
     s = Signals(**signals)
     a = Artifacts(**artifacts)
+    # Nudge signals from required families to keep them eligible
+    req = set((i.constraints or {}).get("required") or [])
+    if "classification" in req:
+        s.hasLabel = True if s.hasLabel is None else s.hasLabel
+        s.labelType = s.labelType or "binary"
+    if "regression" in req:
+        s.hasLabel = True if s.hasLabel is None else s.hasLabel
+        s.labelType = "numeric"
+    if "forecast" in req:
+        s.hasTime = True if s.hasTime is None else s.hasTime
+        s.horizonDays = s.horizonDays or 14
+        s.hasLabel = False if s.hasLabel is None else s.hasLabel
     reg = get_registry()
     W = weights_for_preset(i.risk_preset)
     cons = i.constraints or {}
-    if cons.get("ignoreLatencyScore", True):
+    if cons.get("ignoreLatencyScore", False) and cons.get("latencyMs") is None:
         W.w_speed = 0.0
     # 1) Candidate core families based on signals
     families: List[List[str]] = []
@@ -372,12 +405,12 @@ def compile_plan(intent: Dict[str, Any], signals: Dict[str, Any], artifacts: Dic
         # analysis add-ons (only if will be satisfied)
         if fam[0] in ("classification","regression","forecast","survival"):
             # feature impact
-            if reg["feature_impact"].eligible(i, s, a) or core.name in reg["feature_impact"].depends_on:
+            if reg["feature_impact"].eligible(i, s, a):
                 selected.append(reg["feature_impact"])
         if fam[0] == "classification":
-            if reg["risk_analysis"].eligible(i, s, a) or core.name in reg["risk_analysis"].depends_on:
+            if reg["risk_analysis"].eligible(i, s, a):
                 selected.append(reg["risk_analysis"])
-            if reg["decision_paths"].eligible(i, s, a) or core.name in reg["decision_paths"].depends_on:
+            if reg["decision_paths"].eligible(i, s, a):
                 selected.append(reg["decision_paths"])
 
         # segment analysis is broadly useful
@@ -455,39 +488,3 @@ def compile_plan(intent: Dict[str, Any], signals: Dict[str, Any], artifacts: Dic
 
     return CompiledPlan(steps=out_steps, summary=best_summary)
 
-# ----------------------------
-# Example usage
-# ----------------------------
-if __name__ == "__main__":
-    intent = {
-        "goal": "predict",
-        "mode": "train",
-        "risk_preset": "balanced",
-        "constraints": {
-            "budgetCap": 15.0,
-            "latencyMs": 160000,
-            "required": [],
-            "forbidden": []
-        }
-    }
-    signals = {
-        "hasLabel": True,
-        "labelType": "binary",
-        "hasTime": True,
-        "horizonDays": 14,
-        "isCensored": False,
-        "rows": 120000,
-        "cols": 45
-    }
-    artifacts = {
-        "classification": False,
-        "regression": False,
-        "forecast": False,
-        "survival": False,
-        "clustering": False
-    }
-
-    plan = compile_plan(intent, signals, artifacts)
-    from pprint import pprint
-    pprint(plan.summary)
-    pprint(plan.steps)

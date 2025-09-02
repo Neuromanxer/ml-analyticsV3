@@ -2175,6 +2175,40 @@ async def replace_dataset_file(
             "signedUrl": signed,
         }
     }
+import math
+import numpy as np
+
+def clean_json(obj):
+    """
+    Recursively walk dict/list/tuple and:
+      - cast numpy scalars to native Python
+      - turn NaN/Inf/-Inf into None
+    """
+    # numpy scalar -> python
+    if isinstance(obj, (np.generic,)):
+        obj = obj.item()
+
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+
+    if isinstance(obj, (int, str, bool)) or obj is None:
+        return obj
+
+    if isinstance(obj, dict):
+        return {k: clean_json(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple, set)):
+        return [clean_json(v) for v in obj]
+
+    # pandas NA types
+    try:
+        import pandas as pd
+        if pd.isna(obj):
+            return None
+    except Exception:
+        pass
+
+    return obj
 
 @router.post("/{dataset_id}/intake")
 def run_intake_and_normalization(
@@ -2265,6 +2299,11 @@ def run_intake_and_normalization(
         "normalized_rows": int(result.df_normalized.shape[0]),
         "normalized_cols": int(result.df_normalized.shape[1]),
     }
+    preview_raw  = clean_json(preview_raw)
+    preview_norm = clean_json(preview_norm)
+    artifacts    = clean_json(artifacts)
+    stats_dict   = clean_json(stats_dict)
+    meta_dict    = clean_json(meta_dict)
 
     # After you compute: meta_dict, preview_raw, preview_norm, artifacts, stats_dict
     save_intake_artifacts(

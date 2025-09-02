@@ -22,49 +22,80 @@ FULL_BUCKET_PREFIX   = f"{SUPABASE_PROJECT_REF}/storage/buckets/{SUPABASE_BUCKET
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 import mimetypes
 import os
+import os
+import mimetypes
+from typing import Optional
+
+# assumes you've created: supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+
+import os
+import mimetypes
+from typing import Optional
+
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+
 def upload_file_to_supabase(
-     user_id: str,
-     file_path: str,
-     filename: Optional[str] = None,
-     dest_path: Optional[str] = None,   # ← back-compat
- ) -> str:
-    # Back-compat: allow old callers that used dest_path
+    user_id: str,
+    file_path: str,
+    filename: Optional[str] = None,
+    dest_path: Optional[str] = None,
+    *,
+    upsert: bool = True,
+    cache_control: str | int = "3600",
+    content_type: Optional[str] = None,
+) -> str:
     if not filename and dest_path:
-         filename = dest_path
+        filename = dest_path
     if not filename:
         raise ValueError("upload_file_to_supabase: filename (or dest_path) is required")
-    upload_path = f"{user_id}/{filename}"
-    print(f"[upload_file_to_supabase] user_id={user_id!r}, filename={filename!r}, key={upload_path!r}")
-    # Step 1: Check if file exists
-     # The supabase client can return a dict {data, error} or a list.
-    list_response = supabase.storage.from_(SUPABASE_BUCKET).list(user_id)
-    if isinstance(list_response, dict):
-        if list_response.get("error"):
-            raise Exception(f"List failed: {list_response['error'].get('message', list_response['error'])}")
-        files = list_response.get("data") or []
-    else:
-         files = getattr(list_response, "data", list_response) or []
-    existing_file_names = [f.get("name") for f in files if isinstance(f, dict)]
-    if filename in existing_file_names:
-        delete_response = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
-        if isinstance(delete_response, dict) and delete_response.get("error"):
-            raise Exception(f"Failed to delete existing file: {delete_response['error']['message']}")
 
-    # Step 2: Upload
+    upload_path = f"{str(user_id).strip('/')}/{str(filename).lstrip('/')}"
+
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"Local file not found: {file_path}")
+    if os.path.getsize(file_path) == 0:
+        raise ValueError(f"Refusing to upload zero-byte file: {file_path}")
+
+    if content_type is None:
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
-    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    # IMPORTANT: all values must be strings
+    opts = {
+        "content-type": str(content_type),
+        "cache-control": str(cache_control),
+        # Some supabase-py versions treat options like headers -> strings only
+        "upsert": "true" if upsert else "false",
+    }
 
-    upload_response = supabase.storage.from_(SUPABASE_BUCKET).upload(
-        upload_path,
-        file_bytes,
-        {"content-type": content_type}
-    )
+    resp = supabase.storage.from_(SUPABASE_BUCKET).upload(upload_path, file_bytes, opts)
 
-    # ✅ FIX: Safely check for error in dict response
-    if isinstance(upload_response, dict) and upload_response.get("error"):
-        raise Exception(f"Upload failed: {upload_response['error']['message']}")
+    # Normalize error extraction
+    err = None
+    if isinstance(resp, dict):
+        err = resp.get("error")
+    else:
+        err = getattr(resp, "error", None) or getattr(resp, "message", None)
+
+    if err:
+        # Optional fallback: delete & re-upload if "already exists"
+        emsg = str(err).lower()
+        if upsert and ("already exists" in emsg or "resource already exists" in emsg or "409" in emsg):
+            del_resp = supabase.storage.from_(SUPABASE_BUCKET).remove([upload_path])
+            if isinstance(del_resp, dict) and del_resp.get("error"):
+                raise Exception(f"Supabase remove failed for {upload_path}: {del_resp['error']}")
+            resp2 = supabase.storage.from_(SUPABASE_BUCKET).upload(
+                upload_path,
+                file_bytes,
+                {"content-type": str(content_type), "cache-control": str(cache_control)}
+            )
+            if isinstance(resp2, dict) and resp2.get("error"):
+                raise Exception(f"Upload failed after delete for {upload_path}: {resp2['error']}")
+            return upload_path
+        raise Exception(f"Upload failed for {upload_path}: {err}")
 
     return upload_path
 

@@ -22,6 +22,9 @@ from planner import compile_plan
 # from .storage import upload_file_to_supabase
 router = APIRouter(prefix="/api/plan", tags=["planner"])
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Simple in-memory caches keyed by dataset_id
+SIGNALS_STORE: Dict[int, SignalsIn] = {}
+PREVIEW_STORE: Dict[int, list[dict]] = {}
 
 def _norm(s: str) -> str:
     return re.sub(r"(^_+|_+$)", "",
@@ -161,53 +164,196 @@ def to_bool01(s: Optional[pd.Series]) -> Optional[pd.Series]:
     m = {"true":1,"yes":1,"y":1,"1":1,"false":0,"no":0,"n":0,"0":0}
     out = s.astype(str).str.strip().str.lower().map(m)
     return out.astype("Int64")  # keeps NA
+import numpy as np
+import pandas as pd
+from typing import Dict, Optional, Sequence, Union
 
-def coerce_customers(df: Optional[pd.DataFrame], m: Dict[str, Optional[str]]) -> pd.DataFrame:
-    if df is None: return pd.DataFrame(columns=["customer_id","email","phone","created_at"])
+def coerce_customers(df: Optional[pd.DataFrame], m: Dict[str, object]) -> pd.DataFrame:
+    """
+    Normalize a Customers table to:
+      - customer_id (string, key)
+      - email (string, cleaned + validated)
+      - phone (string, cleaned to digits; invalid -> NA)
+      - created_at (datetime64[ns])
+    Mapping values may be str or list[str]; we collapse to a single Series.
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["customer_id", "email", "phone", "created_at"])
+
+    # 1) normalize + collapse dupes (prevents df["col"] yielding a DataFrame)
     df = normalize_headers(df)
-    cid = m.get("customer_id"); em = m.get("email"); ph = m.get("phone")
-    created = m.get("created_at") or m.get("created_date")
-    out = pd.DataFrame()
-    out["customer_id"] = df[cid].astype(str) if cid and cid in df.columns else pd.NA
-    out["email"]      = clean_email(df[em]) if em and em in df.columns else pd.NA
-    out["phone"]      = clean_phone(df[ph]) if ph and ph in df.columns else pd.NA
-    out["created_at"] = to_dt(df[created]) if created and created in df.columns else pd.NaT
+    df = _collapse_duplicate_columns(df)
+
+    out = pd.DataFrame(index=df.index)
+
+    # 2) resolve mappings (support str or list)
+    cid_s   = _pick_or_collapse(df, m.get("customer_id") or m.get("cid") or m.get("user_id") or m.get("id"))
+    email_s = _pick_or_collapse(df, m.get("email")       or m.get("customer_email") or m.get("email_address"))
+    phone_s = _pick_or_collapse(df, m.get("phone")       or m.get("phone_number")   or m.get("mobile") or m.get("cell") or m.get("tel"))
+    crt_s   = _pick_or_collapse(df, m.get("created_at")  or m.get("created_date")   or m.get("signup_date") or m.get("joined") or m.get("first_seen"))
+
+    # 3) assign with safe dtypes
+    out["customer_id"] = (cid_s.astype("string") if cid_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="string"))
+
+    if email_s is not None:
+        out["email"] = clean_email(email_s)  # should return nullable series
+        # ensure dtype string
+        out["email"] = out["email"].astype("string")
+    else:
+        out["email"] = pd.Series([pd.NA]*len(df), dtype="string")
+
+    if phone_s is not None:
+        out["phone"] = clean_phone(phone_s)  # should return nullable series
+        out["phone"] = out["phone"].astype("string")
+    else:
+        out["phone"] = pd.Series([pd.NA]*len(df), dtype="string")
+
+    out["created_at"] = (pd.to_datetime(crt_s, errors="coerce") if crt_s is not None
+                         else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]"))
+
+    # 4) key cleanup: require customer_id; dedupe on it
     out = out.dropna(subset=["customer_id"]).drop_duplicates("customer_id", keep="last")
+
     return out
 
+def _pick_or_collapse(df: pd.DataFrame, spec: Union[str, Sequence[str], None]) -> Optional[pd.Series]:
+    """
+    From a mapping spec (str or list of strs), return a SINGLE Series:
+      - if str and present -> that column
+      - if list/tuple/Index/ndarray:
+          - use first present col if only one
+          - if multiple present -> first-non-null across them (bfill) → one Series
+      - else -> None
+    """
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        return df[spec] if spec in df.columns else None
 
-def coerce_orders(df: Optional[pd.DataFrame], m: Dict[str, Optional[str]]) -> pd.DataFrame:
-    if df is None: return pd.DataFrame(columns=["order_id","customer_id","order_date","amount"])
+    # list/tuple/Index/ndarray
+    if isinstance(spec, (list, tuple, pd.Index, np.ndarray)):
+        present = [c for c in map(str, spec) if c in df.columns]
+        if not present:
+            return None
+        if len(present) == 1:
+            return df[present[0]]
+        # collapse: first non-null left→right
+        return df[present].bfill(axis=1).iloc[:, 0]
+
+    return None
+def _collapse_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    If columns are duplicated, collapse each group into a single Series
+    by taking the first non-null value left→right.
+    """
+    if not df.columns.duplicated().any():
+        return df
+
+    out = {}
+    # Preserve left-to-right order of first appearances
+    seen = set()
+    ordered_unique = []
+    for c in df.columns:
+        if c not in seen:
+            seen.add(c)
+            ordered_unique.append(c)
+
+    for name in ordered_unique:
+        dupes = df.loc[:, df.columns == name]
+        if dupes.shape[1] == 1:
+            out[name] = dupes.iloc[:, 0]
+        else:
+            out[name] = dupes.bfill(axis=1).iloc[:, 0]
+
+    return pd.DataFrame(out, index=df.index)
+
+def coerce_orders(df: Optional[pd.DataFrame], m: Dict[str, object]) -> pd.DataFrame:
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["order_id","customer_id","order_date","amount"])
+
     df = normalize_headers(df)
-    oid = m.get("order_id"); cid = m.get("customer_id")
-    dt  = m.get("order_date"); amt = m.get("order_total")
-    out = pd.DataFrame()
-    out["order_id"]    = df[oid].astype(str) if oid and oid in df.columns else pd.NA
-    out["customer_id"] = df[cid].astype(str) if cid and cid in df.columns else pd.NA
-    out["order_date"]  = to_dt(df[dt]) if dt and dt in df.columns else pd.NaT
-    out["amount"]      = to_num_currency(df[amt]) if amt and amt in df.columns else pd.NA
+    out = pd.DataFrame(index=df.index)
+    df = _collapse_duplicate_columns(df)  # must happen before selecting columns
+    oid_s = _pick_or_collapse(df, m.get("order_id"))
+    cid_s = _pick_or_collapse(df, m.get("customer_id"))
+    dt_s  = _pick_or_collapse(df, m.get("order_date") or m.get("order_timestamp") or m.get("timestamp"))
+    amt_s = _pick_or_collapse(df, m.get("order_total")  or m.get("amount")         or m.get("total"))
+
+    out["order_id"]    = (oid_s.astype("string") if oid_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="string"))
+    out["customer_id"] = (cid_s.astype("string") if cid_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="string"))
+    out["order_date"]  = (pd.to_datetime(dt_s, errors="coerce") if dt_s is not None
+                          else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]"))
+    out["amount"]      = (pd.to_numeric(amt_s, errors="coerce").astype("Float64") if amt_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="Float64"))
+
     out = out.dropna(subset=["order_id"]).drop_duplicates("order_id", keep="last")
-    out = out[out["amount"].fillna(0) > 0]  # keep positive orders for AOV
+    out = out[out["amount"].fillna(0) > 0]
     return out
-def coerce_marketing(df: Optional[pd.DataFrame], m: Dict[str, Optional[str]]) -> pd.DataFrame:
-    if df is None: return pd.DataFrame(columns=[
-        "campaign_id","customer_id","channel","sent_date","opened","clicked","converted","cost"
-    ])
+
+def coerce_marketing(df: Optional[pd.DataFrame], m: Dict[str, object]) -> pd.DataFrame:
+    """
+    Normalize a Marketing table to:
+      - campaign_id (string, key)
+      - customer_id (string)
+      - channel (string, lowercased/trimmed)
+      - sent_date (datetime64[ns])
+      - opened, clicked, converted (Int64: 0/1/NA)
+      - cost (Float64, default 0.0)
+    Mapping values may be str or list[str]; we collapse to a single Series.
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=[
+            "campaign_id","customer_id","channel","sent_date","opened","clicked","converted","cost"
+        ])
+
+    # 1) normalize + collapse dupes (prevents df["col"] returning a DataFrame)
     df = normalize_headers(df)
-    cid = m.get("campaign_id"); cust = m.get("customer_id")
-    ch  = m.get("channel"); sent = m.get("sent_date")
-    opened = m.get("opened"); clicked = m.get("clicked"); converted = m.get("converted")
-    cost = m.get("cost") or m.get("campaign_cost")
-    out = pd.DataFrame()
-    out["campaign_id"] = df[cid].astype(str) if cid and cid in df.columns else pd.NA
-    out["customer_id"] = df[cust].astype(str) if cust and cust in df.columns else pd.NA
-    out["channel"]     = df[ch].astype(str).str.strip().str.lower() if ch and ch in df.columns else pd.NA
-    out["sent_date"]   = to_dt(df[sent]) if sent and sent in df.columns else pd.NaT
-    out["opened"]      = to_bool01(df[opened]) if opened and opened in df.columns else pd.NA
-    out["clicked"]     = to_bool01(df[clicked]) if clicked and clicked in df.columns else pd.NA
-    out["converted"]   = to_bool01(df[converted]) if converted and converted in df.columns else pd.NA
-    out["cost"]        = to_num_currency(df[cost]).fillna(0) if cost and cost in df.columns else 0.0
+    df = _collapse_duplicate_columns(df)
+
+    out = pd.DataFrame(index=df.index)
+
+    # 2) resolve mappings (support str or list)
+    camp_s = _pick_or_collapse(df, m.get("campaign_id"))
+    cust_s = _pick_or_collapse(df, m.get("customer_id"))
+    chan_s = _pick_or_collapse(df, m.get("channel"))
+    sent_s = _pick_or_collapse(df, m.get("sent_date") or m.get("send_date") or m.get("timestamp") or m.get("created_at") or m.get("sent_at") or m.get("delivered_at"))
+    open_s = _pick_or_collapse(df, m.get("opened")    or m.get("open")      or m.get("is_open"))
+    click_s= _pick_or_collapse(df, m.get("clicked")   or m.get("click")     or m.get("is_click"))
+    conv_s = _pick_or_collapse(df, m.get("converted") or m.get("purchase")  or m.get("is_purchase") or m.get("order"))
+    cost_s = _pick_or_collapse(df, m.get("cost")      or m.get("campaign_cost") or m.get("spend"))
+
+    # 3) assign with safe dtypes
+    out["campaign_id"] = (camp_s.astype("string") if camp_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="string"))
+    out["customer_id"] = (cust_s.astype("string") if cust_s is not None
+                          else pd.Series([pd.NA]*len(df), dtype="string"))
+
+    if chan_s is not None:
+        out["channel"] = chan_s.astype("string").str.strip().str.lower()
+    else:
+        out["channel"] = pd.Series([pd.NA]*len(df), dtype="string")
+
+    out["sent_date"] = (pd.to_datetime(sent_s, errors="coerce") if sent_s is not None
+                        else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]"))
+
+    # booleans as 0/1 (nullable Int64)
+    out["opened"]    = (to_bool01(open_s)  if open_s  is not None else pd.Series([pd.NA]*len(df), dtype="Int64"))
+    out["clicked"]   = (to_bool01(click_s) if click_s is not None else pd.Series([pd.NA]*len(df), dtype="Int64"))
+    out["converted"] = (to_bool01(conv_s)  if conv_s  is not None else pd.Series([pd.NA]*len(df), dtype="Int64"))
+
+    # cost as Float64; keep 0.0 default when column missing
+    if cost_s is not None:
+        # to_num_currency already strips $ and commas then pd.to_numeric
+        out["cost"] = to_num_currency(cost_s).astype("Float64").fillna(0)
+    else:
+        out["cost"] = pd.Series([0.0]*len(df), dtype="Float64")
+
+    # 4) key cleanup: require campaign_id; dedupe on it
     out = out.dropna(subset=["campaign_id"]).drop_duplicates("campaign_id", keep="last")
+
     return out
 
 
@@ -424,9 +570,18 @@ def _csv_meta(bytes_or_none: Optional[bytes]) -> Dict[str, any]:
 
 async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame]) -> Dict[str, any]:
     """
-    Create CSV bytes from df, upload to Supabase using your helper, return metadata + public url.
+    Create CSV bytes from df, upload via upload_file_to_supabase(), return metadata.
     """
-    out: Dict[str, any] = {"kind": kind, "filename": "", "path": "", "public_url": "", "size_bytes": 0, "columns": [], "inline_b64": None, "preview": []}
+    out: Dict[str, any] = {
+        "kind": kind,
+        "filename": "",
+        "path": "",
+        "public_url": "",      # left blank; your uploader returns only the path
+        "size_bytes": 0,
+        "columns": [],
+        "inline_b64": None,
+        "preview": [],
+    }
     if df is None:
         return out
 
@@ -435,11 +590,11 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
     out["size_bytes"] = meta["size_bytes"]
     out["columns"] = list(df.columns)
 
-    # Build a consistent stamped filename
+    # Build a consistent stamped filename (under your per-user prefix in the uploader)
     safe_original = _slug_filename(f"{kind}.csv")
-    stamped_name  = f"derive/{_now_tag()}-{kind}-{safe_original}"
+    stamped_name = f"derive/{_now_tag()}-{kind}-{safe_original}"
 
-    # Write bytes to temp file to reuse upload_file_to_supabase(user_id, path, filename)
+    # Write bytes to a temp file and hand off to the uploader
     suffix = Path(stamped_name).suffix or ".csv"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         if csv_bytes:
@@ -447,14 +602,10 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
         tmp_path = tmp.name
 
     try:
-        storage_path = upload_file_to_supabase(user_id, tmp_path, stamped_name)
+        storage_path = upload_file_to_supabase(user_id, tmp_path, filename=stamped_name)
         out["filename"] = stamped_name
         out["path"] = storage_path
-        try:
-            public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)  # type: ignore[attr-defined]
-        except Exception:
-            public_url = ""
-        out["public_url"] = public_url or ""
+        # NOTE: out["public_url"] intentionally left "" (uploader returns only the path)
 
         # Inline b64 only for small files
         if csv_bytes and len(csv_bytes) <= INLINE_B64_MAX:
@@ -463,7 +614,9 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
         # Preview rows
         try:
             preview_df = df.head(CSV_PREVIEW_ROWS)
-            out["preview"] = [list(preview_df.columns)] + preview_df.astype(object).where(pd.notna(preview_df), "").values.tolist()
+            out["preview"] = [list(preview_df.columns)] + preview_df.astype(object).where(
+                pd.notna(preview_df), ""
+            ).values.tolist()
         except Exception:
             out["preview"] = []
 
@@ -473,6 +626,7 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
             os.remove(tmp_path)
         except Exception:
             pass
+
 # ---- Preflight (non-blocking) + safe compute utilities ----
 from typing import Set, List, Dict, Any, Optional, Tuple
 
@@ -516,8 +670,11 @@ def apply_common_transforms(df: pd.DataFrame, key_field: Optional[str]=None, use
         try:
             dt = pd.to_datetime(df[col], errors="coerce")
             if user_tz:
-                dt = dt.dt.tz_localize("UTC").dt.tz_convert(user_tz)
-            df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                dt = dt.dt.tz_convert(user_tz)  # user tz view, NO 'Z' suffix
+                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%S%z")  # e.g. 2025-03-01T10:00:00-0800
+            else:
+                # canonical UTC with Z
+                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
             transforms.append(f"parse_date:{col}")
         except Exception:
             pass
@@ -638,8 +795,7 @@ def _preflight_and_compute(C, O, M, options) -> Tuple[Dict[str, Any], List[Dict[
         _gap(gaps, "threshold_volume.expected_net", "orders|customers", missing or ["*"], 0.0,
              "Expected net requires positive volume and profit_per_tp; set to 0.")
 
-    coverage_pct = round(100.0 * ok_calcs / max(total_calcs, 1), 1)
-
+    coverage_pct = ok_calcs / max(total_calcs, 1)
     partial = {
         "eligible_population": {
             "total": eligible_total,
@@ -656,9 +812,7 @@ def _preflight_and_compute(C, O, M, options) -> Tuple[Dict[str, Any], List[Dict[
             "volume": volume,
             "expected_net": expected_net,
         },
-        "meta": {
-            "calc_coverage_pct": coverage_pct,
-        },
+        "meta": {"calc_coverage_pct": coverage_pct},
     }
     return partial, gaps, coverage_pct
 # add to imports
@@ -779,7 +933,9 @@ async def derive_columns(
     mappings = await _parse_json_field(form.get("mappings"), "mappings")
     options  = await _parse_json_field(form.get("options"),  "options")
     actions  = await _parse_json_field(form.get("actions"),  "actions")  # optional separate field
-
+    target   = await _parse_json_field(form.get("target"),   "target")    # ✅ NEW
+    dataset_id_raw = form.get("dataset_id")                                # ✅ NEW
+    dataset_id: int | None = int(dataset_id_raw) if dataset_id_raw else None
     # Merge actions: explicit 'actions' field takes precedence, else options.allowed_actions
     if not actions:
         actions = (options or {}).get("allowed_actions", [])
@@ -871,6 +1027,38 @@ async def derive_columns(
     }
     # --- Preflight + safe compute (non-blocking)
     partial, calc_gaps, coverage_pct = _preflight_and_compute(C, O, M, options)
+
+    # Cache a small preview (orders preferred), keyed by dataset_id
+    try:
+        if dataset_id is not None:
+            preview_rows = (
+                (O.head(50).to_dict("records") if O is not None and len(O) else None)
+                or (C.head(50).to_dict("records") if C is not None and len(C) else None)
+                or (M.head(50).to_dict("records") if M is not None and len(M) else None)
+            )
+            if preview_rows:
+                PREVIEW_STORE[dataset_id] = preview_rows
+    except Exception:
+        pass
+
+    try:
+        preview_rows = (O.head(50).to_dict("records") if O is not None else None) \
+                       or (C.head(50).to_dict("records") if C is not None else None) \
+                       or (M.head(50).to_dict("records") if M is not None else None)
+        if target:
+            t_model = TargetSpecModel(**target)
+            planner_signals = map_target_to_signals(t_model, preview_rows)
+            if dataset_id is not None:
+                SIGNALS_STORE[dataset_id] = planner_signals
+    except Exception:
+        preview_rows = None
+    try:
+        target_spec = TargetSpecModel(**(target or {}))
+        planner_signals = map_target_to_signals(target_spec, preview_rows)
+        if dataset_id is not None:
+            SIGNALS_STORE[dataset_id] = planner_signals
+    except Exception:
+        planner_signals = None
 
     # Horizon selection (unchanged)
     tested = options.get("horizons", [7, 14, 30]) or [14]
@@ -966,10 +1154,6 @@ async def derive_columns(
         "actions": norm_actions,
         "schema_contract": SCHEMA_CONTRACT,  # lets the UI label fields
         "file_health": file_health,          # stats + preview + issues
-        "preflight": {
-            "calc_gaps": calc_gaps,
-            "coverage_pct": coverage_pct
-        },
 
         "derived": derived,
         "warnings": warnings,          # your existing general warnings
@@ -978,6 +1162,7 @@ async def derive_columns(
             "coverage_pct": coverage_pct
         },
         "modified_csvs": modified_csvs,  # if you added CSV export earlier
+        "planner_signals": planner_signals.model_dump() if planner_signals else None,
     }
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, conint, confloat
@@ -1012,13 +1197,34 @@ class ArtifactsIn(BaseModel):
     forecast: bool = False
     survival: bool = False
     clustering: bool = False
+from typing import Optional, Union, Literal
 
+class TargetSpecModel(BaseModel):
+    task: Literal["classification","regression","forecast","survival","segment","auto"] = "auto"
+    target_column: Optional[str] = None
+    positive_class: Optional[Union[str, int, bool]] = None
+    ts_column: Optional[str] = None
+    id_column: Optional[str] = None
+    horizon_days: Optional[int] = None
+def _as_target_model(obj) -> TargetSpecModel:
+    # Accept dict or pydantic model; default to auto if malformed
+    try:
+        if isinstance(obj, TargetSpecModel):
+            return obj
+        if hasattr(obj, "model_dump"):
+            return TargetSpecModel(**obj.model_dump())
+        if isinstance(obj, dict):
+            return TargetSpecModel(**obj)
+    except Exception:
+        pass
+    return TargetSpecModel()  # task="auto", everything else None
 class CompileRequest(BaseModel):
     intent: IntentIn
-    signals: SignalsIn
+    signals: Optional[SignalsIn] = None
     artifacts: ArtifactsIn
     top_k: int = 1
-
+    dataset_id: Optional[int] = None
+    target: Optional[TargetSpecModel] = None 
 # --------- Response Schemas (shape returned by compile_plan) ----------
 class PlanStepOut(BaseModel):
     idx: int
@@ -1047,17 +1253,161 @@ class PlanSummaryOut(BaseModel):
 class CompileResponse(BaseModel):
     steps: List[PlanStepOut]
     summary: PlanSummaryOut
+import pandas as pd
+from typing import Any, Dict, List, Optional, Union
 
+# --- helper: infer label type from preview values ---
+def _infer_label_type_from_preview(rows: List[Dict[str, Any]], target_col: str) -> Optional[str]:
+    """
+    Heuristic:
+      - 'numeric' if ≥70% of preview values parse as numbers
+      - else 'binary' if ≤2 unique non-null values
+      - else 'multiclass' if >2
+    """
+    if not rows or not target_col:
+        return None
+    s = pd.Series([r.get(target_col) for r in rows])
+
+    # numeric if enough values coerce to numbers
+    as_num = pd.to_numeric(s, errors="coerce")
+    if as_num.notna().mean() >= 0.70:
+        return "numeric"
+
+    # categorical cases
+    uniq = pd.Series(s.dropna()).unique().tolist()
+    if len(uniq) <= 2:
+        return "binary"
+    if len(uniq) > 2:
+        return "multiclass"
+    return None
+
+# --- helper: compute binary event rate robustly ---
+def _compute_event_rate_binary(
+    values: List[Any],
+    positive_class: Optional[Union[str, int, bool]] = None,
+) -> Optional[float]:
+    if not values:
+        return None
+
+    if positive_class is None:
+        # fallback: truthy semantics (strings 'true','yes','1', numbers !=0, bool True)
+        def _is_pos(v: Any) -> bool:
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)) and pd.notna(v):
+                return v != 0
+            if isinstance(v, str):
+                t = v.strip().lower()
+                return t in {"true", "yes", "y", "1"}
+            return bool(v)
+        trues = sum(1 for v in values if _is_pos(v))
+    else:
+        trues = sum(1 for v in values if v == positive_class)
+
+    denom = max(1, len(values))
+    return trues / denom
+
+# --- upgraded mapper: uses TargetSpecModel and returns SignalsIn ---
+def map_target_to_signals(t: TargetSpecModel, preview_rows: Optional[List[Dict[str, Any]]]) -> SignalsIn:
+    task = (t.task or "auto").lower()
+
+    has_label: Optional[bool] = None
+    label_type: Optional[str] = None
+    has_time: Optional[bool] = bool(t.ts_column) if t.ts_column else None
+    is_censored: Optional[bool] = True if task == "survival" else None
+    horizon_days: Optional[int] = t.horizon_days
+
+    # Shape info from preview (optional, but nice to populate)
+    rows_count: Optional[int] = None
+    cols_count: Optional[int] = None
+    if preview_rows:
+        df_prev = pd.DataFrame(preview_rows)
+        rows_count = int(len(df_prev))
+        cols_count = int(df_prev.shape[1])
+
+    # Decide label/time based on task + target_column
+    if t.target_column:
+        # We do have a label column hint
+        if task == "regression":
+            has_label = True
+            label_type = "numeric"
+        elif task in ("classification", "segment"):
+            has_label = True
+            # If classification but no positive_class/type given, infer from preview
+            if preview_rows:
+                label_type = _infer_label_type_from_preview(preview_rows, t.target_column) or "binary"
+            else:
+                label_type = "binary"
+        elif task in ("forecast", "time_series", "ts_forecast"):
+            has_time = True if has_time is None else has_time
+            horizon_days = horizon_days or 14
+            # For forecasting, treat future y as unknown during planning
+            has_label = False if has_label is None else has_label
+            label_type = None
+        elif task == "auto":
+            # Infer from preview; if unknown, leave as None to let downstream fallbacks kick in
+            has_label = True
+            if preview_rows:
+                label_type = _infer_label_type_from_preview(preview_rows, t.target_column)
+        else:
+            # Unknown task string: best-effort
+            has_label = True
+
+    # If no explicit task but we have a ts_column, prefer time-awareness
+    if has_time and task == "auto" and horizon_days is None:
+        horizon_days = 14  # gentle default
+
+    # event rate for binary labels (optional)
+    event_rate: Optional[float] = None
+    if has_label and label_type == "binary" and t.target_column and preview_rows:
+        vals = [r.get(t.target_column) for r in preview_rows if t.target_column in r]
+        event_rate = _compute_event_rate_binary(vals, t.positive_class)
+
+    # Build and return your pydantic SignalsIn instance
+    return SignalsIn(
+        hasLabel=has_label,
+        labelType=label_type,
+        hasTime=has_time,
+        isCensored=is_censored,
+        horizonDays=horizon_days,
+        eventRate=event_rate,
+        rows=rows_count,
+        cols=cols_count,
+        tsColumn=t.ts_column,
+        idColumn=t.id_column,
+    )
+
+def load_preview_for_dataset(dataset_id: Optional[int]) -> Optional[List[Dict[str, Any]]]:
+    if dataset_id is None:
+        return None
+    return PREVIEW_STORE.get(dataset_id)
 @router.post("/compile", response_model=CompileResponse)
 def compile_route(payload: CompileRequest, current_user=Depends(get_current_active_user)):
     try:
+        # 1) prefer signals saved during /derive for this dataset
+        signals_dict: Dict[str, Any] = {}
+        if payload.dataset_id is not None and payload.dataset_id in SIGNALS_STORE:
+            mdl = SIGNALS_STORE[payload.dataset_id]
+            signals_dict = mdl.model_dump() if hasattr(mdl, "model_dump") else getattr(mdl, "__dict__", {}) or {}
+
+        # 2) else, map UX target → PlannerSignals on the fly
+        if not signals_dict and payload.target is not None:
+            preview_rows = load_preview_for_dataset(payload.dataset_id)
+            mapped = map_target_to_signals(payload.target, preview_rows)
+            signals_dict = mapped.model_dump() if hasattr(mapped, "model_dump") else getattr(mapped, "__dict__", {}) or {}
+
+        # 3) else, fall back to whatever the client sent (may be empty/nulls)
+        if not signals_dict and payload.signals is not None:
+            signals_dict = payload.signals.model_dump()
+
         plan = compile_plan(
             intent=payload.intent.model_dump(),
-            signals=payload.signals.model_dump(),
+            signals=signals_dict,
             artifacts=payload.artifacts.model_dump(),
             top_k=payload.top_k,
         )
-        # plan.summary is a dataclass; expose a JSONable dict
+
+        # Summary (dataclass → dict)
         summary = {
             "score": plan.summary.score,
             "value": plan.summary.value,
@@ -1067,6 +1417,43 @@ def compile_route(payload: CompileRequest, current_user=Depends(get_current_acti
             "families": list(plan.summary.families),
             "chosen_core": plan.summary.chosen_core,
         }
-        return {"steps": plan.steps, "summary": summary}
+
+        # Steps (dict-safe; backwards-compatible with object-shaped steps)
+        steps_out: List[Dict[str, Any]] = []
+        for st in plan.steps:
+            s = st if isinstance(st, dict) else {
+                "idx": getattr(st, "idx", 0),
+                "name": getattr(st, "name", ""),
+                "endpoint": getattr(st, "endpoint", ""),
+                "depends_on": list(getattr(st, "depends_on", []) or []),
+                "produces":   list(getattr(st, "produces", []) or []),
+                "consumes":   list(getattr(st, "consumes", []) or []),
+                "est_cost": getattr(st, "est_cost", 0.0),
+                "est_latency_ms": getattr(st, "est_latency_ms", 0),
+                "est_risk": getattr(st, "est_risk", 0.0),
+                "idempotent": getattr(st, "idempotent", True),
+                "once_per_dataset": getattr(st, "once_per_dataset", False),
+                "family": getattr(st, "family", "other"),
+                "headers": getattr(st, "headers", {}) or {},
+            }
+
+            steps_out.append({
+                "idx": int(s.get("idx", 0)),
+                "name": s.get("name", ""),
+                "endpoint": s.get("endpoint", ""),
+                "depends_on": list(s.get("depends_on", []) or []),
+                "produces":   list(s.get("produces", []) or []),
+                "consumes":   list(s.get("consumes", []) or []),
+                "est_cost": float(s.get("est_cost", 0.0)),
+                "est_latency_ms": int(s.get("est_latency_ms", 0)),
+                "est_risk": float(s.get("est_risk", 0.0)),
+                "idempotent": bool(s.get("idempotent", True)),
+                "once_per_dataset": bool(s.get("once_per_dataset", False)),
+                "family": s.get("family", "other"),
+                "headers": s.get("headers", {}) or {},
+            })
+
+        return {"steps": steps_out, "summary": summary}
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
