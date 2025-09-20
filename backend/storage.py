@@ -235,13 +235,13 @@ def _dumps(obj: Any) -> str:
     return json.dumps(obj, default=_json_default, ensure_ascii=False)
 
 import tempfile, os
-
 def save_intake_artifacts(
     *,
     dataset_id: int,
-    meta: dict,
-    stats: dict,
-    preview: dict,          # {"raw": [...], "normalized": [...]}
+    user_id: str | int,     # <-- NEW (required now)
+    meta: dict = None,
+    stats: dict = None,
+    preview: dict = None,   # {"raw": [...], "normalized": [...]}
     artifacts: dict = None  # optional; whatever you want to reference
 ) -> dict:
     """
@@ -252,53 +252,69 @@ def save_intake_artifacts(
     uploaded = {}
 
     # (1) meta.json
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        tmp.write(_dumps(meta).encode("utf-8"))
-        tmp.flush()
-        uploaded["meta"] = upload_file_to_supabase(file_path=tmp.name,
-                                                   filename=os.path.basename(paths["meta"]),
-                                                   user_id="system",  # or current_user.id
-                                                   dest_path=paths["meta"])
-    # (2) stats.json
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        tmp.write(_dumps(stats).encode("utf-8"))
-        tmp.flush()
-        uploaded["stats"] = upload_file_to_supabase(file_path=tmp.name,
-                                                    filename=os.path.basename(paths["stats"]),
-                                                    user_id="system",
-                                                    dest_path=paths["stats"])
-    # (3) preview.normalized.json
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        norm = preview.get("normalized") or []
-        tmp.write(_dumps(norm).encode("utf-8"))
-        tmp.flush()
-        uploaded["preview_norm"] = upload_file_to_supabase(file_path=tmp.name,
-                                                           filename=os.path.basename(paths["preview_norm"]),
-                                                           user_id="system",
-                                                           dest_path=paths["preview_norm"])
-
-    # (4) preview.raw.json (optional)
-    raw = preview.get("raw")
-    if raw is not None:
+    if meta is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            tmp.write(_dumps(raw).encode("utf-8"))
+            tmp.write(_dumps(meta).encode("utf-8"))
             tmp.flush()
-            uploaded["preview_raw"] = upload_file_to_supabase(file_path=tmp.name,
-                                                              filename=os.path.basename(paths["preview_raw"]),
-                                                              user_id="system",
-                                                              dest_path=paths["preview_raw"])
+            uploaded["meta"] = upload_file_to_supabase(
+                file_path=tmp.name,
+                filename=os.path.basename(paths["meta"]),
+                user_id=user_id,                 # <-- pass user_id here
+                dest_path=paths["meta"],
+            )
+
+    # (2) stats.json
+    if stats is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(_dumps(stats).encode("utf-8"))
+            tmp.flush()
+            uploaded["stats"] = upload_file_to_supabase(
+                file_path=tmp.name,
+                filename=os.path.basename(paths["stats"]),
+                user_id=user_id,
+                dest_path=paths["stats"],
+            )
+
+    # (3) preview.normalized.json
+    if preview is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            norm = preview.get("normalized") or []
+            tmp.write(_dumps(norm).encode("utf-8"))
+            tmp.flush()
+            uploaded["preview_norm"] = upload_file_to_supabase(
+                file_path=tmp.name,
+                filename=os.path.basename(paths["preview_norm"]),
+                user_id=user_id,
+                dest_path=paths["preview_norm"],
+            )
+
+        # (4) preview.raw.json (optional)
+        raw = preview.get("raw")
+        if raw is not None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+                tmp.write(_dumps(raw).encode("utf-8"))
+                tmp.flush()
+                uploaded["preview_raw"] = upload_file_to_supabase(
+                    file_path=tmp.name,
+                    filename=os.path.basename(paths["preview_raw"]),
+                    user_id=user_id,
+                    dest_path=paths["preview_raw"],
+                )
 
     # (5) artifacts.json (optional)
     if artifacts is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
             tmp.write(_dumps(artifacts).encode("utf-8"))
             tmp.flush()
-            uploaded["artifacts"] = upload_file_to_supabase(file_path=tmp.name,
-                                                            filename=os.path.basename(paths["artifacts"]),
-                                                            user_id="system",
-                                                            dest_path=paths["artifacts"])
+            uploaded["artifacts"] = upload_file_to_supabase(
+                file_path=tmp.name,
+                filename=os.path.basename(paths["artifacts"]),
+                user_id=user_id,
+                dest_path=paths["artifacts"],
+            )
 
     return uploaded
+
 def _download_json(path: str) -> dict | list:
     # Your helper returns bytes
     blob = download_file_from_supabase(path)
@@ -367,7 +383,104 @@ def delete_supabase_prefix(prefix: str) -> int:
         return 0
 # 5) Local artifacts
 ARTIFACTS_ROOT = PathL("artifacts")  # matches your training code
+SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+if SUPABASE_ENABLED:
+    from supabase import create_client
+    _sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+# -----------------------------
+# Path/Key helpers
+# -----------------------------
+def _safe_filename(name: str) -> str:
+    name = os.path.basename(name or "").replace("\x00", "")
+    # keep alnum and a few safe symbols
+    name = "".join(c for c in name if c.isalnum() or c in (" ", ".", "_", "-", "(", ")")).strip()
+    return name or f"upload_{int(time.time())}.csv"
 
+def _strip_bucket_prefix(key: str) -> str:
+    """
+    Turn 'user-uploads/123/My File.csv' or '/user-uploads/123/My File.csv'
+    into '123/My File.csv' so UI can keep basename stable.
+    """
+    if not key:
+        return key
+    key = key.lstrip("/")
+    if key.startswith(SUPABASE_BUCKET + "/"):
+        return key[len(SUPABASE_BUCKET) + 1 :]
+    return key
+
+def _supakey_original(user_id: int, filename: str) -> str:
+    # Flat per-user namespace as requested
+    return f"{user_id}/{filename}"
+
+def _supakey_encoder(user_id: int, dataset_id: int, name: str) -> str:
+    return f"{user_id}/enc_{dataset_id}_{name}"
+
+def _supakey_processed(user_id: int, dataset_id: int, name: str) -> str:
+    return f"{user_id}/proc_{dataset_id}_{name}"
+
+def _quick_csv_shape(fp: str) -> Tuple[Optional[int], Optional[int]]:
+    try:
+        with open(fp, "r", encoding="utf-8", newline="") as f:
+            sample = f.read(64_000)
+            f.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+            except Exception:
+                dialect = csv.excel
+            reader = csv.reader(f, dialect)
+            header = next(reader, [])
+            cols = len(header)
+            rows = sum(1 for _ in reader)
+            return rows, cols
+    except Exception:
+        return None, None
+
+def _write_upload_to_disk(upload: UploadFile, dest_path: str):
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    tmp = dest_path + ".tmp"
+    with open(tmp, "wb") as out:
+        shutil.copyfileobj(upload.file, out, length=1024 * 1024)
+    os.replace(tmp, dest_path)
+
+def _content_type_for_ext(filename: str, fallback: str = "text/csv") -> str:
+    ctype = mimetypes.guess_type(filename)[0]
+    return ctype or fallback
+
+# -----------------------------
+# Supabase Storage helpers
+# -----------------------------
+def sb_upload_from_path(bucket: str, key: str, local_path: str, content_type: str = "application/octet-stream", upsert: bool = True):
+    if not SUPABASE_ENABLED:
+        raise RuntimeError("Supabase is not configured")
+    with open(local_path, "rb") as fh:
+        _sb.storage.from_(bucket).upload(
+            path=key,
+            file=fh,
+            file_options={"content-type": content_type, "upsert": str(upsert).lower()},
+        )
+
+def sb_download_to_path(bucket: str, key: str, dest_path: str):
+    if not SUPABASE_ENABLED:
+        raise RuntimeError("Supabase is not configured")
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    data = _sb.storage.from_(bucket).download(key)
+    tmp = dest_path + ".tmp"
+    with open(tmp, "wb") as out:
+        out.write(data)
+    os.replace(tmp, dest_path)
+
+def sb_signed_url(bucket: str, key: str, seconds: int = 300) -> Optional[str]:
+    if not SUPABASE_ENABLED:
+        return None
+    try:
+        resp = _sb.storage.from_(bucket).create_signed_url(key, seconds)
+        # v2 returns dict with 'signedURL' or 'signed_url'
+        if isinstance(resp, dict):
+            return resp.get("signedURL") or resp.get("signed_url")
+        return None
+    except Exception as e:
+        logger.warning(f"Signed URL failed for {key}: {e}")
+        return None
 def delete_local_artifacts_for_user(user_id: int) -> None:
     p = ARTIFACTS_ROOT / str(user_id)
     try:

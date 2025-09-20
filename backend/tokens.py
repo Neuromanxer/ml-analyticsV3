@@ -152,4 +152,20 @@ def verify_payment(
         payment_intent= pi_id,
         amount_charged= cents / 100.0,
     )
-
+def _read_user_balance(user: "User") -> float:
+    """
+    Read a numeric balance from the user model. We try a few common attribute names
+    so the route is resilient to minor schema differences.
+    """
+    for attr in ("tokens", "token_balance", "balance", "credits", "credit"):
+        v = getattr(user, attr, None)
+        if v is not None:
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
+@router.get("/balance")
+def get_balance(user: User = Depends(get_current_active_user)):
+    bal = float(getattr(user, "tokens", 0.0) or 0.0)
+    return {"balance": round(bal, 2)}

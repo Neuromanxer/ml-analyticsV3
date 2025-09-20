@@ -1,41 +1,30 @@
-
 from __future__ import annotations
 
+# ============================== ml_intake.py ===============================
+# Drop-in, pasteable module for intake & normalization with gap priors
+# ==========================================================================
+
+# stdlib
 import csv
-import io
 import json
 import math
 import os
 import re
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 
+# 3rd-party
 import numpy as np
 import pandas as pd
 from difflib import SequenceMatcher
+from pandas.api.types import is_datetime64_any_dtype, is_timedelta64_dtype
 
 # ---- Optional deps (fail-soft)
 try:
     import chardet  # type: ignore
 except Exception:
     chardet = None  # not required
-
-
-
-# # --- your project imports (adjust paths as needed)
-# from .auth import get_current_active_user, get_user_db, Dataset
-# from .storage import upload_file_to_supabase
-# from .storage import save_intake_artifacts
-
-
-
-
-# --- your project imports (adjust paths as needed)
-from auth import get_current_active_user, get_user_db, Dataset
-from storage import upload_file_to_supabase
-from storage import save_intake_artifacts
 
 # -----------------------------
 # Data structures
@@ -47,7 +36,8 @@ class DialectInfo:
     quotechar: str
     has_header: bool
     decimal: str
-    thousands: Optional[str]  # None if not detected
+    thousands: Optional[str]
+    confidence: Optional[float] = None
 
 @dataclass
 class ColumnMeta:
@@ -58,7 +48,7 @@ class ColumnMeta:
 
 @dataclass
 class TypeInfo:
-    semantic: str            # one of: id, email, phone, url, ip, json, boolean, timestamp, numeric, money, percent, categorical, text
+    semantic: str            # id, email, phone, url, ip, json, boolean, timestamp, numeric, money, percent, categorical, text
     pandas_dtype: str        # df[col].dtype.str
     unique_ratio: float
     valid_rate: float        # share of non-nulls that validate the semantic
@@ -75,12 +65,191 @@ class IntakeMeta:
     json_columns: Dict[str, List[str]]         # original json col -> expanded subcolumns (if parsed)
     nested_csv_columns: List[str]
     anomalies: List[str]
+    data_gaps: Dict[str, Any] = field(default_factory=dict)
+    assumptions: Dict[str, Any] = field(default_factory=dict)
+    priors: Dict[str, Any] = field(default_factory=dict)
+    prior_provenance: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class IntakeResult:
     df_raw: pd.DataFrame
     df_normalized: pd.DataFrame
     meta: IntakeMeta
+
+# -----------------------------
+# Priors & proxy evidence
+# -----------------------------
+# role -> (alpha, beta) i.e., Beta(alpha, beta)
+INDUSTRY_PRIORS: Dict[str, Tuple[float, float]] = {
+    "unsubscribe": (2.0, 98.0),   # mean ~2%
+    "discount":    (3.0, 97.0),   # mean ~3%
+    "returns":     (2.0, 198.0),  # mean ~1%
+    "referral":    (3.0, 97.0),   # mean ~3% of revenue/users
+}
+
+def _beta_mean(a: float, b: float) -> float:
+    return a / (a + b) if (a + b) > 0 else 0.0
+
+def _beta_ci(a: float, b: float, conf: float = 0.95) -> Tuple[float, float]:
+    # Wilson-ish approximation if scipy not installed
+    n = a + b
+    p = _beta_mean(a, b)
+    if n <= 2:
+        return (max(0.0, p - 0.2), min(1.0, p + 0.2))
+    z = 1.96 if conf >= 0.95 else 1.645
+    denom = 1 + z**2 / n
+    center = (p + z**2/(2*n)) / denom
+    half = z * math.sqrt((p*(1-p) + z**2/(4*n)) / n) / denom
+    lo, hi = max(0.0, center - half), min(1.0, center + half)
+    return (lo, hi)
+
+def _proxy_counts_unsubscribe(df: pd.DataFrame) -> Tuple[int, int]:
+    cand = [c for c in df.columns if any(k in c.lower() for k in ["unsub", "opt_out", "optout", "dnc"])]
+    for c in cand:
+        s = df[c].astype(str).str.lower()
+        pos = s.isin(["1","true","t","yes","y"]).sum()
+        neg = s.isin(["0","false","f","no","n"]).sum()
+        if pos + neg >= 20:
+            return int(pos), int(neg)
+    return 0, 0
+
+def _proxy_counts_returns(df: pd.DataFrame) -> Tuple[int, int]:
+    cand = [c for c in df.columns if any(k in c.lower() for k in ["return", "refund", "chargeback"])]
+    for c in cand:
+        s = df[c].astype(str).str.lower()
+        pos = s.isin(["1","true","t","yes","y"]).sum()
+        neg = s.isin(["0","false","f","no","n"]).sum()
+        if pos + neg >= 20:
+            return int(pos), int(neg)
+    amt_cols = [c for c in df.columns if c.endswith("_num") or c.endswith("_usd")]
+    if amt_cols:
+        x = pd.to_numeric(df[amt_cols[0]], errors="coerce")
+        pos = int((x < 0).sum())
+        neg = int((x >= 0).sum())
+        if pos + neg >= 100:
+            return max(1, pos), max(1, neg)
+    return 0, 0
+
+def _proxy_counts_discount(df: pd.DataFrame) -> Tuple[int, int]:
+    cand = [c for c in df.columns if "discount" in c.lower() and (c.endswith("_num") or c.endswith("_rate"))]
+    for c in cand:
+        x = pd.to_numeric(df[c], errors="coerce")
+        pos = int((x.fillna(0) > 0).sum())
+        neg = int((x.fillna(0) <= 0).sum())
+        if pos + neg >= 20:
+            return pos, neg
+    return 0, 0
+
+def _proxy_counts_referral(df: pd.DataFrame) -> Tuple[int, int]:
+    cand = [c for c in df.columns if any(k in c.lower() for k in ["referral", "referred_by", "invite", "promo_code"])]
+    for c in cand:
+        s = df[c].astype(str)
+        pos = int(s.notna().sum() - (s == "").sum())
+        neg = int(len(s) - pos)
+        if pos + neg >= 20:
+            return pos, neg
+    return 0, 0
+
+PROXY_MAP: Dict[str, Callable[[pd.DataFrame], Tuple[int, int]]] = {
+    "unsubscribe": _proxy_counts_unsubscribe,
+    "returns":     _proxy_counts_returns,
+    "discount":    _proxy_counts_discount,
+    "referral":    _proxy_counts_referral,
+}
+
+def build_gap_priors(
+    df_norm: pd.DataFrame,
+    meta: IntakeMeta,
+    *,
+    industry_priors: Dict[str, Tuple[float, float]] = INDUSTRY_PRIORS,
+    tenant_overrides: Optional[Dict[str, Tuple[float, float]]] = None,
+) -> Dict[str, Any]:
+    """
+    Produces Beta(a,b) for each gap role with mean & 95% CI, plus provenance.
+    Hierarchy:
+      1) tenant_overrides (if provided)
+      2) industry_priors
+      3) update with observed proxies -> posterior
+    """
+    tenant_overrides = tenant_overrides or {}
+    results: Dict[str, Any] = {}
+    provenance: Dict[str, Any] = {}
+
+    gaps = (getattr(meta, "data_gaps", {}) or {}).keys()
+    roles = set(list(gaps) + list(industry_priors.keys()))
+
+    for role in roles:
+        a0, b0 = tenant_overrides.get(role, industry_priors.get(role, (1.0, 99.0)))
+        prov: Dict[str, Any] = {"base": "tenant" if role in tenant_overrides else "industry", "a0": a0, "b0": b0}
+
+        pos, neg = (0, 0)
+        if role in PROXY_MAP:
+            try:
+                pos, neg = PROXY_MAP[role](df_norm)
+            except Exception:
+                pos, neg = (0, 0)
+
+        weight = {"unsubscribe":1.0, "returns":0.8, "discount":0.6, "referral":0.5}.get(role, 0.5)
+        a = a0 + weight * pos
+        b = b0 + weight * neg
+
+        mean = _beta_mean(a, b)
+        lo, hi = _beta_ci(a, b)
+
+        results[role] = {
+            "alpha": float(a), "beta": float(b),
+            "mean": float(mean), "ci95": [float(lo), float(hi)],
+            "n_proxy_pos": int(pos), "n_proxy_neg": int(neg),
+            "proxy_weight": float(weight),
+        }
+        prov["proxy_counts"] = {"pos": pos, "neg": neg}
+        prov["weight"] = weight
+        provenance[role] = prov
+
+    meta.priors = results
+    meta.prior_provenance = provenance
+    return results
+
+def get_rate(meta: IntakeMeta, role: str) -> Dict[str, Any]:
+    """
+    Returns a dict with final point estimate + CI and provenance for UI/receipts.
+    Priority: user override (assumptions) > posterior mean from priors+proxies.
+    """
+    override_key_map = {
+        "unsubscribe": "assume_unsubscribed_rate",
+        "discount":    "assume_discount_rate",
+        "returns":     "assume_return_loss_rate",
+        "referral":    "assume_referral_revenue_share",
+    }
+    override_key = override_key_map.get(role)
+    override_val = None
+    if override_key and isinstance(meta.assumptions, dict) and override_key in meta.assumptions:
+        try:
+            override_val = float(meta.assumptions[override_key])
+        except Exception:
+            override_val = None
+
+    pr = (meta.priors or {}).get(role, {"mean": 0.0, "ci95": [0.0, 0.0], "alpha": 1.0, "beta": 99.0})
+    val = float(override_val) if override_val is not None else float(pr.get("mean", 0.0))
+    lo, hi = pr.get("ci95", [val, val])
+
+    return {
+        "value": val,
+        "ci95": [float(lo), float(hi)],
+        "source": "user_override" if override_val is not None else (meta.prior_provenance.get(role, {}).get("base", "industry")),
+        "posterior": {"alpha": pr.get("alpha", 1.0), "beta": pr.get("beta", 1.0)},
+    }
+
+def apply_rate_uncertainty(point_estimate: float, ci95: List[float], value: float) -> Tuple[float, float]:
+    """
+    Example: widen an outcome by the relative width of the rate's CI.
+    """
+    lo, hi = ci95
+    if point_estimate <= 0:
+        return (value * (1 - hi), value * (1 - lo))
+    rel_minus = max(0.0, (point_estimate - lo)) / max(1e-9, point_estimate)
+    rel_plus  = max(0.0, (hi - point_estimate)) / max(1e-9, point_estimate)
+    return (value * (1 - rel_plus), value * (1 + rel_minus))
 
 # -----------------------------
 # Core entry
@@ -97,7 +266,7 @@ def intake_and_normalize(
     df_raw = _read_dataframe(file_path, dialect)
     df_raw = _strip_bom_and_trim(df_raw)
 
-    header_map = _normalize_headers(df_raw.columns)
+    header_map = _normalize_headers(df_raw.columns.tolist())
     df = df_raw.rename(columns={c: header_map[c].normalized_name for c in df_raw.columns})
 
     # Detect JSON-in-cell
@@ -136,6 +305,29 @@ def intake_and_normalize(
         nested_csv_columns=nested_csv_cols,
         anomalies=anomalies,
     )
+
+    # Detect gaps
+    gap_report = _detect_data_gaps(df_norm, header_map)
+    meta.data_gaps = {k: asdict(v) for k, v in gap_report.items()}
+
+    # Collect defaults only for missing keys with a real default
+    meta.assumptions = {
+        k: v.assumption
+        for k, v in gap_report.items()
+        if v.status == "missing" and v.assumption is not None
+    }
+
+    # Build priors (posterior = prior + proxies)
+    build_gap_priors(df_norm, meta, industry_priors=INDUSTRY_PRIORS)
+
+    # attach lightweight stats
+    setattr(meta, "stats", {
+        "raw_rows": int(df_raw.shape[0]),
+        "raw_cols": int(df_raw.shape[1]),
+        "normalized_rows": int(df_norm.shape[0]),
+        "normalized_cols": int(df_norm.shape[1]),
+    })
+
     return IntakeResult(df_raw=df_raw, df_normalized=df_norm, meta=meta)
 
 # -----------------------------
@@ -144,35 +336,63 @@ def intake_and_normalize(
 def _sniff_dialect_and_encoding(file_path: str, *, sample_bytes: int = 200_000) -> DialectInfo:
     raw = Path(file_path).read_bytes()[:sample_bytes]
 
-    # Encoding
+    # --- encoding ---
     enc = "utf-8"
     if raw.startswith(b"\xef\xbb\xbf"):
         enc = "utf-8-sig"
-    elif chardet:
+    elif chardet is not None:
         try:
-            enc_guess = chardet.detect(raw) or {}
-            if enc_guess.get("encoding"):
-                enc = enc_guess["encoding"]
+            guess = chardet.detect(raw) or {}
+            if guess.get("encoding"):
+                enc = guess["encoding"]
         except Exception:
             pass
 
-    # Delimiter & header
     text = raw.decode(enc, errors="replace")
-    sniffer = csv.Sniffer()
-    try:
-        dialect = sniffer.sniff(text, delimiters=[",", ";", "\t", "|", "^"])
-        delimiter = dialect.delimiter
-        quotechar = dialect.quotechar or '"'
-    except Exception:
-        # Fallback
-        delimiter, quotechar = _fallback_delimiter(text), '"'
 
+    # --- candidate delimiters ---
+    candidates = [",", ";", "\t", "|", "^"]
+
+    # try csv.Sniffer first
+    sniffer = csv.Sniffer()
+    delim_guess = None
+    quotechar = '"'
+    try:
+        d = sniffer.sniff(text, delimiters=candidates)
+        delim_guess = d.delimiter
+        quotechar = d.quotechar or '"'
+    except Exception:
+        pass
+
+    # score each delimiter by consistency of column counts across first ~200 lines
+    def _score_delim(delim: str) -> Tuple[float, int]:
+        lines = [ln for ln in text.splitlines() if ln.strip()][:200]
+        if not lines:
+            return (0.0, 0)
+        counts = [len(ln.split(delim)) for ln in lines]
+        mean_cols = sum(counts)/len(counts)
+        var = sum((c-mean_cols)**2 for c in counts)/len(counts)
+        score = (mean_cols) / (1.0 + var)   # more columns + lower variance is better
+        return (score, int(round(mean_cols)))
+
+    # start with sniffer’s guess, then compare to others
+    scored = []
+    first = [delim_guess] if delim_guess in candidates else []
+    for delim in first + [c for c in candidates if c != delim_guess]:
+        s, _ = _score_delim(delim)
+        scored.append((s, delim))
+    scored.sort(reverse=True)  # best score first
+
+    best_score, best_delim = scored[0] if scored else (0.0, ",")
+    delimiter = best_delim
+
+    # header present?
     try:
         has_header = sniffer.has_header(text)
     except Exception:
         has_header = True
 
-    # Decimal/thousands inference
+    # number format
     decimal, thousands = _infer_number_format_from_text(text)
 
     return DialectInfo(
@@ -182,20 +402,28 @@ def _sniff_dialect_and_encoding(file_path: str, *, sample_bytes: int = 200_000) 
         has_header=bool(has_header),
         decimal=decimal,
         thousands=thousands,
+        confidence=round(float(best_score), 4),
     )
 
-def _fallback_delimiter(text: str) -> str:
-    # Count candidate delimiters on first non-empty lines
-    lines = [ln for ln in text.splitlines() if ln.strip()][:10]
-    counts = {",": 0, ";": 0, "\t": 0, "|": 0, "^": 0}
-    for ln in lines:
-        for d in counts:
-            counts[d] += ln.count(d)
-    return max(counts, key=counts.get) if counts else ","
+def _is_phone_like(x: str) -> bool:
+    if not x:
+        return False
+    s = str(x).strip()
+    # exclude date-like strings quickly
+    if re.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$", s):  # YYYY-MM-DD or YYYY/M/D
+        return False
+    if re.match(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$", s):  # M/D/YYYY etc.
+        return False
+    digits = len(re.sub(r"\D", "", s))
+    if digits < 10:
+        return False
+    if re.search(r"[A-Za-z]", s):
+        return False
+    if digits >= 20:
+        return False
+    return True
 
 def _infer_number_format_from_text(text: str) -> Tuple[str, Optional[str]]:
-    # Look for numbers with . or , near digits
-    # Heuristic: if we see patterns like "1.234,56" -> decimal ',' thousands '.', or "1,234.56" -> decimal '.' thousands ','
     sample = re.findall(r"[\d\.,]{3,}", text)[:500]
     dot_as_decimal = 0
     comma_as_decimal = 0
@@ -213,14 +441,12 @@ def _infer_number_format_from_text(text: str) -> Tuple[str, Optional[str]]:
     return ".", ","
 
 def _read_dataframe(file_path: str, d: DialectInfo) -> pd.DataFrame:
-    # Support CSV/TSV; if Excel, fall back to read_excel
     suffix = Path(file_path).suffix.lower()
     if suffix in (".xls", ".xlsx", ".xlsm"):
         try:
             return pd.read_excel(file_path)
         except Exception:
-            pass  # fallback to CSV attempt below
-
+            pass
     try:
         return pd.read_csv(
             file_path,
@@ -231,14 +457,11 @@ def _read_dataframe(file_path: str, d: DialectInfo) -> pd.DataFrame:
             engine="python",
         )
     except Exception:
-        # Minimal fallback
         return pd.read_csv(file_path, dtype=str, encoding_errors="replace")
 
 def _strip_bom_and_trim(df: pd.DataFrame) -> pd.DataFrame:
     df2 = df.copy()
-    # Trim column names and drop zero-width spaces
     df2.columns = [re.sub(r"[\u200B-\u200D\uFEFF]", "", (c or "")).strip() for c in df2.columns]
-    # Trim whitespace in string cells
     for c in df2.columns:
         if df2[c].dtype == object:
             df2[c] = df2[c].astype(str).str.strip()
@@ -268,7 +491,6 @@ _ALIAS_LEXICON: Dict[str, List[str]] = {
     "refund_id": ["refund_id", "return_id", "rma_id"],
     "appointment_id": ["appointment_id", "appt_id", "booking_id", "schedule_id"],
 }
-
 _UNIT_SUFFIXES = ["_usd", "_eur", "_gbp", "_cad", "_aud", "_jpy", "_inr", "_qty", "_count", "_pct", "_percentage", "_percent"]
 _SYMBOL_TAGS = {"%": "percent", "$": "usd_symbol", "€": "eur_symbol", "£": "gbp_symbol", "¥": "jpy_symbol"}
 
@@ -281,7 +503,7 @@ def _normalize_headers(columns: List[str]) -> Dict[str, ColumnMeta]:
         canonical = _canonical_hint(original)
         out[original] = ColumnMeta(original_name=original, normalized_name=norm, canonical_hint=canonical, tags=tags)
     # ensure uniqueness
-    seen = {}
+    seen: Dict[str, int] = {}
     for meta in out.values():
         name = meta.normalized_name
         if name not in seen:
@@ -310,16 +532,32 @@ def _tags_from_header(name: str) -> List[str]:
     return sorted(set(tags))
 
 def _canonical_hint(name: str) -> Optional[str]:
-    s = (name or "").lower()
-    best = None
-    best_score = 0.0
+    s = (name or "").strip().lower()
+    s_norm = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+
+    # 1) exact / tokenized shortcuts
+    if s_norm == "id":
+        return "customer_id"  # safer default for marketing/customer datasets
+    if s_norm.endswith("_id"):
+        if "order" in s_norm:
+            return "order_id"
+        if "customer" in s_norm or "user" in s_norm or "client" in s_norm:
+            return "customer_id"
+
+    # 2) exact alias equality
+    for canon, aliases in _ALIAS_LEXICON.items():
+        for alias in aliases:
+            if s_norm == re.sub(r"[^a-z0-9]+", "_", alias).strip("_"):
+                return canon
+
+    # 3) fuzzy fallback
+    best, best_score = None, 0.0
     for canon, aliases in _ALIAS_LEXICON.items():
         for alias in aliases:
             score = SequenceMatcher(a=s, b=alias).ratio()
             if score > best_score:
-                best_score = score
-                best = canon
-    return best if best_score >= 0.76 else None
+                best, best_score = canon, score
+    return best if best_score >= 0.80 else None
 
 # -----------------------------
 # 3) JSON-in-cell expansion
@@ -331,11 +569,9 @@ def _expand_json_columns(df: pd.DataFrame, min_parse_rate: float = 0.3) -> Tuple
         series = df2[col].dropna().astype(str)
         if series.empty:
             continue
-        # quick gate
         gate = (series.str.startswith("{") | series.str.startswith("[")).mean()
         if gate < min_parse_rate:
             continue
-        # attempt parse on a sample
         sample = series.sample(min(100, len(series)), random_state=0)
         ok = 0
         parsed_objects: List[Dict[str, Any]] = []
@@ -343,13 +579,11 @@ def _expand_json_columns(df: pd.DataFrame, min_parse_rate: float = 0.3) -> Tuple
             try:
                 pj = json.loads(v)
                 if isinstance(pj, dict):
-                    parsed_objects.append(pj)
-                    ok += 1
+                    parsed_objects.append(pj); ok += 1
             except Exception:
                 pass
         if ok / max(1, len(sample)) < min_parse_rate or not parsed_objects:
             continue
-        # collect keys and expand best-effort
         keys = set().union(*(obj.keys() for obj in parsed_objects if isinstance(obj, dict)))
         new_cols: List[str] = []
         for k in sorted(keys):
@@ -360,22 +594,15 @@ def _expand_json_columns(df: pd.DataFrame, min_parse_rate: float = 0.3) -> Tuple
     return df2, expansions
 
 def _unique_name(df: pd.DataFrame, base: str) -> str:
-    name = base
-    i = 2
+    name = base; i = 2
     while name in df.columns:
-        name = f"{base}_{i}"
-        i += 1
+        name = f"{base}_{i}"; i += 1
     return name
 
 def _safe_json_get(raw: Any, k: str) -> Any:
     try:
-        if isinstance(raw, (dict, list)):
-            obj = raw
-        else:
-            obj = json.loads(raw)
-        if isinstance(obj, dict):
-            return obj.get(k)
-        return None
+        obj = raw if isinstance(raw, (dict, list)) else json.loads(raw)
+        return obj.get(k) if isinstance(obj, dict) else None
     except Exception:
         return None
 
@@ -383,7 +610,6 @@ def _safe_json_get(raw: Any, k: str) -> Any:
 # 4) Type inference + anomalies
 # -----------------------------
 _EMAIL_RE = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.I)
-_PHONE_RE = re.compile(r"^\+?\d[\d\s().\-]{6,}$")
 _URL_RE   = re.compile(r"^https?://", re.I)
 _IPV4_RE  = re.compile(r"^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$")
 _BOOL_STR = {"true","false","yes","no","y","n","1","0","t","f"}
@@ -401,23 +627,19 @@ def _infer_types_and_anomalies(
     for col in df.columns:
         s = df[col]
         nonnull = s.dropna()
-        n = len(nonnull)
         unique_ratio = (nonnull.nunique(dropna=True) / max(1, len(s))) if len(s) else 0.0
         sample = nonnull.astype(str).head(800)
 
-        # detectors
         email_rate = _rate(sample, lambda x: bool(_EMAIL_RE.match(x)))
-        phone_rate = _rate(sample, lambda x: bool(_PHONE_RE.match(x)))
+        phone_rate = _rate(sample, _is_phone_like)
         url_rate   = _rate(sample, lambda x: bool(_URL_RE.match(x)))
         ipv4_rate  = _rate(sample, lambda x: bool(_IPV4_RE.match(x)))
         bool_rate  = _rate(sample, lambda x: x.strip().lower() in _BOOL_STR)
         json_rate  = _rate(sample, _seems_json)
 
-        # timestamp
         ts_rate, tz_found = _timestamp_parse_rate(sample)
         tz_guess = tz_guess or tz_found
 
-        # numeric / money / percent
         money_symbol_hits = _count_currency_symbols(sample)
         for sym, cnt in money_symbol_hits.items():
             currency_counts[sym] = currency_counts.get(sym, 0) + cnt
@@ -425,41 +647,39 @@ def _infer_types_and_anomalies(
         numeric_rate, as_numeric = _coerce_numeric_rate(sample, dialect.decimal, dialect.thousands)
         percent_hint = ("%" in col) or ("_pct" in col) or ("percent" in col) or ("rate" in col)
 
-        # id-like heuristic
-        id_like = unique_ratio > 0.9 and email_rate < 0.2 and phone_rate < 0.2 and ts_rate < 0.2 and numeric_rate < 0.3 and s.map(lambda x: isinstance(x, str) and len(str(x)) <= 64).mean() > 0.7
+        id_like = unique_ratio > 0.9 and email_rate < 0.2 and phone_rate < 0.2 and ts_rate < 0.2 and numeric_rate < 0.3 \
+                  and s.map(lambda x: isinstance(x, str) and len(str(x)) <= 64).mean() > 0.7
 
-        # Decide semantic
         if email_rate > 0.6:
-            sem = "email"; vr = email_rate
+            sem, vr = "email", email_rate
+        elif ts_rate > 0.5:  # tolerate messy/partial timestamps
+            sem, vr = "timestamp", ts_rate
         elif phone_rate > 0.6:
-            sem = "phone"; vr = phone_rate
+            sem, vr = "phone", phone_rate
         elif url_rate > 0.6:
-            sem = "url"; vr = url_rate
+            sem, vr = "url", url_rate
         elif ipv4_rate > 0.6:
-            sem = "ip"; vr = ipv4_rate
+            sem, vr = "ip", ipv4_rate
         elif bool_rate > 0.8:
-            sem = "boolean"; vr = bool_rate
+            sem, vr = "boolean", bool_rate
         elif json_rate > 0.6:
-            sem = "json"; vr = json_rate
-        elif ts_rate > 0.7:
-            sem = "timestamp"; vr = ts_rate
+            sem, vr = "json", json_rate
         elif id_like:
-            sem = "id"; vr = unique_ratio
+            sem, vr = "id", unique_ratio
         elif (money_symbol_hits.get("$",0)+money_symbol_hits.get("€",0)+money_symbol_hits.get("£",0)+money_symbol_hits.get("¥",0)) > 0.1*len(sample):
-            sem = "money"; vr = (sum(money_symbol_hits.values())/max(1,len(sample)))
+            sem, vr = "money", (sum(money_symbol_hits.values())/max(1,len(sample)))
         elif percent_hint and numeric_rate > 0.5:
-            sem = "percent"; vr = numeric_rate
+            sem, vr = "percent", numeric_rate
         elif numeric_rate > 0.85:
-            sem = "numeric"; vr = numeric_rate
+            sem, vr = "numeric", numeric_rate
         else:
-            # categorical vs text
             avg_len = sample.map(len).mean() if len(sample) else 0
             if unique_ratio <= 0.05 and nonnull.nunique(dropna=True) <= 50:
-                sem = "categorical"; vr = 1 - unique_ratio
+                sem, vr = "categorical", 1 - unique_ratio
             elif avg_len > 40:
-                sem = "text"; vr = 0.6
+                sem, vr = "text", 0.6
             else:
-                sem = "categorical"; vr = 0.5
+                sem, vr = "categorical", 0.5
 
         inferred[col] = TypeInfo(
             semantic=sem,
@@ -469,15 +689,13 @@ def _infer_types_and_anomalies(
             notes=None,
         )
 
-        # Anomalies (basic)
         if sem in ("numeric","money","percent"):
-            # look for impossible values
             try:
                 vals = pd.to_numeric(as_numeric, errors="coerce")
                 if sem == "percent":
                     over_1 = (vals > 1.0).mean()
                     if over_1 > 0.5 and "%" not in col.lower():
-                        anomalies.append(f"{col}: percent-like but majority values >1 (consider scaling by 100 or mark as %) ")
+                        anomalies.append(f"{col}: percent-like but majority values >1 (consider scaling by 100 or mark as %)")
             except Exception:
                 pass
 
@@ -507,10 +725,10 @@ def _seems_json(x: str) -> bool:
         return False
 
 def _timestamp_parse_rate(series: pd.Series) -> Tuple[float, Optional[str]]:
-    if len(series) == 0: return 0.0, None
+    if len(series) == 0:
+        return 0.0, None
     parsed = pd.to_datetime(series, errors="coerce", utc=False, infer_datetime_format=True)
     rate = parsed.notna().mean()
-    # timezone inference (very light-touch): if explicit tz suffix observed
     tz_guess = None
     for v in series.head(200):
         m = re.search(r"(Z|[+-]\d{2}:\d{2})$", str(v).strip())
@@ -521,12 +739,10 @@ def _timestamp_parse_rate(series: pd.Series) -> Tuple[float, Optional[str]]:
 
 def _coerce_numeric_rate(series: pd.Series, decimal: str, thousands: Optional[str]) -> Tuple[float, pd.Series]:
     s = series.astype(str)
-    # remove thousands separators, normalize decimal to '.'
     if thousands:
-        s = s.str.replace(re.escape(thousands), "", regex=True)
+        s = s.str.replace(re.escape(thousands), "", regex=False)
     if decimal != ".":
         s = s.str.replace(decimal, ".", regex=False)
-    # remove currency symbols/spaces/%
     s = s.str.replace(r"[$€£¥]", "", regex=True).str.replace("%", "", regex=False)
     s2 = pd.to_numeric(s, errors="coerce")
     return float(s2.notna().mean()), s2
@@ -556,47 +772,37 @@ def _standardize_values(
 ) -> pd.DataFrame:
     out = df.copy()
 
-    # General whitespace de-dup
     for c in out.columns:
         if out[c].dtype == object:
             out[c] = out[c].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().replace({"nan": None, "NaN": None})
 
     for col, info in inferred_types.items():
         sem = info.semantic
-        # Emails
+
         if sem == "email":
             out[col] = out[col].str.lower().str.strip()
 
-        # Phones → pseudo E.164 (best-effort, no external deps)
         if sem == "phone":
             out[col] = out[col].apply(lambda x: _to_e164_like(str(x), country_hint=country_hint))
 
-        # Booleans
         if sem == "boolean":
             out[col] = out[col].map(lambda x: str(x).strip().lower() if pd.notna(x) else x)\
                                .map({"true":True,"t":True,"yes":True,"y":True,"1":True,
                                      "false":False,"f":False,"no":False,"n":False,"0":False})
 
-        # Timestamp → pandas datetime (naive; do not localize)
         if sem == "timestamp":
             out[col] = pd.to_datetime(out[col], errors="coerce", infer_datetime_format=True)
 
-        # Money / Numeric / Percent
         if sem in ("money","numeric","percent"):
             s = out[col].astype(str)
             if thousands:
                 s = s.str.replace(re.escape(thousands), "", regex=True)
             if decimal != ".":
                 s = s.str.replace(decimal, ".", regex=False)
-            # strip symbols and percent
             s = s.str.replace(r"[$€£¥]", "", regex=True)
-            perc = False
-            if sem == "percent" or "%" in col.lower() or "pct" in col.lower() or "percent" in col.lower():
-                perc = True
             vals = pd.to_numeric(s.str.replace("%", "", regex=False), errors="coerce")
 
             if sem == "percent" and vals.notna().any():
-                # If majority >1, assume already 0-100 and scale to 0-1
                 if (vals > 1).mean() > 0.5:
                     out[col + "_rate"] = vals / 100.0
                 else:
@@ -604,31 +810,23 @@ def _standardize_values(
             else:
                 out[col + "_num"] = vals
 
-        # Categorical → slug
         if sem == "categorical":
             out[col + "_slug"] = out[col].astype(str).map(_slug_for_value)
 
-        # JSON stays as-is (already expanded earlier if configured)
-
-    # Currency-to-base (only if clearly uniform)
     _maybe_add_base_money_columns(out, inferred_types, base_currency, anomalies)
-
-    # Units canonicalization from header hints (e.g., *_oz → grams)
     _canonicalize_units_from_headers(out)
-
     return out
 
 def _to_e164_like(s: str, *, country_hint: str = "US") -> Optional[str]:
-    if not s or s.lower() == "nan": return None
+    if not s or s.lower() == "nan":
+        return None
     digits = re.sub(r"\D", "", s)
     if not digits:
         return None
-    # simple US default
     if country_hint.upper() in ("US","CA") and len(digits) == 10:
         return "+1" + digits
     if s.strip().startswith("+"):
         return "+" + digits
-    # fallback: return digits with plus
     return "+" + digits
 
 def _slug_for_value(x: Any) -> Optional[str]:
@@ -640,7 +838,6 @@ def _slug_for_value(x: Any) -> Optional[str]:
     return s or None
 
 def _maybe_add_base_money_columns(df: pd.DataFrame, inferred_types: Dict[str, TypeInfo], base_currency: str, anomalies: List[str]) -> None:
-    # If a column is money and contains a uniform currency symbol or header tag matching base_currency, produce *_base
     sym_for = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
     sym = sym_for.get(base_currency.upper())
     for col, ti in inferred_types.items():
@@ -648,13 +845,10 @@ def _maybe_add_base_money_columns(df: pd.DataFrame, inferred_types: Dict[str, Ty
             continue
         s = df[col].astype(str)
         has_sym = s.str.contains(re.escape(sym)) if sym else pd.Series([False]*len(s))
-        # If majority rows include base symbol OR header tag *_usd etc
         header_lower = col.lower()
         tagged = any(tag in header_lower for tag in [f"_{base_currency.lower()}", base_currency.lower()])
         if (has_sym.mean() > 0.6) or tagged:
-            # make numeric base column
-            nums = s.str.replace(r"[$€£¥]", "", regex=True)
-            nums = nums.str.replace(",", "", regex=False)
+            nums = s.str.replace(r"[$€£¥]", "", regex=True).str.replace(",", "", regex=False)
             try:
                 nums = pd.to_numeric(nums, errors="coerce")
                 df[col + f"_{base_currency.lower()}"] = nums
@@ -672,7 +866,7 @@ def _canonicalize_units_from_headers(df: pd.DataFrame) -> None:
         (r"_floz$","l", lambda x: x * 0.0295735),
     ]
     for col in list(df.columns):
-        if not col.lower().endswith(tuple(["_oz","_lb","_kg","_g","_ml","_l","_floz"])):
+        if not col.lower().endswith(("_oz","_lb","_kg","_g","_ml","_l","_floz")):
             continue
         s = pd.to_numeric(df[col], errors="coerce")
         for pat, canon, fn in unit_map:
@@ -688,7 +882,6 @@ def _winsorize_numeric(df: pd.DataFrame, inferred: Dict[str, TypeInfo], lower_q=
     out = df.copy()
     for col, ti in inferred.items():
         if ti.semantic in ("numeric","money","percent"):
-            # look for numerical companions we created: *_num or *_rate or *_usd
             targets = [c for c in out.columns if c.startswith(col + "_") and out[c].dtype != object]
             for t in targets:
                 series = pd.to_numeric(out[t], errors="coerce")
@@ -698,23 +891,11 @@ def _winsorize_numeric(df: pd.DataFrame, inferred: Dict[str, TypeInfo], lower_q=
                 hi = series.quantile(upper_q)
                 out[t + "_capped"] = series.clip(lower=lo, upper=hi)
     return out
-# app/routers/datasets_intake.py
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Any, Dict
-import json, os, tempfile, shutil
-import pandas as pd
-from dataclasses import asdict
 
-
-# ---------------------------
-# Helpers
-# ---------------------------
-import math
-import numpy as np
-import pandas as pd
-from pandas.api.types import is_datetime64_any_dtype, is_timedelta64_dtype
-
-def _preview_table(df: pd.DataFrame, n: int = 50):
+# -----------------------------
+# Helpers for preview & meta json
+# -----------------------------
+def _preview_table(df: pd.DataFrame, n: int = 50) -> Dict[str, Any]:
     """
     Returns {"columns": [...], "rows": [...]}
     - limits to first n rows
@@ -728,58 +909,39 @@ def _preview_table(df: pd.DataFrame, n: int = 50):
 
     sample = df.head(n).copy().reset_index(drop=True)
 
-    # ---- Normalize datetime columns -> ISO strings ----
+    # Normalize datetime columns -> ISO strings
     for c in sample.columns:
         if is_datetime64_any_dtype(sample[c]):
-            # If tz-aware, convert to UTC for consistent 'Z' suffix
             try:
                 if getattr(sample[c].dt, "tz", None) is not None:
                     sample[c] = sample[c].dt.tz_convert("UTC")
                 else:
                     sample[c] = sample[c].dt.tz_localize(None)
             except Exception:
-                # In case of mixed/invalid, coerce then localize
                 sample[c] = pd.to_datetime(sample[c], errors="coerce").dt.tz_localize(None)
-
-            # Format ISO8601 (no ms); add 'Z' if tz was UTC
             sample[c] = sample[c].dt.strftime("%Y-%m-%dT%H:%M:%S")
-
         elif is_timedelta64_dtype(sample[c]):
-            # Convert timedeltas to ISO 8601 durations (approximate)
-            sample[c] = sample[c].apply(
-                lambda td: _td_to_iso(td) if pd.notna(td) else None
-            )
+            sample[c] = sample[c].apply(lambda td: _td_to_iso(td) if pd.notna(td) else None)
 
-    # ---- Replace non-finite numbers with None ----
     num_cols = sample.select_dtypes(include=[np.number]).columns
     for c in num_cols:
         col = sample[c]
-        # map NaN/Inf -> None while preserving ints/floats
         sample[c] = col.apply(lambda x: x if (isinstance(x, (int, float)) and math.isfinite(x)) else (None if pd.isna(x) or isinstance(x, float) else x))
 
-    # ---- Ensure objects/others don't carry np.* scalars or NaN ----
     def _py_simplify(v):
-        # numpy scalar -> Python
         if isinstance(v, (np.generic,)):
             v = v.item()
-        # floats: kill NaN/Inf
         if isinstance(v, float):
             return v if math.isfinite(v) else None
-        # pandas NA / None
         if pd.isna(v):
             return None
         return v
 
     sample = sample.applymap(_py_simplify)
 
-    # Build JSON-friendly structure
-    return {
-        "columns": [str(c) for c in sample.columns],
-        "rows": sample.to_dict(orient="records"),
-    }
+    return {"columns": [str(c) for c in sample.columns], "rows": sample.to_dict(orient="records")}
 
 def _td_to_iso(td: pd.Timedelta) -> str:
-    """Convert pandas Timedelta to an ISO 8601 duration string like 'P3DT4H5M6S'."""
     if pd.isna(td):
         return None
     total_seconds = int(td.total_seconds())
@@ -789,7 +951,6 @@ def _td_to_iso(td: pd.Timedelta) -> str:
     s = "P"
     if days:
         s += f"{days}D"
-    # time part
     if hours or minutes or seconds:
         s += "T"
         if hours:
@@ -800,46 +961,250 @@ def _td_to_iso(td: pd.Timedelta) -> str:
             s += f"{seconds}S"
     return s
 
-def _meta_to_json(meta) -> Dict[str, Any]:
-    """Turn IntakeMeta into JSON-safe dict."""
-    # If meta is a dataclass (IntakeMeta), asdict() will recurse.
+def _meta_to_json(meta: IntakeMeta) -> Dict[str, Any]:
     data = asdict(meta)
-
-    # Ensure all floats/NaNs are JSON-safe
     def _clean(obj):
         if isinstance(obj, float):
-            if pd.isna(obj):
-                return None
-            return float(obj)
+            return None if pd.isna(obj) else float(obj)
         if isinstance(obj, dict):
             return {str(k): _clean(v) for k, v in obj.items()}
         if isinstance(obj, list):
             return [_clean(x) for x in obj]
         return obj
-
     return _clean(data)
 
+# ----------------------------------------
+# Data gap detection & impact heuristics
+# ----------------------------------------
+EXPECTED_SIGNALS = {
+    # ===== Profit & revenue fidelity =====
+    "revenue": {
+        "aliases": ["revenue","amount","sales","sales_usd","gmv","order_amount","total_amount"],
+        "criticality": "high",
+        "impact_model": "blocks_profit_calc",
+        "bias_pct_range": (0.10, 0.30),
+        "default": None,
+        "requires": {"mode": "any"},
+        "dtype": "numeric",
+        "min_coverage": 0.5,
+    },
+    "cogs": {
+        "aliases": ["cogs","cost","unit_cost","cost_price","cost_of_goods_sold"],
+        "criticality": "high",
+        "impact_model": "overestimates_profit",
+        "bias_pct_range": (0.05, 0.20),
+        "default": {"cogs_pct_of_revenue": 0.55},
+        "requires": {"mode": "any"},
+        "dtype": "numeric",
+        "min_coverage": 0.25,
+    },
+    "discounts": {
+        "aliases": ["discount","coupon","promo","promo_amount","discount_amount","discount_pct"],
+        "criticality": "medium",
+        "impact_model": "overestimates_profit",
+        "bias_pct_range": (0.02, 0.10),
+        "default": {"discount_pct_of_revenue": 0.03},
+        "requires": {"mode": "any"},
+        "dtype": "numeric",
+        "min_coverage": 0.25,
+    },
+    "tax": {
+        "aliases": ["tax","vat","gst","sales_tax","tax_amount"],
+        "criticality": "medium",
+        "impact_model": "underestimates_revenue",
+        "bias_pct_range": (0.01, 0.08),
+        "default": {"tax_pct_of_revenue": 0.05},
+        "requires": {"mode": "any"},
+        "dtype": "numeric",
+        "min_coverage": 0.25,
+    },
+    "returns": {
+        "aliases": ["return","refund","chargeback","refunded","returned","chargebacked","return_id","refund_id"],
+        "criticality": "medium",
+        "impact_model": "underestimates_revenue",
+        "bias_pct_range": (0.02, 0.15),
+        "default": {"return_pct_of_revenue": 0.04},
+        "requires": {"mode": "any"},
+        "dtype": "flag_or_numeric",
+        "min_coverage": 0.2,
+    },
 
-# Example fallback downloader (if you need it)
-# def _download_dataset_csv_to_temp(object_key: str, *, user_id: int, dataset_id: int) -> str:
-#     """
-#     Copy/download object to a temp CSV and return its path (local).
-#     - If object_key is already a local path, copy to a tmp file and return it.
-#     - Else download from Supabase using your storage client.
-#     """
-#     import tempfile, os, shutil
-#     from app.storage import supabase, SUPABASE_BUCKET, _strip_bucket_prefix
-#
-#     # Local path?
-#     if object_key and os.path.exists(object_key):
-#         fd, temp_path = tempfile.mkstemp(suffix=".csv"); os.close(fd)
-#         shutil.copy2(object_key, temp_path)
-#         return temp_path
-#
-#     # Supabase download
-#     key = _strip_bucket_prefix(object_key)
-#     data = supabase.storage.from_(SUPABASE_BUCKET).download(key)
-#     fd, temp_path = tempfile.mkstemp(suffix=".csv"); os.close(fd)
-#     with open(temp_path, "wb") as f:
-#         f.write(data)
-#     return temp_path
+    # ===== Reach/attribution fidelity =====
+    "unsubscribed": {
+        "aliases": ["unsubscribed","opt_out","dnc","do_not_contact","suppressed"],
+        "criticality": "medium",
+        "impact_model": "overestimates_reach",
+        "bias_pct_range": (0.05, 0.20),
+        "default": {"unsub_rate": 0.12},
+        "requires": {"mode": "any"},
+        "dtype": "boolean",
+        "min_coverage": 0.2,
+    },
+    "referral": {
+        "aliases": ["referral","referred_by","ref_source","promo_code","affiliate_id","utm_source"],
+        "criticality": "low",
+        "impact_model": "underestimates_revenue",
+        "bias_pct_range": (0.00, 0.05),
+        "default": {"ref_share_pct": 0.0},
+        "requires": {"mode": "any"},
+        "dtype": "string_or_flag",
+        "min_coverage": 0.1,
+    },
+}
+
+@dataclass
+class GapRecord:
+    role: str
+    status: str
+    matched_cols: List[str]
+    assumption: Any
+    criticality: str
+    likely_bias: str
+    est_bias_pct_range: Tuple[float, float]
+    message: str
+    recommendation: str
+    ui_override_key: Optional[str] = None
+    coverage: float = 0.0
+    severity: str = "low"
+
+def _present_cols_for_role(
+    role_cfg: Dict[str, Any],
+    df_norm: "pd.DataFrame",
+    header_map: Dict[str, Any],
+) -> List[str]:
+    """
+    Return normalized column names detected for this role.
+    - Matches on normalized names via aliases
+    - Also matches canonical hints found in header_map -> normalized_name
+    """
+    aliases_raw = role_cfg.get("aliases") or []
+    aliases = {str(a).strip().lower() for a in aliases_raw if a is not None}
+
+    present_norm = [str(c).strip().lower() for c in getattr(df_norm, "columns", [])]
+    present_set = set(present_norm)
+
+    # direct alias matches (normalized)
+    hits: List[str] = [a for a in aliases if a in present_set]
+
+    # canonical hints -> normalized names (from header_map)
+    try:
+        norm_by_canon: Dict[str, List[str]] = {}
+        for _orig, meta in (header_map or {}).items():
+            canon = (
+                (meta.get("canonical_hint") if isinstance(meta, dict) else getattr(meta, "canonical_hint", None))
+                or ""
+            ).strip().lower()
+            norm = (
+                (meta.get("normalized_name") if isinstance(meta, dict) else getattr(meta, "normalized_name", None))
+                or ""
+            ).strip().lower()
+            if canon and norm:
+                norm_by_canon.setdefault(canon, []).append(norm)
+
+        for alias in aliases:
+            for nn in norm_by_canon.get(alias, []):
+                if nn:
+                    hits.append(nn)
+    except Exception:
+        pass
+
+    # uniquify while preserving first occurrence
+    seen = set()
+    uniq: List[str] = []
+    for h in hits:
+        if h not in seen:
+            seen.add(h)
+            uniq.append(h)
+    return uniq
+
+def _human_bias_label(impact_model: str) -> str:
+    return {
+        "overestimates_reach": "May overestimate reachable audience",
+        "underestimates_revenue": "May underestimate revenue",
+        "overestimates_profit": "May overestimate net profit",
+        "blocks_profit_calc": "Cannot compute profit reliably",
+        "blocks_forecast": "Cannot run forecasting",
+        "limits_personalization": "Limited user-level actions/caps",
+    }.get(impact_model, "Unknown effect")
+
+def _severity(criticality: str, est_range: Tuple[float, float]) -> str:
+    _, hi = est_range
+    if criticality == "high":
+        return "high"
+    if hi >= 0.10:
+        return "high"
+    if hi >= 0.05:
+        return "medium"
+    return "low"
+
+def _recommendation(role: str, status: str, likely_bias: str) -> str:
+    if status == "present":
+        return "No action needed."
+    recs = {
+        "unsubscribe": "Provide an unsubscribed/opt-out column or confirm an assumed unsubscribed rate.",
+        "referral": "Supply a referral/referred_by column or confirm an assumed referral revenue share.",
+        "discount": "Provide discount/coupon amounts or confirm an assumed discount rate.",
+        "returns": "Provide returns/chargeback fields or confirm an assumed return loss rate.",
+        "revenue": "Map a revenue/sales/amount column; without it, profit cannot be estimated.",
+        "date": "Map a date/timestamp column to enable time-based analysis & forecasts.",
+        "user_id": "Provide a user or customer identifier to enable per-user caps and deduplication.",
+    }
+    base = recs.get(role, "Consider adding the missing field or confirm an assumption.")
+    return f"{base} ({likely_bias})"
+
+def _detect_data_gaps(df_norm, header_map, *, priors=None) -> Dict[str, GapRecord]:
+    priors = priors or {}
+    results: Dict[str, GapRecord] = {}
+
+    for role, cfg in EXPECTED_SIGNALS.items():
+        hits = _present_cols_for_role(cfg, df_norm, header_map)
+        status = "present" if hits else "missing"
+
+        est_range = priors.get(role, cfg.get("bias_pct_range", (0.0, 0.0)))
+        likely_bias = _human_bias_label(cfg.get("impact_model", ""))
+        assumption = cfg.get("default", None)
+
+        nonnull_rates: List[float] = []
+        if status == "present":
+            for h in hits:
+                try:
+                    nonnull = 1.0 - float(pd.isna(df_norm[h]).mean())
+                    nonnull_rates.append(nonnull)
+                except Exception:
+                    pass
+            avg_nonnull = (sum(nonnull_rates) / len(nonnull_rates)) if nonnull_rates else 0.0
+            if nonnull_rates and avg_nonnull < 0.2:
+                status = "missing"
+                hits = []
+            else:
+                assumption = None
+
+        msg = (
+            f"No {role} field detected; using default {assumption}"
+            if status == "missing" and assumption is not None
+            else (
+                f"No {role} field detected; required for downstream tasks"
+                if status == "missing"
+                else f"{role} present: {', '.join(hits[:3])}" + ("…" if len(hits) > 3 else "")
+            )
+        )
+        coverage = (sum(nonnull_rates) / len(nonnull_rates)) if nonnull_rates else 0.0
+        sev = _severity(cfg.get("criticality", "low"), est_range if status == "missing" else (0.0, 0.0))
+
+        results[role] = GapRecord(
+            role=role,
+            status=status,
+            matched_cols=hits,
+            assumption=assumption,
+            criticality=cfg.get("criticality", "low"),
+            likely_bias=likely_bias if status == "missing" else "None",
+            est_bias_pct_range=est_range if status == "missing" else (0.0, 0.0),
+            message=msg,
+            recommendation=_recommendation(role, status, likely_bias),
+            ui_override_key=cfg.get("ui_override_key"),
+            coverage=coverage,
+            severity=sev,
+        )
+    return results
+
+# ============================== END OF FILE ===============================

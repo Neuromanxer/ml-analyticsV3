@@ -855,3 +855,123 @@ def compute_segments_table(
 
     rows.sort(key=lambda r: (not r["alarm"], -r["n"]))
     return rows
+# router = APIRouter()
+# # ---------- Schemas ----------
+# class ClassificationRequest(BaseModel):
+#     user_id: str
+#     # ONE of: file_path OR (train_path & test_path) OR dataset_id
+#     file_path: Optional[str] = None
+#     train_path: Optional[str] = None
+#     test_path: Optional[str] = None
+#     dataset_id: Optional[int] = None
+
+#     target_column: str = "target"
+#     drop_columns: str = ""
+
+#     plan_id: Optional[str] = None
+#     # Accept both a PlanConfig or a dict; coerce in task
+#     plan_config: Optional[Union[PlanConfig, Dict[str, Any]]] = None
+
+#     # Detected ID column (from /compile)
+#     id_column: Optional[str] = Field(default=None, description="Normalized entity ID column")
+
+# class StartResponse(BaseModel):
+#     task_id: str
+#     status: str = "queued"
+
+# class TaskStatusResponse(BaseModel):
+#     task_id: str
+#     status: str
+#     result: Optional[Dict[str, Any]] = None
+#     error: Optional[str] = None
+
+# # ---------- Helpers ----------
+# def _validate_paths(req: ClassificationRequest):
+#     if req.file_path and (req.train_path or req.test_path):
+#         raise HTTPException(400, "Provide either file_path OR (train_path AND test_path), not both.")
+#     if (req.train_path and not req.test_path) or (req.test_path and not req.train_path):
+#         raise HTTPException(400, "Provide both train_path AND test_path together.")
+#     if not req.file_path and not (req.train_path and req.test_path) and not req.dataset_id:
+#         raise HTTPException(400, "Provide file_path, or (train_path+test_path), or dataset_id.")
+
+# def _coerce_plan_config(cfg: Optional[Any]) -> Optional[PlanConfig]:
+#     if cfg is None:
+#         return None
+#     if isinstance(cfg, PlanConfig):
+#         return cfg
+#     if isinstance(cfg, dict):
+#         return PlanConfig(**cfg)
+#     # Last resort for other pydantic-v2-compatible inputs
+#     return PlanConfig.model_validate(cfg)
+
+# # ---------- Celery task ----------
+# @celery_app.task(
+#     name="tasks.run_classification",
+#     bind=True,
+#     autoretry_for=(Exception,),
+#     retry_backoff=True,
+#     retry_kwargs={"max_retries": 3},
+# )
+# def run_classification_task(self, args: dict) -> Dict[str, Any]:
+#     time.sleep(0.3)  # optional small throttle
+#     cfg = _coerce_plan_config(args.get("plan_config"))
+
+#     return do_classification(
+#         user_id=args["user_id"],
+#         file_path=args.get("file_path"),
+#         current_user=args.get("current_user"),
+#         train_path=args.get("train_path"),
+#         test_path=args.get("test_path"),
+#         target_column=args.get("target_column", "target"),
+#         drop_columns=args.get("drop_columns", ""),
+#         dataset_id=args.get("dataset_id"),
+#         plan_id=args.get("plan_id"),
+#         plan_config=cfg,
+#         id_column=args.get("id_column"),
+#     )
+
+# # ---------- Routes ----------
+# @router.post("/train", response_model=StartResponse)
+# def start_classification(
+#     payload: ClassificationRequest,
+#     current_user=Depends(get_current_active_user),
+# ):
+#     _validate_paths(payload)
+
+#     safe_user = {
+#         "id": getattr(current_user, "id", None),
+#         "tokens": getattr(current_user, "tokens", None),
+#     }
+
+#     task_args = {
+#         "user_id": payload.user_id,
+#         "current_user": safe_user,
+#         "file_path": payload.file_path,
+#         "train_path": payload.train_path,
+#         "test_path": payload.test_path,
+#         "dataset_id": payload.dataset_id,
+#         "target_column": payload.target_column,
+#         "drop_columns": payload.drop_columns,
+#         "plan_id": payload.plan_id,
+#         "plan_config": (
+#             payload.plan_config.model_dump()
+#             if isinstance(payload.plan_config, PlanConfig)
+#             else payload.plan_config
+#         ),
+#         "id_column": payload.id_column,
+#     }
+
+#     task = run_classification_task.delay(task_args)
+#     return StartResponse(task_id=task.id)
+
+# @router.get("/result/{task_id}", response_model=TaskStatusResponse)
+# def get_result(task_id: str, current_user=Depends(get_current_active_user)):
+#     ar = AsyncResult(task_id, app=celery_app)  # ensure same app!
+#     status = ar.status
+#     if status == "SUCCESS":
+#         return TaskStatusResponse(task_id=task_id, status=status, result=ar.result)
+#     if status == "FAILURE":
+#         return TaskStatusResponse(task_id=task_id, status=status, error=str(ar.result))
+#     return TaskStatusResponse(task_id=task_id, status=status)
+
+# app.include_router(router)

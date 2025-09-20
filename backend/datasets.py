@@ -101,9 +101,9 @@ from sqlalchemy.orm import (
 
 
 
-from harvester import intake_and_normalize, _meta_to_json, _preview_table, save_intake_artifacts
+from harvester import intake_and_normalize, _meta_to_json, _preview_table
 from storage import _basename_from_key, supabase, _strip_bucket_prefix, SUPABASE_BUCKET, upload_file_to_supabase
-from storage import download_file_from_supabase, delete_file_from_supabase
+from storage import download_file_from_supabase, delete_file_from_supabase, save_intake_artifacts
 from auth import (
     # Authentication & token utilities
     get_current_active_user,
@@ -880,7 +880,38 @@ def _count_invalid_emails(series: pd.Series) -> int:
     return int(mask.sum())
 
 def _to_datetime(series: pd.Series) -> pd.Series:
-    return pd.to_datetime(series, errors="coerce", utc=False)
+    """
+    Robust datetime parsing:
+    - try default
+    - if too many NaT, try dayfirst
+    - if still weak and column looks numeric, try epoch units
+    Picks the best (fewest NaT).
+    """
+    def score(s: pd.Series) -> int:
+        return int(s.notna().sum())
+
+    # 1) default
+    best = pd.to_datetime(series, errors="coerce", utc=False)
+    best_score = score(best)
+
+    # 2) dayfirst
+    cand = pd.to_datetime(series, errors="coerce", utc=False, dayfirst=True)
+    s2 = score(cand)
+    if s2 > best_score:
+        best, best_score = cand, s2
+
+    # 3) epoch numbers (if mostly numeric-like)
+    # e.g., 1694640000, 1694640000000, etc.
+    if best_score < max(5, int(0.6 * len(series))):  # only if default was weak
+        ser_num = pd.to_numeric(series, errors="coerce")
+        if ser_num.notna().mean() > 0.6:
+            for unit in ("s", "ms", "us", "ns"):
+                cand = pd.to_datetime(ser_num, unit=unit, errors="coerce", utc=False)
+                s3 = score(cand)
+                if s3 > best_score:
+                    best, best_score = cand, s3
+
+    return best
 
 def _series_numeric(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
@@ -1478,7 +1509,7 @@ def _classify_numeric(x: pd.Series) -> str:
 def _looks_like_date(series: pd.Series, sample_n: int = 200) -> bool:
     s = series.dropna().astype(str).head(sample_n)
     if s.empty: return False
-    parsed = pd.to_datetime(s, errors="coerce", infer_datetime_format=True)
+    parsed = pd.to_datetime(s, errors="coerce")
     return parsed.notna().mean() >= 0.5
 
 def detect_columns(df: pd.DataFrame) -> dict:
@@ -1830,37 +1861,377 @@ def make_processed_name(source_name: str, dataset_id: int) -> str:
     # strip any existing __processed__<digits> suffix on the *stem*
     clean_stem = re.sub(r"__processed__\d+$", "", p.stem)
     return f"{clean_stem}__processed__{dataset_id}{p.suffix or '.csv'}"
+# =========================== datasets.preprocess.py ===========================
+# Paste-ready endpoint + helper to resolve/load intake meta
+# ============================================================================
 
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from datetime import datetime
+import os, shutil, json, tempfile
+import pandas as pd
+
+# --- project imports you already have somewhere ---
+# from .auth import get_current_active_user, get_user_db, Dataset
+# from .paths import user_dataset_root, ensure_dirs
+# from .storage import _strip_bucket_prefix, sb_signed_url, sb_download_to_path
+# from .datasets import resolve_and_cache_dataset_csv, _download_object_to_temp
+# from .preprocess import (
+#     _std_null_marker_list, standardize_missing_markers, compute_null_rate,
+#     detect_columns, guess_positive_label, _safe_list,
+#     PreprocessConfig, build_and_save_train_test, make_processed_name,
+#     preprocess_full_dataset, save_intake_artifacts, sanitize_for_json
+# )
+# from .fs import PathL
+
+# If you're importing directly (not dotted), keep as-is:
+from auth import get_current_active_user, get_user_db, Dataset
+from storage import sb_download_to_path, sb_signed_url, _strip_bucket_prefix, save_intake_artifacts
+
+from datasets import resolve_and_cache_dataset_csv, _download_object_to_temp
+# ---------------------------------------------------------------------------
+# Intake meta loader (DB hints -> sibling files -> canonical fallback)
+# ---------------------------------------------------------------------------
+
+MIN_META_KEYS = {"data_gaps", "assumptions", "priors", "prior_provenance"}
+
+def _read_json_from_supabase(bucket: str, key: str) -> dict | None:
+    """Download an object to a temp file and parse JSON. Return None if not found/invalid."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=True) as tmp:
+            sb_download_to_path(bucket, key, tmp.name)  # must raise on 404/permissions
+            with open(tmp.name, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        if isinstance(data, str):
+            data = json.loads(data)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+def _meta_is_minimal(meta: dict) -> bool:
+    try:
+        return all(k in meta for k in MIN_META_KEYS)
+    except Exception:
+        return False
+import json, os, tempfile
+from contextlib import contextmanager
+
+# If you already have these helpers, import them instead:
+# - sb_download_to_path(bucket, key, dest_path)
+# - _strip_bucket_prefix
+# - SUPABASE_BUCKET
+# - get_user_db, Dataset
+
+MIN_META_KEYS = {"data_gaps", "assumptions", "priors", "prior_provenance"}
+
+def _read_json_from_supabase(bucket: str, key: str) -> dict | None:
+    """Download an object to a temp file and parse JSON. Return None if not found/invalid."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=True) as tmp:
+            sb_download_to_path(bucket, key, tmp.name)  # must raise on 404/permissions
+            with open(tmp.name, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, str):
+                # Some older writers might have double-serialized JSON
+                data = json.loads(data)
+            if not isinstance(data, dict):
+                return None
+            return data
+    except Exception:
+        return None
+
+def _meta_is_minimal(meta: dict) -> bool:
+    try:
+        return all(k in meta for k in MIN_META_KEYS)
+    except Exception:
+        return False
+import posixpath
+
+def key_join(*parts) -> str:
+    return posixpath.join(*(str(p).strip("/\\") for p in parts if p not in (None, "")))
+
+def key_norm(key: str) -> str:
+    # turn Windows backslashes into forward slashes and strip leading slash
+    return "/".join(str(key).split("\\")).lstrip("/")
+
+def load_intake_meta(*, user_id: int | str, dataset_id: int | str, current_user=None) -> dict | None:
+    bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+    uid, did = str(user_id), str(dataset_id)
+
+    def _push(lst, k):
+        k = key_norm(k)
+        if k and k not in lst:
+            lst.append(k)
+
+    candidates: list[str] = []
+    # 1–3) DB-driven and sibling locations
+    with get_user_db(current_user) as db:
+        ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+        if not ds:
+            return None
+
+        explicit = getattr(ds, "intake_meta_path", None) or getattr(ds, "meta_path", None)
+        if explicit:
+            _push(candidates, explicit)
+
+        orig = getattr(ds, "original_file_path", None) or getattr(ds, "file_path", None)
+        if orig:
+            prefix = posixpath.dirname(key_norm(orig))
+            _push(candidates, f"{prefix}/meta.json")
+
+        cur = getattr(ds, "file_path", None)
+        if cur:
+            prefix = posixpath.dirname(key_norm(cur))
+            _push(candidates, f"{prefix}/meta.json")
+
+    # 4) Intake variants (what your intake route writes)
+    _push(candidates, key_join(uid, did, "intake", "intake_meta.json"))
+    _push(candidates, key_join(uid, did, "intake", "meta.json"))
+
+    # 5) Canonical per-dataset + 6) user-level fallback
+    _push(candidates, key_join(uid, did, "meta.json"))
+    _push(candidates, key_join(uid, "meta.json"))
+
+    first_nonminimal: dict | None = None
+    for k in candidates:
+        meta = _read_json_from_supabase(bucket, k)
+        if isinstance(meta, dict) and meta:
+            if _meta_is_minimal(meta):
+                return meta
+            if first_nonminimal is None:
+                first_nonminimal = meta
+
+    if first_nonminimal:
+        return _normalize_intake_meta(first_nonminimal)
+
+    return None
+
+
+def _meta_is_minimal(meta: dict) -> bool:
+    # Be permissive: accept either inferred types or header map (your compiler needs just one)
+    return isinstance(meta, dict) and (
+        ("inferred_types" in meta and isinstance(meta["inferred_types"], dict))
+        or ("header_map" in meta and isinstance(meta["header_map"], dict))
+    )
+
+def _normalize_intake_meta(meta: dict) -> dict:
+    out = dict(meta)
+    out.setdefault("data_gaps", {})
+    out.setdefault("assumptions", {})
+    out.setdefault("priors", {})
+    out.setdefault("prior_provenance", {})
+    # Optional: relocate/rename keys if older schema variants exist
+    return out
+
+
+def load_or_backfill_intake_meta(
+    *,
+    user_id: int | str,
+    dataset_id: int | str,
+    current_user,
+    base_currency: str = "USD",
+    country_hint: str = "US",
+) -> dict:
+    """
+    Load previously computed intake meta for a dataset; if missing, run intake once,
+    persist artifacts (meta.json), and return the resulting meta dict.
+
+    Requires:
+      - load_intake_meta (loader that searches DB hints, sibling files, and canonical path)
+      - get_user_db, Dataset (ORM/session helpers)
+      - _download_object_to_temp / resolve_and_cache_dataset_csv (to fetch the CSV locally)
+      - intake_and_normalize, _meta_to_json (intake pipeline + JSON-safe serializer)
+      - save_intake_artifacts (persists meta.json under user-uploads/{user_id}/{dataset_id}/meta.json)
+
+    Returns:
+      dict: JSON-safe meta with at least keys:
+            {"data_gaps","assumptions","priors","prior_provenance", ...}
+    """
+    # 1) Try to load if it already exists
+    meta = load_intake_meta(user_id=user_id, dataset_id=dataset_id, current_user=current_user)
+    if isinstance(meta, dict) and meta:
+        return meta
+
+    # 2) Resolve original CSV path
+    with get_user_db(current_user) as db:
+        ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+        if not ds:
+            raise ValueError("Dataset not found")
+
+        src_key = getattr(ds, "original_file_path", None) or getattr(ds, "file_path", None)
+        if not src_key:
+            raise ValueError("Dataset has no file path")
+
+        try:
+            local_csv = _download_object_to_temp(src_key, user_id=user_id, dataset_id=dataset_id)
+        except Exception:
+            # Fallback: your existing resolver (may read via ds.file_path internally)
+            local_csv = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
+
+    # 3) Run intake once (lightweight compared to full FE/encoding)
+    intake_res = intake_and_normalize(local_csv, base_currency=base_currency, country_hint=country_hint)
+    meta_json = _meta_to_json(intake_res.meta)
+
+    # 4) Persist meta.json in a canonical per-dataset location
+    written_key = f"{user_id}/{dataset_id}/meta.json"  # expected canonical key
+    try:
+        res = save_intake_artifacts(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            meta=meta_json,    # primary payload to persist
+            stats={},          # optional
+            preview=None,      # optional
+            artifacts=None,    # optional
+        )
+        # If your saver returns the actual key/path, honor it
+        if isinstance(res, dict):
+            written_key = (
+                res.get("meta_key")
+                or res.get("paths", {}).get("meta")
+                or written_key
+            )
+    except Exception:
+        # Persistence failure should surface, but if you prefer soft-fail, remove this raise
+        raise
+
+    # 5) Optionally record the meta path on the Dataset row for quicker future lookups
+    try:
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+            if ds is not None:
+                if hasattr(ds, "intake_meta_path"):
+                    setattr(ds, "intake_meta_path", written_key)
+                elif hasattr(ds, "meta_path"):
+                    setattr(ds, "meta_path", written_key)
+                db.add(ds)
+                db.commit()
+    except Exception:
+        # Non-fatal: the meta is still persisted in storage
+        pass
+
+    return meta_json
+def _read_sample_robust(path: str, *, nrows: int = 5000) -> pd.DataFrame | None:
+    """
+    Try several encodings & delimiters; normalize nulls afterward.
+    Returns None if we can't read anything usable.
+    """
+    # fast path
+    try:
+        df = pd.read_csv(
+            path, nrows=nrows, low_memory=False, na_values=_std_null_marker_list(),
+            keep_default_na=True, encoding="utf-8-sig"
+        )
+        return standardize_missing_markers(df)
+    except Exception:
+        pass
+
+    encodings = ["utf-8", "latin-1", "utf-16", "cp1252"]
+    seps = [",", ";", "\t", "|"]
+    for enc in encodings:
+        for sep in seps:
+            try:
+                df = pd.read_csv(
+                    path,
+                    nrows=nrows,
+                    sep=sep,
+                    engine="python",    # more forgiving
+                    na_values=_std_null_marker_list(),
+                    keep_default_na=True,
+                    encoding=enc,
+                    low_memory=False,
+                    on_bad_lines="skip",
+                )
+                return standardize_missing_markers(df)
+            except Exception:
+                continue
+
+    # final hail mary: sniff dialect with csv
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read(128 * 1024)  # 128KB is plenty to sniff
+        try:
+            text = raw.decode("utf-8-sig")
+        except Exception:
+            text = raw.decode("latin-1", errors="ignore")
+        try:
+            dialect = csv.Sniffer().sniff(text.splitlines()[0])
+            sep = dialect.delimiter
+        except Exception:
+            sep = ","
+        df = pd.read_csv(
+            io.BytesIO(raw), nrows=nrows, sep=sep, engine="python",
+            na_values=_std_null_marker_list(), keep_default_na=True, low_memory=False
+        )
+        return standardize_missing_markers(df)
+    except Exception:
+        return None
+
+def _remote_csv_has_rows(processed_key: str | None) -> bool:
+    """
+    Best-effort: download the processed object to a temp file and check head(1).
+    Return False on any error.
+    """
+    if not processed_key:
+        return False
+    try:
+        bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp_path = tmp.name
+        try:
+            # you already have this downloader in your codebase
+            sb_download_to_path(bucket, _strip_bucket_prefix(processed_key), tmp_path)
+            df = pd.read_csv(tmp_path, nrows=1, low_memory=False)
+            return (df is not None) and (df.shape[0] > 0)
+        finally:
+            try: os.remove(tmp_path)
+            except Exception: pass
+    except Exception:
+        return False
+
+def _upload_dataframe_as_processed(df: pd.DataFrame, *, user_id: str | int, processed_fname: str) -> str | None:
+    """
+    Write df → CSV → upload via your existing helper.
+    Returns storage path (object key) or None on failure.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            df.to_csv(tmp.name, index=False)
+            tmp_path = tmp.name
+        try:
+            # your helper signature: upload_file_to_supabase(user_id, local_path, filename)
+            storage_path = upload_file_to_supabase(str(user_id), tmp_path, processed_fname)
+            return storage_path
+        finally:
+            try: os.remove(tmp_path)
+            except Exception: pass
+    except Exception:
+        return None
 @router.post("/{dataset_id}/preprocess")
 def preprocess_dataset_endpoint(
     dataset_id: int,
-    body: PreprocessRequest,
+    body: "PreprocessRequest",                                   # type: ignore[name-defined]
     current_user = Depends(get_current_active_user),
 ):
     user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
-    # 🔑 Resolve original → local cache
-    # 🔑 Resolve ORIGINAL → local cache (never chain-process the processed file)
+    # Resolve ORIGINAL → local cache (never chain-process a processed file)
     with get_user_db(current_user) as db:
         ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
         if not ds:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
-        # prefer the true original if we have it; otherwise use current pointer
         src_key = getattr(ds, "original_file_path", None) or getattr(ds, "file_path", None)
         if not src_key:
             raise HTTPException(status_code=400, detail="Dataset has no file path")
 
         try:
-            # download/copy the exact object we want to preprocess
             src_csv_path = _download_object_to_temp(src_key, user_id=user_id, dataset_id=dataset_id)
         except Exception:
-            # final fallback to your existing resolver (if it uses ds.file_path internally)
             src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
 
-        old_key = getattr(ds, "file_path", None)
+        prior_file_path = getattr(ds, "file_path", None)
         original_name = os.path.basename(_strip_bucket_prefix(src_key)) if src_key else "data.csv"
 
     # Workspace
@@ -1876,18 +2247,35 @@ def preprocess_dataset_endpoint(
     if not os.path.exists(test_csv_path):
         PathL(test_csv_path).write_text("", encoding="utf-8")
 
-    # Read sample
-    try:
-        sample_df = pd.read_csv(
-            train_csv_path,
-            nrows=5000,
-            na_values=_std_null_marker_list(),
-            keep_default_na=True,
-            low_memory=False,
+    # Read sample (robust)
+    sample_df = _read_sample_robust(train_csv_path, nrows=5000)
+
+    # Quick empty check: headers-only or all-null rows?
+    if sample_df is None or sample_df.shape[0] == 0 or sample_df.dropna(how="all").shape[0] == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Uploaded CSV appears to have no data rows (headers-only or fully empty after cleaning).",
         )
-        sample_df = standardize_missing_markers(sample_df)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}")
+
+    # Try to load previously saved meta.json (from intake)
+    meta = None
+    try:
+        meta = load_intake_meta(user_id=user_id, dataset_id=dataset_id, current_user=current_user)
+    except Exception:
+        meta = None
+
+    # Backfill meta if needed
+    if meta is None:
+        intake_res = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
+        meta = _meta_to_json(intake_res.meta)
+        save_intake_artifacts(
+            dataset_id=dataset_id,
+            user_id=user_id,
+            meta=meta,
+            stats={},
+            preview=None,
+            artifacts=None,
+        )
 
     null_rate_before_sample = compute_null_rate(sample_df)
 
@@ -1919,52 +2307,86 @@ def preprocess_dataset_endpoint(
         verbose=True,
     )
 
+    # Optional split build (not fatal)
     try:
         build_and_save_train_test(cfg, train_csv="train.csv", test_csv="test.csv")
     except Exception:
         pass
 
-    # CHANGE: write processed to a DIFFERENT object key (don't overwrite original)
-    p = PathL(original_name)
-    # Idempotent processed name (no double __processed__X)
     processed_fname = make_processed_name(original_name, dataset_id)
 
-
-    # Full preprocessing → upload processed file under processed_fname
+    # Run full preprocessing
     try:
         artifacts = preprocess_full_dataset(
             cfg,
             csv_path=train_csv_path,
-            user_id=str(user_id),      # stored at user-uploads/{user_id}/...
-            filename=processed_fname,  # CHANGE: separate processed name
+            user_id=str(user_id),
+            filename=processed_fname,
             fit_encoders=True,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preprocess failed: {e}")
 
-    new_key = artifacts.get("data_csv")  # processed object key
-    if not new_key:
+    # Resolve processed key
+    processed_key = (
+        artifacts.get("data_csv")
+        or artifacts.get("processed_csv")
+        or artifacts.get("normalized_csv")
+    )
+
+    # ------------------ Guardrail: replace EMPTY output ------------------
+    # If pipeline produced no rows or we can't verify rows, fall back to light-normalized upload
+    rows_processed = artifacts.get("rows_processed")
+    # If rows_processed is missing, double-check the remote file's head
+    is_nonempty_remote = _remote_csv_has_rows(processed_key) if processed_key else False
+    produced_empty = (rows_processed is not None and int(rows_processed) == 0) or (not rows_processed and not is_nonempty_remote)
+
+    fallback_used = False
+    if produced_empty:
+        # Light-normalize the original and upload as processed
+        try:
+            light = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
+            df_light = light.df_normalized
+        except Exception:
+            df_light = sample_df  # at least pass through sample if intake fails
+
+        if df_light is not None and not df_light.empty:
+            # upload df_light to processed_fname
+            storage_path = _upload_dataframe_as_processed(df_light, user_id=user_id, processed_fname=processed_fname)
+            if not storage_path:
+                raise HTTPException(status_code=500, detail="Processed pipeline yielded empty output and fallback upload failed.")
+            processed_key = storage_path
+            # refresh artifacts & metrics to reflect fallback
+            artifacts["data_csv"] = processed_key
+            artifacts["rows_processed"] = int(df_light.shape[0])
+            artifacts["cols_processed"] = int(df_light.shape[1])
+            artifacts["null_rate_after_full"] = float(compute_null_rate(df_light))
+            fallback_used = True
+        else:
+            # No salvageable rows at all → fail with a clear message
+            raise HTTPException(
+                status_code=422,
+                detail="Processing produced an empty dataset and fallback also had 0 rows. "
+                       "Please upload a file with at least one non-empty data row."
+            )
+
+    if not processed_key:
         raise HTTPException(status_code=500, detail="Pipeline did not return processed data key")
 
-    # Persist: store BOTH paths
+    # Persist: store BOTH paths (preserve original)
     with get_user_db(current_user) as db:
         ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
         if not ds:
             raise HTTPException(status_code=404, detail="Dataset not found for update")
 
-        prior_key = getattr(ds, "file_path", None)
-
-        # CHANGE: set original_file_path once (if not already set)
         if not getattr(ds, "original_file_path", None):
-            setattr(ds, "original_file_path", prior_key)
+            setattr(ds, "original_file_path", getattr(ds, "file_path", None))
 
-        # CHANGE: if you have a dedicated processed_file_path column, populate it
         if hasattr(ds, "processed_file_path"):
-            ds.processed_file_path = new_key
+            ds.processed_file_path = processed_key
 
-        # Optionally keep file_path as "current" pointer → processed
-        ds.file_path  = new_key
-        ds.stage      = "processed"
+        ds.file_path    = processed_key
+        ds.stage        = "processed"
         ds.processed_at = datetime.utcnow()
 
         if artifacts.get("encoder_pkl"):
@@ -1974,8 +2396,7 @@ def preprocess_dataset_endpoint(
         db.commit()
         db.refresh(ds)
 
-    # CHANGE: do NOT delete the original — we are preserving it
-    # (remove the deletion block entirely)
+        original_key = getattr(ds, "original_file_path", None) or prior_file_path
 
     # Metrics
     null_rate_after_full = artifacts.get("null_rate_after_full")
@@ -1987,16 +2408,15 @@ def preprocess_dataset_endpoint(
         "cols_processed": artifacts.get("cols_processed"),
     }
 
-    # CHANGE: return both keys (and optional signed URLs if you have a helper)
-    def _signed_or_none(key: str):
+    # Signed URLs (best-effort)
+    def _signed_or_none(key: str | None):
+        if not key:
+            return None
         try:
             bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
-            return sb_signed_url(bucket, _strip_bucket_prefix(key), seconds=300)  # if you have this helper
+            return sb_signed_url(bucket, _strip_bucket_prefix(key), seconds=300)
         except Exception:
             return None
-
-    original_key = getattr(ds, "original_file_path", None) or old_key
-    processed_key = new_key
 
     payload = {
         "dataset_id": dataset_id,
@@ -2023,12 +2443,11 @@ def preprocess_dataset_endpoint(
         },
         "artifacts": artifacts,
         "metrics": metrics,
-        "message": "Preprocess & Clean completed",
-        # CHANGE: clearly report both files
+        "message": "Preprocess & Clean completed" + (" (fallback used: light normalize)" if fallback_used else ""),
         "files": {
             "original": {
                 "key": original_key,
-                "signedUrl": _signed_or_none(original_key) if original_key else None,
+                "signedUrl": _signed_or_none(original_key),
                 "filename": original_name,
             },
             "processed": {
@@ -2037,60 +2456,18 @@ def preprocess_dataset_endpoint(
                 "filename": processed_fname,
             },
         },
-        # legacy fields for backward-compat:
-        "replaced_original": False,           # CHANGE: we no longer replace
-        "old_file_path": original_key,        # original
-        "new_file_path": processed_key,       # processed
+        "replaced_original": False,
+        "old_file_path": original_key,
+        "new_file_path": processed_key,
+        "meta": {
+            "data_gaps": (meta or {}).get("data_gaps"),
+            "assumptions": (meta or {}).get("assumptions"),
+            "priors": (meta or {}).get("priors"),
+            "prior_provenance": (meta or {}).get("prior_provenance"),
+        },
     }
 
     return JSONResponse(content=sanitize_for_json(payload), status_code=200)
-@router.get("/{dataset_id}/original")
-async def get_original_file(
-    dataset_id: int = Path(..., gt=0),
-    download: int = 0,
-    current_user=Depends(get_current_active_user),
-):
-    """
-    Default: returns {"signedUrl": "..."} so the frontend can download directly.
-    If `?download=1`: ensure local cached copy exists, then stream it as FileResponse.
-    """
-    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Unauthenticated")
-
-    with get_user_db(current_user) as db:
-        ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
-        if not ds:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        # ds.file_path holds object key 'userId/filename.csv'
-        object_key = ds.file_path
-        if not object_key:
-            raise HTTPException(status_code=404, detail="No file associated with this dataset")
-
-        filename = getattr(ds, "original_filename", os.path.basename(object_key))
-
-        if not download:
-            # Return a short-lived signed URL (front-end will do fetch → blob)
-            signed = sb_signed_url(SUPABASE_BUCKET, object_key, seconds=300)
-            if not signed:
-                # Fall back: make sure we can at least stream from local cache
-                download = 1
-            else:
-                return {"signedUrl": signed, "filename": filename}
-
-        # Ensure local cached copy exists
-        root = user_dataset_root(user_id, dataset_id)
-        dirs = ensure_dirs(root)
-        cache_path = os.path.join(dirs["data_dir"], filename)
-        if not os.path.exists(cache_path):
-            try:
-                sb_download_to_path(SUPABASE_BUCKET, object_key, cache_path)
-            except Exception as e:
-                logger.error(f"Failed to download original to cache: {e}")
-                raise HTTPException(status_code=500, detail="Could not fetch file from remote storage")
-
-        return FileResponse(path=cache_path, filename=filename, media_type="text/csv")
 @router.put("/{dataset_id}/file")
 async def replace_dataset_file(
     dataset_id: int = Path(..., gt=0),
@@ -2209,6 +2586,8 @@ def clean_json(obj):
         pass
 
     return obj
+import os
+from fastapi import HTTPException, Depends, Query
 
 @router.post("/{dataset_id}/intake")
 def run_intake_and_normalization(
@@ -2226,27 +2605,21 @@ def run_intake_and_normalization(
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
-    # 1) Resolve the *local* CSV path for this dataset
-    # Prefer your existing helper if available:
-    src_csv_path = None
+    # 1) Resolve local CSV (DEV OVERRIDE supported)
     try:
-        with get_user_db(current_user) as db:
-            src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
+        hardcoded = os.getenv("HARDCODE_CSV")  # e.g. /Users/me/dev/sample.csv
+        if hardcoded:
+            src_csv_path = os.path.abspath(hardcoded)
+        else:
+            with get_user_db(current_user) as db:
+                src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Failed to resolve dataset CSV: {e}")
 
-    # Fallback example (if you don't have resolve_and_cache_dataset_csv here):
-    # with get_user_db(current_user) as db:
-    #     ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
-    #     if not ds:
-    #         raise HTTPException(status_code=404, detail="Dataset not found")
-    #     # Download from Supabase to a temp file
-    #     src_csv_path = _download_dataset_csv_to_temp(ds.file_path, user_id=user_id, dataset_id=dataset_id)
-
     if not src_csv_path or not os.path.exists(src_csv_path):
-        raise HTTPException(status_code=404, detail="Local CSV for dataset not found")
+        raise HTTPException(status_code=404, detail=f"Local CSV for dataset not found: {src_csv_path}")
 
-    # 2) Run Intake & Normalization (from prior code)
+    # 2) Run intake
     try:
         result = intake_and_normalize(
             src_csv_path,
@@ -2254,82 +2627,102 @@ def run_intake_and_normalization(
             country_hint=country_hint,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Intake & normalization failed: {e}")
+        logger.exception("Intake failed for dataset %s", dataset_id)
+        raise HTTPException(status_code=500, detail=f"Intake & normalization failed: {type(e).__name__}: {e}")
 
-    # 3) Persist artifacts (normalized CSV + meta JSON) to Supabase
-    artifacts: Dict[str, Any] = {}
+    # 3) Persist normalized CSV + meta to Supabase
     temp_dir = tempfile.mkdtemp(prefix=f"d{dataset_id}_intake_")
+    meta_dict: Dict[str, Any] = {}
+    artifacts: Dict[str, Any] = {}
     try:
-        # Save normalized CSV (full)
+        # Write temp files
         norm_csv = os.path.join(temp_dir, f"dataset_{dataset_id}_normalized.csv")
         result.df_normalized.to_csv(norm_csv, index=False)
 
-        # Save meta JSON (JSON-friendly)
         meta_json_path = os.path.join(temp_dir, f"dataset_{dataset_id}_intake_meta.json")
         meta_dict = _meta_to_json(result.meta)
         with open(meta_json_path, "w", encoding="utf-8") as f:
             json.dump(meta_dict, f, ensure_ascii=False, indent=2)
 
-        # Upload artifacts to Supabase
-        supa_norm = upload_file_to_supabase(
-            user_id=str(user_id),
-            file_path=norm_csv,
-            filename=f"{dataset_id}/intake/normalized.csv",
-        )
-        supa_meta = upload_file_to_supabase(
-            user_id=str(user_id),
-            file_path=meta_json_path,
-            filename=f"{dataset_id}/intake/intake_meta.json",
-        )
-        artifacts["normalized_csv"] = supa_norm
-        artifacts["intake_meta_json"] = supa_meta
+        # Canonical keys (dataset-scoped)
+        canon_norm_key = f"{dataset_id}/intake/normalized.csv"
+        canon_meta_key = f"{dataset_id}/intake/intake_meta.json"
+        legacy_dataset_meta_key = f"{dataset_id}/meta.json"  # optional legacy
+
+        # Upload canonical
+        supa_norm = upload_file_to_supabase(user_id=str(user_id), file_path=norm_csv,      filename=canon_norm_key)
+        supa_meta = upload_file_to_supabase(user_id=str(user_id), file_path=meta_json_path, filename=canon_meta_key)
+
+        # Optional legacy copy at dataset scope (same bytes)
+        try:
+            upload_file_to_supabase(user_id=str(user_id), file_path=meta_json_path, filename=legacy_dataset_meta_key)
+        except Exception:
+            logger.exception("Legacy dataset meta.json copy failed for dataset %s", dataset_id)
+
+        artifacts.update({
+            "normalized_csv": supa_norm,
+            "intake_meta_json": supa_meta,
+            "normalized_csv_key": f"{user_id}/{canon_norm_key}",
+            "intake_meta_key":    f"{user_id}/{canon_meta_key}",
+            "legacy_meta_key":    f"{user_id}/{legacy_dataset_meta_key}",
+        })
+
+        # Persist pointers on Dataset row
+        try:
+            with get_user_db(current_user) as db:
+                ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+                if ds:
+                    ds.intake_meta_path = f"{user_id}/{canon_meta_key}"
+                    ds.meta_path = ds.meta_path or f"{user_id}/{legacy_dataset_meta_key}"
+                    db.add(ds)
+                    db.commit()
+        except Exception:
+            logger.exception("Failed to persist intake_meta_path for dataset %s", dataset_id)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist artifacts: {e}")
+        logger.exception("Artifact upload failed for dataset %s", dataset_id)
+        raise HTTPException(status_code=500, detail=f"Failed to persist artifacts: {type(e).__name__}: {e}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    # 4) Build lightweight previews (do NOT return full DataFrames)
-    preview_raw = _preview_table(result.df_raw, n=preview_rows)
-    preview_norm = _preview_table(result.df_normalized, n=preview_rows)
-    # 4b) Compute stats
-    stats_dict = {
-        "raw_rows": int(result.df_raw.shape[0]),
-        "raw_cols": int(result.df_raw.shape[1]),
-        "normalized_rows": int(result.df_normalized.shape[0]),
-        "normalized_cols": int(result.df_normalized.shape[1]),
-    }
-    preview_raw  = clean_json(preview_raw)
-    preview_norm = clean_json(preview_norm)
-    artifacts    = clean_json(artifacts)
-    stats_dict   = clean_json(stats_dict)
-    meta_dict    = clean_json(meta_dict)
+    # 4) Previews (guard JSON-ability)
+    try:
+        preview_raw  = clean_json(_preview_table(result.df_raw, n=preview_rows))
+        preview_norm = clean_json(_preview_table(result.df_normalized, n=preview_rows))
+        stats_dict = clean_json({
+            "raw_rows": int(result.df_raw.shape[0]),
+            "raw_cols": int(result.df_raw.shape[1]),
+            "normalized_rows": int(result.df_normalized.shape[0]),
+            "normalized_cols": int(result.df_normalized.shape[1]),
+        })
+        meta_dict = clean_json(meta_dict)
+        artifacts = clean_json(artifacts)
+    except Exception as e:
+        logger.exception("Preview/clean_json failed for dataset %s", dataset_id)
+        raise HTTPException(status_code=500, detail=f"Preview serialization failed: {type(e).__name__}: {e}")
 
-    # After you compute: meta_dict, preview_raw, preview_norm, artifacts, stats_dict
-    save_intake_artifacts(
-        dataset_id=dataset_id,
-        meta=meta_dict,
-        stats=stats_dict,  # {"raw_rows":..., "raw_cols":..., "normalized_rows":..., "normalized_cols":...}
-        preview={"raw": preview_raw, "normalized": preview_norm},
-        artifacts=artifacts,  # optional
-    )
+    # 5) Persist intake artifacts summary
+    try:
+        save_intake_artifacts(
+            dataset_id=dataset_id,
+            meta=meta_dict,
+            user_id=user_id,
+            stats=stats_dict,
+            preview={"raw": preview_raw, "normalized": preview_norm},
+            artifacts=artifacts,
+        )
+    except Exception as e:
+        logger.exception("save_intake_artifacts failed for dataset %s", dataset_id)
+        raise HTTPException(status_code=500, detail=f"save_intake_artifacts failed: {type(e).__name__}: {e}")
 
-    # 5) Response
+    # 6) Response
     return {
         "ok": True,
         "dataset_id": dataset_id,
         "artifacts": artifacts,
         "meta": meta_dict,
-        "preview": {
-            "raw": preview_raw,
-            "normalized": preview_norm,
-        },
-        "stats": {
-            "raw_rows": int(result.df_raw.shape[0]),
-            "raw_cols": int(result.df_raw.shape[1]),
-            "normalized_rows": int(result.df_normalized.shape[0]),
-            "normalized_cols": int(result.df_normalized.shape[1]),
-        },
+        "preview": {"raw": preview_raw, "normalized": preview_norm},
+        "stats": stats_dict,
     }
 
 if __name__ == "__main__":

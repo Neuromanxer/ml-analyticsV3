@@ -581,7 +581,8 @@ const signinSuccess = document.getElementById('signin-success');
 const signupSuccess = document.getElementById('signup-success');
 
 const urlParams = new URLSearchParams(window.location.search);
-const nextPage = urlParams.get('next') || "http://localhost:3000/";
+const rawNext = (urlParams.get('next') || 'wizard2.html').trim();
+const nextPage = new URL(rawNext, 'http://127.0.0.1:8080').toString();
 
 // Panel switching
 signUpButton.addEventListener('click', () => {
@@ -757,18 +758,28 @@ function showForgotPasswordModal() {
 const DEFAULT_NEXT = urlParams.get('next') || "http://127.0.0.1:3000/"; // use same host style as your Next app
 
 function redirectWithTokens(nextUrl, tokenData) {
-  const u = new URL(nextUrl);
+  let u;
+  try {
+    // Normalize any input into a URL first
+    const tmp = new URL(nextUrl, window.location.origin);
+    // Force the 8080 HTML origin, keep path/query/hash
+    u = new URL(tmp.pathname + tmp.search + tmp.hash, 'http://127.0.0.1:8080');
+  } catch (e) {
+    // Fallback default if nextUrl is invalid
+    u = new URL('/wizard2.html', 'http://127.0.0.1:8080');
+  }
+
   const params = new URLSearchParams();
-
-  if (tokenData.access_token) params.set("access_token", tokenData.access_token);
+  if (tokenData.access_token)  params.set("access_token", tokenData.access_token);
   if (tokenData.refresh_token) params.set("refresh_token", tokenData.refresh_token);
-  if (tokenData.name) params.set("name", tokenData.name);
-  if (tokenData.email) params.set("email", tokenData.email);
+  if (tokenData.name)          params.set("name", tokenData.name);
+  if (tokenData.email)         params.set("email", tokenData.email);
 
-  // send via URL **hash** so the app can ingest it safely
+  // Send via URL hash so the HTML page can ingest then scrub it
   u.hash = params.toString();
-  window.location.href = u.toString();
+  window.location.replace(u.toString()); // replace avoids back-button ping-pong
 }
+
 
 function hideForgotPasswordModal() {
     console.log("Closing modal");

@@ -5,6 +5,8 @@ from typing import Optional, Any, Dict
 import pandas as pd
 from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException
 import math
+import time 
+
 # --- Mapping helpers ----------------------------------------------------------
 import re
 from typing import Dict, List, Optional
@@ -16,11 +18,15 @@ from typing import Any, Dict, Optional, Tuple
 import uuid
 from auth import get_current_active_user, User
 from storage import upload_file_to_supabase
-from planner import compile_plan
+from planner import compile_plan, signals_from_meta, derive_signals_for_compile, SignalsIn, merge_signals
+from datasets import load_intake_meta, load_or_backfill_intake_meta
+from storage import sb_download_to_path
 #from .planner import compile_plan  # import your function
 # from .auth import get_current_active_user
 # from .storage import upload_file_to_supabase
 router = APIRouter(prefix="/api/plan", tags=["planner"])
+CSV_PREVIEW_ROWS = 10
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # Simple in-memory caches keyed by dataset_id
 SIGNALS_STORE: Dict[int, SignalsIn] = {}
@@ -34,6 +40,82 @@ def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out.columns = [_norm(c) for c in out.columns]
     return out
+# ---- helpers / fixes ---------------------------------------------------------
+
+from typing import Optional, Union, List, Dict, Any
+import pandas as pd
+
+def _as_float(x: Any, default: Optional[float] = 0.0) -> Optional[float]:
+    """
+    Robust float parsing. Returns `default` (which can be None) if not parseable or non-finite.
+    """
+    try:
+        v = float(x)
+        if not (v == v) or v in (float("inf"), float("-inf")):  # NaN/Inf
+            return default
+        return v
+    except Exception:
+        return default
+
+def _as_int(x: Any, default: int = 0) -> int:
+    try:
+        return int(float(x))
+    except Exception:
+        return default
+
+def apply_common_transforms(df: pd.DataFrame, key_field: Optional[str]=None, user_tz: Optional[str]=None):
+    """
+    Safer TZ handling: localize naive → user_tz; convert aware → user_tz; else ISO UTC.
+    """
+    transforms = []
+    if df is None or df.empty:
+        return df, transforms
+
+    for col in df.select_dtypes(include="object").columns:
+        df[col] = df[col].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+        transforms.append(f"trim_whitespace:{col}")
+        transforms.append(f"collapse_spaces:{col}")
+
+    if "email" in df.columns:
+        df["email"] = df["email"].astype(str).str.lower()
+        transforms.append("lowercase_email")
+
+    if "phone" in df.columns:
+        df["phone"] = clean_phone(df["phone"])
+        transforms.append("normalize_phone")
+
+    date_cols = [c for c in df.columns if ("date" in c) or ("created_at" in c)]
+    for col in date_cols:
+        try:
+            dt = pd.to_datetime(df[col], errors="coerce", utc=False)
+            if user_tz:
+                # if tz-naive → localize; if tz-aware → convert
+                if getattr(dt.dt, "tz", None) is None:
+                    dt = dt.dt.tz_localize(user_tz)
+                else:
+                    dt = dt.dt.tz_convert(user_tz)
+                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+            else:
+                # canonical UTC 'Z'
+                dt = dt.dt.tz_localize("UTC") if getattr(dt.dt, "tz", None) is None else dt.dt.tz_convert("UTC")
+                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            transforms.append(f"parse_date:{col}")
+        except Exception:
+            # leave as-is if parsing fails
+            pass
+
+    before = len(df)
+    df = df.drop_duplicates()
+    if len(df) < before:
+        transforms.append("drop_exact_duplicates")
+
+    if key_field and key_field in df.columns:
+        before = len(df)
+        df = df.drop_duplicates(key_field, keep="last")
+        if len(df) < before:
+            transforms.append(f"dedupe_on_key:{key_field}")
+
+    return df, transforms
 
 def _auto_map(df: pd.DataFrame, synonyms: Dict[str, List[str]]) -> Dict[str, Optional[str]]:
     """
@@ -452,6 +534,11 @@ def _file_health(df: Optional[pd.DataFrame], kind: str) -> Dict[str, Any]:
 # If you have these already, keep yours and remove mine
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "uploads")
 # ----------------- small helpers -----------------
+
+# --- small utils reused below -------------------------------------------------
+def _now_tag() -> str:
+    return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
 def _slug_filename(name: str) -> str:
     base = Path(name).stem
     ext  = Path(name).suffix or ".csv"
@@ -541,6 +628,37 @@ def _normalize_actions(actions_in: Any) -> Tuple[List[Dict[str, Any]], List[str]
         })
 
     return out, warnings
+
+SIGNALS_KEY_NAME = "signals.json"
+
+def _signals_key(user_id: str|int, dataset_id: int) -> str:
+    return f"{user_id}/{dataset_id}/plan/signals.json"
+
+def save_signals(*, user_id: str|int, dataset_id: int, signals: dict) -> str:
+    bucket = os.environ.get("SUPABASE_BUCKET","user-uploads")
+    key = _signals_key(user_id, dataset_id)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+        tmp_path = tmp.name
+    try:
+        with open(tmp_path,"w",encoding="utf-8") as f:
+            json.dump(signals, f, ensure_ascii=False)
+        # reuse your existing uploader; or sb_upload_from_path if you have it
+        return upload_file_to_supabase(str(user_id), tmp_path, key)
+    finally:
+        try: os.remove(tmp_path)
+        except Exception: pass
+def load_signals(*, user_id: str|int, dataset_id: int) -> dict | None:
+    key = _signals_key(user_id, dataset_id)
+    try:
+        # reuse your existing downloader
+        import tempfile, json
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".json") as tmp:
+            sb_download_to_path(os.environ.get("SUPABASE_BUCKET","user-uploads"), key, tmp.name)
+            with open(tmp.name,"r",encoding="utf-8") as f:
+                data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
 def _present_from_bytes(cust: Optional[bytes], ords: Optional[bytes], mkt: Optional[bytes]) -> List[str]:
     kinds = []
@@ -870,197 +988,517 @@ def _pick_excel_sheet(xls: pd.ExcelFile, expected_kind: Optional[str]) -> str:
             if ek in s.strip().lower():
                 return s
     return sheets[0]
-
-def _read_table_bytes(data: Optional[bytes], filename: Optional[str], expected_kind: Optional[str]=None) -> Tuple[Optional[pd.DataFrame], List[str]]:
-    """
-    Read tabular data from bytes across csv, csv.gz, xlsx, parquet.
-    Returns (df or None, warnings[]).
-    """
+def read_table_bytes(data: bytes | None, filename: str | None) -> Tuple[Optional[pd.DataFrame], List[str]]:
     warns: List[str] = []
     if not data:
         return None, warns
 
-    fmt = _sniff_format(filename, data)
+    head = data[:8]
+
+    # gzip?
+    if head.startswith(b"\x1f\x8b"):
+        try:
+            unz = gzip.decompress(data)
+            txt = unz.decode("utf-8-sig", errors="replace")
+            return pd.read_csv(io.StringIO(txt), sep=None, engine="python",
+                               on_bad_lines="skip", low_memory=False), warns
+        except Exception as e:
+            warns.append(f"gz csv parse error: {e}")
+
+    # CSV with delimiter sniff
     try:
-        if fmt == "csv":
-            return pd.read_csv(io.BytesIO(data)), warns
-        if fmt == "csv.gz":
-            # pandas handles compression arg; this avoids double IO
-            return pd.read_csv(io.BytesIO(data), compression="gzip"), warns
-        if fmt == "xlsx":
-            try:
-                xls = pd.ExcelFile(io.BytesIO(data))
-            except Exception as e:
-                warns.append(f"xlsx open failed: {e}")
-                return None, warns
-            sheet = _pick_excel_sheet(xls, expected_kind)
-            try:
-                df = pd.read_excel(xls, sheet_name=sheet)
-                return df, warns
-            except Exception as e:
-                warns.append(f"xlsx read failed (sheet {sheet}): {e}")
-                return None, warns
-        if fmt == "parquet":
-            try:
-                # requires pyarrow or fastparquet
-                return pd.read_parquet(io.BytesIO(data)), warns
-            except Exception as e:
-                warns.append(f"parquet read failed (install pyarrow or fastparquet): {e}")
-                return None, warns
+        txt = data.decode("utf-8-sig", errors="replace")
+        sample = "\n".join(txt.splitlines()[:50])
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+            sep = dialect.delimiter
+        except Exception:
+            sep = None
+        return pd.read_csv(io.StringIO(txt), sep=sep, engine="python",
+                           on_bad_lines="skip", low_memory=False), warns
     except Exception as e:
-        warns.append(f"{fmt} parse error: {e}")
+        warns.append(f"text csv parse error: {e}")
+
+    # xlsx?
+    try:
+        if _looks_xlsx(filename, head):
+            return pd.read_excel(io.BytesIO(data)), warns
+    except Exception as e:
+        warns.append(f"xlsx parse error: {e}")
+
+    # parquet?
+    try:
+        return pd.read_parquet(io.BytesIO(data)), warns
+    except Exception as e:
+        warns.append(f"parquet parse error: {e}")
+
+    # final csv fallback
+    try:
+        return pd.read_csv(io.BytesIO(data), sep=None, engine="python",
+                           on_bad_lines="skip", low_memory=False), warns
+    except Exception as e:
+        warns.append(f"final csv parse error: {e}")
+        return None, warns
+# --- fallbacks for getting the file ------------------------------------------
+def _download_by_processed_key(processed_key: str) -> Optional[bytes]:
+    bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(processed_key).suffix or ".csv") as tmp:
+        tmp_path = tmp.name
+    try:
+        sb_download_to_path(bucket, processed_key, tmp_path)  # must exist in your storage module
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+    finally:
+        try: os.remove(tmp_path)
+        except Exception: pass
+
+def _download_by_url(data_url: str) -> Optional[bytes]:
+    try:
+        import httpx
+        with httpx.Client(follow_redirects=True, timeout=30.0) as client:
+            r = client.get(data_url)
+            if not r.is_success: 
+                return None
+            ctype = (r.headers.get("content-type") or "").lower()
+            if "html" in ctype:   # expired signed URL returns HTML
+                return None
+            return r.content if r.content else None
+    except Exception:
+        return None
+# --- very small generic mapper so no missing deps ----------------------------
+def _auto_pick(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    cols = list(df.columns)
+    low  = [c.lower() for c in cols]
+    for cand in candidates:
+        c = cand.lower()
+        # exact
+        if c in low:
+            return cols[low.index(c)]
+        # contains
+        for i, name in enumerate(low):
+            if c in name or name in c:
+                return cols[i]
+    return None
+from planner import map_target_to_signals
+# ----------------- endpoint (single-file, works for ANY file) -----------------
+from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Tuple
+import tempfile, uuid, os
+import pandas as pd
+
+# ---- NEW: broad synonyms for a generic events-like dataset
+GENERIC_SYNS: Dict[str, List[str]] = {
+    # canonical -> synonyms
+    "id":        ["id","record_id","uuid","row_id","user_id","customer_id","order_id","lead_id","account_id"],
+    "timestamp": ["timestamp","ts","time","event_time","date","datetime","created_at","updated_at","order_date","sent_at"],
+    "amount":    ["amount","revenue","price","value","total","charge","cost","net","gross","amt","order_amount"],
+    "email":     ["email","email_address","e-mail"],
+    "phone":     ["phone","phone_number","mobile","cell","tel"],
+    "channel":   ["channel","utm_source","source","utm_medium","medium","campaign","utm_campaign"],
+    "target":    ["target","label","converted","purchase","purchased","response","responded","clicked","opened","churned","y","outcome"],
+}
+
+def _pick_first_present(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    cols = set(df.columns)
+    for c in candidates:
+        if c in cols:
+            return c
+    return None
+
+def _canonicalize(df: pd.DataFrame, mapping: Dict[str, Optional[str]]) -> pd.DataFrame:
+    # rename only mapped columns to their canonical names; keep others
+    ren = {v: k for k, v in mapping.items() if v and v in df.columns and k not in df.columns}
+    return df.rename(columns=ren)
+
+def _best_match(df: pd.DataFrame, syns: Dict[str, List[str]]) -> Dict[str, Optional[str]]:
+    found: Dict[str, Optional[str]] = {}
+    cols_lower = {c.lower(): c for c in df.columns}
+    for canon, cand in syns.items():
+        # try exact (case-insensitive) first
+        for s in cand:
+            if s.lower() in cols_lower:
+                found[canon] = cols_lower[s.lower()]
+                break
+        else:
+            # try relaxed: underscores/spaces stripped
+            norm_cols = {c.lower().replace("_","").replace(" ",""): c for c in df.columns}
+            for s in cand:
+                key = s.lower().replace("_","").replace(" ","")
+                if key in norm_cols:
+                    found[canon] = norm_cols[key]
+                    break
+            else:
+                found[canon] = None
+    return found
+
+def coerce_generic(df: pd.DataFrame, ui_map: Optional[Dict[str, str]] = None) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Normalize to canonical columns:
+      id, timestamp, amount, email, phone, channel, target
+    Returns (df, warnings)
+    """
+    warnings: List[str] = []
+    df = df.copy()
+
+    # 1) Build column mapping: UI map wins, then auto from GENERIC_SYNS
+    auto_map = _best_match(df, GENERIC_SYNS)
+    ui_map = ui_map or {}
+    # ui_map could be: {"id":"user_uuid", "timestamp":"created", "amount":"total_price", ...}
+    merged = {k: (ui_map.get(k) or auto_map.get(k)) for k in GENERIC_SYNS.keys()}
+
+    # 2) Rename to canonical
+    df = _canonicalize(df, merged)
+
+    # 3) Ensure an id
+    if "id" not in df.columns or df["id"].isnull().all():
+        df["id"] = df.index.astype(str)
+        warnings.append("No ID column detected; synthesized 'id' from row index.")
+
+    # 4) Parse timestamp if present; else synthesize monotonic timestamps (optional)
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=False)
+        if df["timestamp"].isnull().all():
+            warnings.append("Could not parse 'timestamp'; values were all NaT.")
+    else:
+        # optional synth: comment out if you prefer to leave missing
+        # df["timestamp"] = pd.to_datetime(pd.Series(range(len(df))), unit="s")
+        warnings.append("No timestamp column detected.")
+
+    # 5) Parse amount to numeric
+    if "amount" in df.columns:
+        # strip currency symbols and commas
+        df["amount"] = (
+            pd.to_numeric(
+                df["amount"]
+                .astype(str)
+                .str.replace(r"[^0-9\.\-]", "", regex=True),
+                errors="coerce"
+            )
+        )
+        if df["amount"].isnull().all():
+            warnings.append("Could not parse 'amount' to numeric.")
+    # If missing, it's fine—downstream can use counts-only unit economics.
+
+    # 6) Normalize target (binary-ish strings to 0/1 where obvious)
+    if "target" in df.columns:
+        # common truthy/falsy mapping
+        truthy = {"1","true","t","yes","y","success","converted","purchase","purchased","responded","clicked","open","opened"}
+        falsy  = {"0","false","f","no","n","fail","failed","did_not_convert","did not convert","not_clicked","not opened","churned=0"}
+        def _to01(x):
+            if pd.isna(x): return pd.NA
+            s = str(x).strip().lower()
+            if s in truthy: return 1
+            if s in falsy:  return 0
+            return x  # leave as-is; downstream will infer numeric/multiclass if not binary
+        df["target"] = df["target"].map(_to01)
+
+    return df, warnings
+def _coerce_generic_as_orders(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Minimal generic normalization into orders-like table:
+      order_id, customer_id, order_date, amount
+    """
+    warns: List[str] = []
+    out = pd.DataFrame(index=df.index)
+
+    oid = _auto_pick(df, ["order_id","oid","transaction_id","id"])
+    cid = _auto_pick(df, ["customer_id","cust_id","user_id","uid","email"])
+    dtc = _auto_pick(df, ["order_date","timestamp","date","created_at","processed_at"])
+    amt = _auto_pick(df, ["amount","order_total","revenue","price","total","subtotal_price","total_price"])
+
+    if not oid:
+        # fabricate an index-based id if missing
+        out["order_id"] = (df.reset_index().index.astype(str)).astype("string")
+        warns.append("order_id missing; synthesized sequential ids.")
+    else:
+        out["order_id"] = df[oid].astype("string")
+
+    out["customer_id"] = (df[cid].astype("string") if cid else pd.Series([pd.NA]*len(df), dtype="string"))
+    out["order_date"]  = (pd.to_datetime(df[dtc], errors="coerce") if dtc else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]"))
+
+    if amt:
+        out["amount"] = (
+            pd.to_numeric(df[amt].astype(str).str.replace(r"[\$,]", "", regex=True), errors="coerce")
+            .astype("Float64")
+        )
+    else:
+        out["amount"] = pd.Series([pd.NA]*len(df), dtype="Float64")
+        warns.append("amount missing; set to NA.")
+
+    # keep only positive/valid amounts if any exist
+    if out["amount"].notna().any():
+        out = out[out["amount"].fillna(0) >= 0]
+
+    # dedupe on order_id
+    out = out.dropna(subset=["order_id"]).drop_duplicates("order_id", keep="last")
+    return out, warns
+
+# --- references to your existing helpers (assumed present in your file) ------
+# _file_health, apply_common_transforms, _preflight_and_compute,
+# _normalize_actions, TargetSpecModel, map_target_to_signals,
+# _upload_csv_bytes, PREVIEW_STORE, SCHEMA_CONTRACT
+import io, gzip, csv
+import pandas as pd
+
+def _looks_xlsx(name: str | None, head: bytes) -> bool:
+    # xlsx zip signature is PK\x03\x04; rely on extension to reduce false positives
+    return head.startswith(b"PK\x03\x04") and (name or "").lower().endswith(".xlsx")
+
+def _read_table_bytes(data: bytes | None, filename: str | None) -> tuple[Optional[pd.DataFrame], list[str]]:
+    """
+    Returns (df, warnings). Tries in this order:
+    1) gzip → CSV
+    2) CSV (python engine, sep sniff, bad-line skip, UTF-8-BOM)
+    3) Excel (xlsx) when the signature & extension match
+    4) Parquet
+    5) Final CSV fallbacks
+    """
+    warns: list[str] = []
+    if not data:
         return None, warns
 
-    # fallback
-    try:
-        return pd.read_csv(io.BytesIO(data)), warns
-    except Exception as e:
-        warns.append(f"fallback csv parse error: {e}")
-        return None, warns
+    head = data[:8]
 
-# ----------------- endpoint -----------------
+    # 1) If gzip magic, decompress and treat as CSV
+    if head.startswith(b"\x1f\x8b"):
+        try:
+            unz = gzip.decompress(data)
+            # utf-8-sig handles BOM; engine='python' allows sep=None sniff
+            return (
+                pd.read_csv(
+                    io.StringIO(unz.decode("utf-8-sig", errors="replace")),
+                    sep=None, engine="python", on_bad_lines="skip", low_memory=False
+                ),
+                warns,
+            )
+        except Exception as e:
+            warns.append(f"gz csv parse error: {e}")
+
+    # 2) CSV with delimiter sniff (handles ',', '\t', ';', '|')
+    try:
+        text = data.decode("utf-8-sig", errors="replace")
+        sample = "\n".join(text.splitlines()[:50])  # sniffer needs a sample
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+            sep = dialect.delimiter
+        except Exception:
+            sep = None  # let pandas sniff with engine='python'
+        return (
+            pd.read_csv(
+                io.StringIO(text),
+                sep=sep, engine="python", on_bad_lines="skip", low_memory=False
+            ),
+            warns,
+        )
+    except Exception as e:
+        warns.append(f"text csv parse error: {e}")
+
+    # 3) Excel (xlsx) if it looks like one
+    try:
+        if _looks_xlsx(filename, head):
+            return (pd.read_excel(io.BytesIO(data)), warns)
+    except Exception as e:
+        warns.append(f"xlsx parse error: {e}")
+
+    # 4) Parquet
+    try:
+        return (pd.read_parquet(io.BytesIO(data)), warns)
+    except Exception as e:
+        warns.append(f"parquet parse error: {e}")
+
+    # 5) Final CSV fallbacks (binary read)
+    try:
+        return (
+            pd.read_csv(io.BytesIO(data), sep=None, engine="python", on_bad_lines="skip", low_memory=False),
+            warns,
+        )
+    except Exception as e:
+        warns.append(f"final csv parse error: {e}")
+        return None, warns
+# --- bytes loader for derive --------------------------------------------------
+from fastapi import UploadFile
+import tempfile, os, io
+import httpx
+
+async def _load_df_from_any(
+    *,
+    data_file: UploadFile | None,
+    processed_key: str | None,
+    data_url: str | None,
+    expected_kind: str | None,
+) -> tuple[Optional[pd.DataFrame], list[str], str]:
+    """
+    Returns (df, warnings, source_used)
+    Tries: data_file -> processed_key (Supabase) -> data_url (server-side HTTP)
+    """
+    warns: list[str] = []
+
+    # 1) Direct bytes from client
+    if data_file is not None:
+        try:
+            raw = await data_file.read()
+            if raw and len(raw) > 0:
+                df, w = _read_table_bytes(raw, getattr(data_file, "filename", None), expected_kind=expected_kind)
+                return df, warns + w, "data_file"
+            warns.append("data_file present but empty.")
+        except Exception as e:
+            warns.append(f"data_file read failed: {e}")
+
+    # 2) Supabase key
+    if processed_key:
+        try:
+            bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                sb_download_to_path(bucket, _strip_bucket_prefix(processed_key), tmp_path)
+                with open(tmp_path, "rb") as fh:
+                    raw = fh.read()
+                df, w = _read_table_bytes(raw, os.path.basename(processed_key), expected_kind=expected_kind)
+                return df, warns + w, "processed_key"
+            finally:
+                try: os.remove(tmp_path)
+                except Exception: pass
+        except Exception as e:
+            warns.append(f"download via processed_key failed: {e}")
+
+    # 3) Signed URL (server side; avoids CORS)
+    if data_url:
+        try:
+            # short, safe timeout
+            with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+                r = client.get(data_url, headers={"Accept": "*/*"})
+                r.raise_for_status()
+                raw = r.content
+            # name hint from URL path
+            name_hint = data_url.split("?")[0].rsplit("/", 1)[-1]
+            df, w = _read_table_bytes(raw, name_hint, expected_kind=expected_kind)
+            return df, warns + w, "data_url"
+        except Exception as e:
+            warns.append(f"server fetch via data_url failed: {e}")
+
+    return None, warns, "none"
+from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException, Form
 @router.post("/derive")
 async def derive_columns(
     request: Request,
-    customers_file: UploadFile | None = File(None),
-    orders_file:    UploadFile | None = File(None),
-    marketing_file: UploadFile | None = File(None),
-    current_user:   "User" = Depends(get_current_active_user),
+    data_file: UploadFile | None = File(None),
+    processed_key: str | None = Form(None),   # 👈 accept durable key
+    data_url: str | None = Form(None),        # 👈 accept signed URL
+    current_user: "User" = Depends(get_current_active_user),
 ):
     form = await request.form()
 
-    # JSON fields (string preferred; your _parse_json_field should also accept UploadFile if present)
+    # JSON fields as before
     mappings = await _parse_json_field(form.get("mappings"), "mappings")
     options  = await _parse_json_field(form.get("options"),  "options")
-    actions  = await _parse_json_field(form.get("actions"),  "actions")  # optional separate field
-    target   = await _parse_json_field(form.get("target"),   "target")    # ✅ NEW
-    dataset_id_raw = form.get("dataset_id")                                # ✅ NEW
+    actions  = await _parse_json_field(form.get("actions"),  "actions")
+    target   = await _parse_json_field(form.get("target"),   "target")
+    options = options or {}
+    dataset_id_raw = form.get("dataset_id")
     dataset_id: int | None = int(dataset_id_raw) if dataset_id_raw else None
-    # Merge actions: explicit 'actions' field takes precedence, else options.allowed_actions
-    if not actions:
-        actions = (options or {}).get("allowed_actions", [])
-    norm_actions, warnings = _normalize_actions(actions)
 
+    # pick expected kind from hint if you support it
+    kind_hint = (form.get("kind") or options.get("kind") or "").strip().lower() or None
+    VALID_KINDS = {"customers", "orders", "marketing"}
+    expected_kind = kind_hint if (kind_hint in VALID_KINDS) else None
 
-    # Buffer files exactly once
-    cust_bytes, cust_name = await _buffer_upload(customers_file)
-    ord_bytes,  ord_name  = await _buffer_upload(orders_file)
-    mkt_bytes,  mkt_name  = await _buffer_upload(marketing_file)
+    # Normalize actions etc. (unchanged) ...
+    # user_id = ...
+    # uploads dict ...
 
-    # Present kinds: from client hint or inferred
-    present_kinds = await _parse_json_field(form.get("present_kinds"), "present_kinds") or _present_from_bytes(cust_bytes, ord_bytes, mkt_bytes)
+    # 📥 Read the table from ANY of the provided sources
+    df, read_warnings, source_used = await _load_df_from_any(
+        data_file=data_file,
+        processed_key=processed_key,
+        data_url=data_url,
+        expected_kind=expected_kind,
+    )
 
-    # Resolve user id from auth
-    user_id = str(_resolve_user_id(request, current_user))
+    warnings = [] + read_warnings
+    if df is None or (hasattr(df, "__len__") and len(df) == 0):
+        # You can 200/“skipped” for smooth UX, or raise 422. Your FE already handles `skipped`.
+        return {"skipped": True, "reason": "Uploaded file could not be parsed or is empty.", "source": source_used}
 
-    # Upload to Supabase (optional; only if present)
-    uploads: Dict[str, Optional[Dict[str, str]]] = {"customers": None, "orders": None, "marketing": None}
+    # continue with your existing flow:
+    df = normalize_headers(df)
 
-    async def _upload(kind: str, data: Optional[bytes], original_name: Optional[str]) -> Optional[Dict[str, str]]:
-        if not data:
-            return None
-        safe_original = _slug_filename(original_name or f"{kind}.csv")
-        # Optional: group uploads under a run id to avoid filename collisions
-        run_id = uuid.uuid4().hex[:12]
-        stamped_name = f"derive/{_now_tag()}-{run_id}-{kind}-{safe_original}"
+    # ---------- light kind inference; treat unknown as generic orders ----------
+    cols = set(df.columns)
+    if {"campaign_id"} & cols or {"channel","sent_date"} & cols:
+        kind_specific = "marketing"
+    elif {"order_id"} & cols or {"order_date","amount"} & cols:
+        kind_specific = "orders"
+    elif {"customer_id"} & cols or {"email"} & cols:
+        kind_specific = "customers"
+    else:
+        kind_specific = "orders"  # generic slot
 
-        suffix = Path(stamped_name).suffix or ".csv"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
+    # ---------- coerce to canonical shape ----------
+    if kind_specific == "customers":
+        used_mapping = {"customers": finalize_mapping(df, mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None, CUSTOMER_SYNS),
+                        "orders": None, "marketing": None}
+        C = coerce_customers(df, used_mapping["customers"])
+        O = None; M = None; key_field = "customer_id"
+    elif kind_specific == "marketing":
+        used_mapping = {"marketing": finalize_mapping(df, mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None, MKT_SYNS),
+                        "customers": None, "orders": None}
+        M = coerce_marketing(df, used_mapping["marketing"])
+        C = None; O = None; key_field = "campaign_id"
+    else:
+        # orders or generic
+        if isinstance(mappings, dict) and "orders" in mappings and isinstance(mappings["orders"], dict):
+            used_mapping = {"orders": finalize_mapping(df, mappings["orders"], ORDER_SYNS),
+                            "customers": None, "marketing": None}
+            O = coerce_orders(df, used_mapping["orders"])
+        else:
+            used_mapping = {"orders": None, "customers": None, "marketing": None}
+            O, gen_w = _coerce_generic_as_orders(df)
+            warnings.extend(gen_w)
+        C = None; M = None; key_field = "order_id"
 
-        try:
-            storage_path = upload_file_to_supabase(user_id, tmp_path, stamped_name)
-            try:
-                public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)  # type: ignore[attr-defined]
-            except Exception:
-                public_url = ""
-            return {"path": storage_path, "filename": stamped_name, "public_url": public_url}
-        finally:
-            try: os.remove(tmp_path)
-            except Exception: pass
+    # ---------- file health / transforms ----------
+    file_health = {"customers": None, "orders": None, "marketing": None}
+    D = C or O or M
+    file_health[kind_specific] = _file_health(D if D is not None and len(D) else None, kind_specific)
+    D, _ = apply_common_transforms(D, key_field=key_field, user_tz=options.get("user_tz"))
 
-    uploads["customers"] = await _upload("customers", cust_bytes, cust_name)
-    uploads["orders"]    = await _upload("orders",    ord_bytes,  ord_name)
-    uploads["marketing"] = await _upload("marketing", mkt_bytes,  mkt_name)
+    # ---------- uploads of normalized csv ----------
+    uploads = {"customers": None, "orders": None, "marketing": None}
+    uploads[kind_specific] = await _upload_csv_bytes(user_id, kind_specific, D if (D is not None and len(D)) else None)
 
-    # DataFrames
-    read_warnings: List[str] = []
-
-    df_customers, w1 = _read_table_bytes(cust_bytes, cust_name, expected_kind="customers")
-    df_orders,    w2 = _read_table_bytes(ord_bytes,  ord_name,  expected_kind="orders")
-    df_mkt,       w3 = _read_table_bytes(mkt_bytes,  mkt_name,  expected_kind="marketing")
-    read_warnings.extend(w1 + w2 + w3)
-
-    warnings.extend(read_warnings)
-    # Normalize headers
-    if df_customers is not None: df_customers = normalize_headers(df_customers)
-    if df_orders    is not None: df_orders    = normalize_headers(df_orders)
-    if df_mkt       is not None: df_mkt       = normalize_headers(df_mkt)
-
-    # Mapping (UI first, then auto)
-    ui_cust = mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None
-    ui_ord  = mappings.get("orders")    if isinstance(mappings.get("orders"),    dict) else None
-    ui_mkt  = mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None
-
-    cust_map  = finalize_mapping(df_customers, ui_cust, CUSTOMER_SYNS)
-    order_map = finalize_mapping(df_orders,    ui_ord,  ORDER_SYNS)
-    mkt_map   = finalize_mapping(df_mkt,       ui_mkt,  MKT_SYNS)
-
-    # Coerce (safe if df is None)
-    C = coerce_customers(df_customers, cust_map)
-    O = coerce_orders(df_orders,       order_map)
-    M = coerce_marketing(df_mkt,       mkt_map)
-    file_health = {
-        "customers": _file_health(C if C is not None and len(C) else None, "customers"),
-        "orders":    _file_health(O if O is not None and len(O) else None, "orders"),
-        "marketing": _file_health(M if M is not None and len(M) else None, "marketing"),
-    }
-    C, c_transforms = apply_common_transforms(C, key_field="customer_id", user_tz=options.get("user_tz"))
-    O, o_transforms = apply_common_transforms(O, key_field="order_id", user_tz=options.get("user_tz"))
-    M, m_transforms = apply_common_transforms(M, key_field="campaign_id", user_tz=options.get("user_tz"))
-
-    modified_csvs = {
-        "customers": await _upload_csv_bytes(user_id, "customers", C if len(C) else None),
-        "orders":    await _upload_csv_bytes(user_id, "orders",    O if len(O) else None),
-        "marketing": await _upload_csv_bytes(user_id, "marketing", M if len(M) else None),
-    }
-    # --- Preflight + safe compute (non-blocking)
+    # ---------- preflight / compute ----------
     partial, calc_gaps, coverage_pct = _preflight_and_compute(C, O, M, options)
 
-    # Cache a small preview (orders preferred), keyed by dataset_id
+    # ---------- preview cache ----------
     try:
-        if dataset_id is not None:
-            preview_rows = (
-                (O.head(50).to_dict("records") if O is not None and len(O) else None)
-                or (C.head(50).to_dict("records") if C is not None and len(C) else None)
-                or (M.head(50).to_dict("records") if M is not None and len(M) else None)
-            )
-            if preview_rows:
-                PREVIEW_STORE[dataset_id] = preview_rows
+        if dataset_id is not None and D is not None and len(D):
+            PREVIEW_STORE[dataset_id] = D.head(50).to_dict("records")
     except Exception:
         pass
 
+    # ---------- planner signals (and persist) ----------
+    planner_signals = None
     try:
-        preview_rows = (O.head(50).to_dict("records") if O is not None else None) \
-                       or (C.head(50).to_dict("records") if C is not None else None) \
-                       or (M.head(50).to_dict("records") if M is not None else None)
+        preview_rows = D.head(50).to_dict("records") if (D is not None and len(D)) else None
         if target:
             t_model = TargetSpecModel(**target)
-            planner_signals = map_target_to_signals(t_model, preview_rows)
-            if dataset_id is not None:
+            sig_obj = map_target_to_signals(t_model, preview_rows)
+            planner_signals = sig_obj.model_dump() if hasattr(sig_obj, "model_dump") else dict(sig_obj or {})
+            if planner_signals and dataset_id is not None:
                 SIGNALS_STORE[dataset_id] = planner_signals
-    except Exception:
-        preview_rows = None
-    try:
-        target_spec = TargetSpecModel(**(target or {}))
-        planner_signals = map_target_to_signals(target_spec, preview_rows)
-        if dataset_id is not None:
-            SIGNALS_STORE[dataset_id] = planner_signals
+                try:
+                    # optional persist for compile() to load
+                    save_signals(user_id=user_id, dataset_id=dataset_id, signals=planner_signals)
+                except Exception:
+                    pass
     except Exception:
         planner_signals = None
 
-    # Horizon selection (unchanged)
+    # ---------- horizons / risk / actions capacity (unchanged) ----------
     tested = options.get("horizons", [7, 14, 30]) or [14]
     try:
         tested = [int(x) for x in tested]
@@ -1068,25 +1506,23 @@ async def derive_columns(
         tested = [7, 14, 30]
     chosen = tested[len(tested)//2] if tested else 14
 
-    # Risk preset → capacity scaler
     risk_preset = (options.get("risk_preset") or "balanced").lower().strip()
-    risk_knobs = {
-        "conservative": {"cap_multiplier": 0.5},
-        "balanced":     {"cap_multiplier": 0.8},
-        "aggressive":   {"cap_multiplier": 1.0},
-    }.get(risk_preset, {"cap_multiplier": 0.8})
-    cap_mult = _as_float(risk_knobs["cap_multiplier"], 0.8)
+    cap_mult = {"conservative": 0.5, "balanced": 0.8, "aggressive": 1.0}.get(risk_preset, 0.8)
 
-    # Modeling placeholders (keep your knobs)
+    def _as_float(x, default):
+        try:
+            v = float(x); 
+            if pd.isna(v) or v in (float("inf"), float("-inf")): return default
+            return v
+        except Exception:
+            return default
+
     ece       = _as_float(options.get("ece", 0.03), 0.03)
     coverage  = _as_float(options.get("coverage", 0.92), 0.92)
     alpha     = _as_float(options.get("alpha", 0.10), 0.10)
     threshold = _as_float(options.get("threshold", 0.71), 0.71)
-    chance_to_goal  = _as_float(options.get("chance_to_goal", 0.78), 0.78)
-    channel_mix       = options.get("channel_mix") or {"email": 0.7, "sms": 0.25, "calls": 0.05}
     ops_cost_per_call = _as_float(options.get("ops_cost_per_call", 1.8), 1.8)
 
-    # --- Actions capacity / budget (uses norm_actions/action_warnings computed earlier)
     actions_capacity = []
     max_spend_over_horizon = 0.0
     ops_calls_per_day = 0
@@ -1111,7 +1547,7 @@ async def derive_columns(
         })
     ops_cost_estimate = round(ops_calls_per_day * ops_cost_per_call * chosen * cap_mult, 2)
 
-    budget_cap = options.get("budget_cap")
+    budget_cap = options.get("budgetCap")
     budget_cap = _as_float(budget_cap, None) if budget_cap is not None else None
     budget_notes = []
     if budget_cap is not None and max_spend_over_horizon > budget_cap:
@@ -1119,14 +1555,13 @@ async def derive_columns(
             f"Max action spend over {chosen}d ({max_spend_over_horizon:.2f}) exceeds budget_cap ({budget_cap:.2f}). Will clip by risk preset."
         )
 
-    # Build derived by merging preflight results with the rest
     derived = {
-        **partial,  # eligible_population, unit_economics, threshold_volume, meta.calc_coverage_pct
+        **partial,
         "target_horizon": {"chosen": chosen, "tested": tested, "rationale": "midpoint (placeholder)"},
         "channel_reach": {
             "email": partial["eligible_population"]["emailable_pct"],
             "sms": partial["eligible_population"]["sms_opt_in_pct"],
-            "calls": 0.12,  # placeholder
+            "calls": 0.12,
             "ops_cost_per_call": ops_cost_per_call,
         },
         "baseline": {
@@ -1144,26 +1579,20 @@ async def derive_columns(
 
     return {
         "user": {"id": user_id},
-        "present_kinds": present_kinds,
-        "used_mapping": {"customers": cust_map, "orders": order_map, "marketing": mkt_map},
+        "present_kinds": [kind_specific],
+        "used_mapping": used_mapping,
         "uploads": uploads,
-        "options_sanitized": {
-            **options, "risk_preset": risk_preset, "horizons": tested,
-            # "budget_cap": budget_cap,
-        },
+        "options_sanitized": {**options, "risk_preset": risk_preset, "horizons": tested},
         "actions": norm_actions,
-        "schema_contract": SCHEMA_CONTRACT,  # lets the UI label fields
-        "file_health": file_health,          # stats + preview + issues
-
+        "schema_contract": SCHEMA_CONTRACT,
+        "file_health": file_health,
         "derived": derived,
-        "warnings": warnings,          # your existing general warnings
-        "preflight": {
-            "calc_gaps": calc_gaps,    # ← per-calc missing columns & fallbacks
-            "coverage_pct": coverage_pct
-        },
-        "modified_csvs": modified_csvs,  # if you added CSV export earlier
-        "planner_signals": planner_signals.model_dump() if planner_signals else None,
+        "warnings": warnings,
+        "preflight": {"calc_gaps": calc_gaps, "coverage_pct": coverage_pct},
+        "modified_csvs": {"customers": None, "orders": None, "marketing": None} | {kind_specific: uploads[kind_specific]},
+        "planner_signals": planner_signals,
     }
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, conint, confloat
 from typing import Any, Dict, List, Optional
@@ -1178,18 +1607,6 @@ class IntentIn(BaseModel):
 
     risk_preset: str = Field("balanced", pattern="^(conservative|balanced|aggressive)$")
     constraints: Dict[str, Any] = {}
-
-class SignalsIn(BaseModel):
-    hasLabel: Optional[bool] = None
-    labelType: Optional[str] = Field(None, pattern="^(binary|multiclass|numeric)$")
-    hasTime: Optional[bool] = None
-    isCensored: Optional[bool] = None
-    horizonDays: Optional[conint(ge=1, le=3650)] = None  
-    eventRate: Optional[confloat(ge=0.0, le=1.0)] = None  
-    rows: Optional[int] = None
-    cols: Optional[int] = None
-    tsColumn: Optional[str] = None
-    idColumn: Optional[str] = None
 
 class ArtifactsIn(BaseModel):
     classification: bool = False
@@ -1253,161 +1670,338 @@ class PlanSummaryOut(BaseModel):
 class CompileResponse(BaseModel):
     steps: List[PlanStepOut]
     summary: PlanSummaryOut
+    # add what you’re already returning:
+    budget_context: Optional[Dict[str, Any]] = None
+    meta_used: Optional[Dict[str, Any]] = None
+    signals: Optional[Dict[str, Any]] = None
+
+
 import pandas as pd
 from typing import Any, Dict, List, Optional, Union
-
-# --- helper: infer label type from preview values ---
-def _infer_label_type_from_preview(rows: List[Dict[str, Any]], target_col: str) -> Optional[str]:
+def _pick_processed_key(ds: "Dataset") -> Optional[str]:
     """
-    Heuristic:
-      - 'numeric' if ≥70% of preview values parse as numbers
-      - else 'binary' if ≤2 unique non-null values
-      - else 'multiclass' if >2
+    Choose the best object key for the processed dataset.
     """
-    if not rows or not target_col:
-        return None
-    s = pd.Series([r.get(target_col) for r in rows])
-
-    # numeric if enough values coerce to numbers
-    as_num = pd.to_numeric(s, errors="coerce")
-    if as_num.notna().mean() >= 0.70:
-        return "numeric"
-
-    # categorical cases
-    uniq = pd.Series(s.dropna()).unique().tolist()
-    if len(uniq) <= 2:
-        return "binary"
-    if len(uniq) > 2:
-        return "multiclass"
+    for attr in ("processed_file_path", "file_path"):
+        k = getattr(ds, attr, None)
+        if k:
+            return k
     return None
 
-# --- helper: compute binary event rate robustly ---
-def _compute_event_rate_binary(
-    values: List[Any],
-    positive_class: Optional[Union[str, int, bool]] = None,
-) -> Optional[float]:
-    if not values:
+def _read_table_local(path: str) -> Optional[pd.DataFrame]:
+    """
+    Read CSV/XLSX/Parquet best-effort from a local temp path.
+    """
+    p = Path(path)
+    ext = p.suffix.lower()
+    try:
+        if ext in (".csv", ".txt", ".tsv"):
+            # naive sniff for TSV
+            sep = "\t" if ext == ".tsv" or p.name.endswith(".tsv") else ","
+            return pd.read_csv(path, sep=sep, low_memory=False)
+        if ext in (".xlsx", ".xls", ".xlsm"):
+            return pd.read_excel(path)
+        if ext in (".parquet",):
+            return pd.read_parquet(path)  # requires pyarrow/fastparquet
+        # default: try CSV anyway
+        return pd.read_csv(path, low_memory=False)
+    except Exception:
+        # final fallback
+        try:
+            return pd.read_csv(path, low_memory=False)
+        except Exception:
+            return None
+from auth import get_user_db, Dataset
+def _download_processed_to_temp(dataset_id: int, current_user) -> Optional[str]:
+    """
+    Find the dataset row, resolve the processed key, and download it to a temp file.
+    """
+    bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+    with get_user_db(current_user) as db:
+        ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+        if not ds:
+            return None
+        key = _pick_processed_key(ds)
+        if not key:
+            return None
+
+    # download
+    suffix = Path(str(key)).suffix or ".csv"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp_path = tmp.name
+    try:
+        sb_download_to_path(bucket, key, tmp_path)
+        return tmp_path
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
         return None
 
-    if positive_class is None:
-        # fallback: truthy semantics (strings 'true','yes','1', numbers !=0, bool True)
-        def _is_pos(v: Any) -> bool:
-            if isinstance(v, bool):
-                return v
-            if isinstance(v, (int, float)) and pd.notna(v):
-                return v != 0
-            if isinstance(v, str):
-                t = v.strip().lower()
-                return t in {"true", "yes", "y", "1"}
-            return bool(v)
-        trues = sum(1 for v in values if _is_pos(v))
-    else:
-        trues = sum(1 for v in values if v == positive_class)
+def _load_processed_dataframe(dataset_id: int, current_user) -> Optional[pd.DataFrame]:
+    """
+    Convenience: download and read the processed table to a DataFrame.
+    """
+    tmp = _download_processed_to_temp(dataset_id, current_user)
+    if not tmp:
+        return None
+    try:
+        df = _read_table_local(tmp)
+        return df
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
 
-    denom = max(1, len(values))
-    return trues / denom
 
-# --- upgraded mapper: uses TargetSpecModel and returns SignalsIn ---
-def map_target_to_signals(t: TargetSpecModel, preview_rows: Optional[List[Dict[str, Any]]]) -> SignalsIn:
-    task = (t.task or "auto").lower()
+# --- signals construction fallback -------------------------------------------
 
-    has_label: Optional[bool] = None
-    label_type: Optional[str] = None
-    has_time: Optional[bool] = bool(t.ts_column) if t.ts_column else None
-    is_censored: Optional[bool] = True if task == "survival" else None
-    horizon_days: Optional[int] = t.horizon_days
+def _resolve_target_column(df: pd.DataFrame, preferred: str | None) -> str:
+    # Try caller’s preferred
+    if preferred and preferred in df.columns:
+        return preferred
+    # Your pipeline writes helpers; fall back to them
+    for alt in ["__target_cls", "__target_reg"]:
+        if alt in df.columns:
+            return alt
+    raise ValueError(f"Target column '{preferred}' not found in processed data")
+def build_signals_from_processed(df: pd.DataFrame, *, preferred_target: str | None) -> dict:
+    cols = [str(c) for c in df.columns]
+    low = [c.lower() for c in cols]
+    id_col = None
+    for i, c in enumerate(low):
+        if c in {"id", "customer_id", "user_id", "uid"} or c.endswith("id"):
+            id_col = cols[i]
+            break
+    ts_col = None
+    for i, c in enumerate(low):
+        if c in {"created_at", "order_date", "timestamp", "date", "processed_at"}:
+            ts_col = cols[i]
+            break
 
-    # Shape info from preview (optional, but nice to populate)
-    rows_count: Optional[int] = None
-    cols_count: Optional[int] = None
-    if preview_rows:
-        df_prev = pd.DataFrame(preview_rows)
-        rows_count = int(len(df_prev))
-        cols_count = int(df_prev.shape[1])
+    target_col = _resolve_target_column(df, preferred_target)
+    has_label = target_col in df
 
-    # Decide label/time based on task + target_column
-    if t.target_column:
-        # We do have a label column hint
-        if task == "regression":
-            has_label = True
-            label_type = "numeric"
-        elif task in ("classification", "segment"):
-            has_label = True
-            # If classification but no positive_class/type given, infer from preview
-            if preview_rows:
-                label_type = _infer_label_type_from_preview(preview_rows, t.target_column) or "binary"
-            else:
-                label_type = "binary"
-        elif task in ("forecast", "time_series", "ts_forecast"):
-            has_time = True if has_time is None else has_time
-            horizon_days = horizon_days or 14
-            # For forecasting, treat future y as unknown during planning
-            has_label = False if has_label is None else has_label
-            label_type = None
-        elif task == "auto":
-            # Infer from preview; if unknown, leave as None to let downstream fallbacks kick in
-            has_label = True
-            if preview_rows:
-                label_type = _infer_label_type_from_preview(preview_rows, t.target_column)
+    label_type = None
+    if has_label:
+        nunique = int(df[target_col].nunique(dropna=True))
+        if str(df[target_col].dtype) == "object":
+            label_type = "binary" if nunique <= 2 else "multiclass"
         else:
-            # Unknown task string: best-effort
-            has_label = True
+            vals = pd.to_numeric(df[target_col], errors="coerce").dropna()
+            uniq = set(vals.unique().tolist()[:5])
+            label_type = "binary" if uniq.issubset({0, 1}) else ("multiclass" if nunique > 2 else "binary")
 
-    # If no explicit task but we have a ts_column, prefer time-awareness
-    if has_time and task == "auto" and horizon_days is None:
-        horizon_days = 14  # gentle default
+    return {
+        "hasLabel": bool(has_label),
+        "labelType": label_type,          # "binary" | "multiclass" | None (regression implied by planner)
+        "hasTime": bool(ts_col),
+        "tsColumn": ts_col,
+        "idColumn": id_col,
+        "rows": int(df.shape[0]),
+        "cols": int(df.shape[1]),
+        "isCensored": False,
+        "horizonDays": 30,                # sensible default; upstream can override
+    }
 
-    # event rate for binary labels (optional)
-    event_rate: Optional[float] = None
-    if has_label and label_type == "binary" and t.target_column and preview_rows:
-        vals = [r.get(t.target_column) for r in preview_rows if t.target_column in r]
-        event_rate = _compute_event_rate_binary(vals, t.positive_class)
 
-    # Build and return your pydantic SignalsIn instance
-    return SignalsIn(
-        hasLabel=has_label,
-        labelType=label_type,
-        hasTime=has_time,
-        isCensored=is_censored,
-        horizonDays=horizon_days,
-        eventRate=event_rate,
-        rows=rows_count,
-        cols=cols_count,
-        tsColumn=t.ts_column,
-        idColumn=t.id_column,
-    )
+
 
 def load_preview_for_dataset(dataset_id: Optional[int]) -> Optional[List[Dict[str, Any]]]:
     if dataset_id is None:
         return None
     return PREVIEW_STORE.get(dataset_id)
+
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
+from planner import _infer_label_type_from_preview
+@dataclass
+class PlanHint:
+    goal: Optional[str] = None
+    horizon_days: Optional[int] = None
+    label_type: Optional[str] = None   # "binary" | "multiclass" | "numeric"
+    time_column: Optional[str] = None
+    id_column: Optional[str] = None
+    preferred_families: Optional[List[str]] = None
+
+def llm_infer_plan_hint(headers: List[str], preview_rows: List[Dict[str, Any]]) -> PlanHint:
+    """
+    Very lightweight heuristic replacement for an LLM.
+    Looks at column names & first few rows to infer intent/signals.
+    """
+    headers_l = [h.lower() for h in headers]
+    hint = PlanHint(preferred_families=[])
+
+    # ---- Goal heuristics ----
+    if any("churn" in h or "response" in h for h in headers_l):
+        hint.goal = "predict"
+    elif any("date" in h or "time" in h for h in headers_l):
+        hint.goal = "forecast"
+    else:
+        hint.goal = "predict"
+
+    # ---- Label type ----
+    if "response" in headers_l or "churn" in headers_l:
+        # check unique values in preview
+        vals = {row.get("Response") for row in preview_rows if "Response" in row}
+        if vals and len(vals) <= 2:
+            hint.label_type = "binary"
+        elif vals and len(vals) > 2:
+            hint.label_type = "multiclass"
+    elif any("amount" in h or "price" in h or "revenue" in h for h in headers_l):
+        hint.label_type = "numeric"
+
+    # ---- Time column ----
+    for h in headers_l:
+        if "date" in h or "time" in h or "timestamp" in h:
+            hint.time_column = headers[headers_l.index(h)]
+            hint.horizon_days = 14  # safe default horizon
+            break
+
+    # ---- ID column ----
+    for h in headers_l:
+        if h in ("id", "customer_id", "user_id", "account_id", "order_id"):
+            hint.id_column = headers[headers_l.index(h)]
+            break
+
+    # ---- Family nudges ----
+    if hint.label_type in ("binary", "multiclass"):
+        hint.preferred_families.append("classification")
+    elif hint.label_type == "numeric":
+        hint.preferred_families.append("regression")
+    if hint.time_column and not hint.label_type:
+        hint.preferred_families.append("forecast")
+
+    return hint
+from dataclasses import asdict
+
+FILL_FIELDS = ["hasLabel","labelType","hasTime","isCensored","horizonDays",
+               "eventRate","rows","cols","tsColumn","idColumn"]
+
 @router.post("/compile", response_model=CompileResponse)
 def compile_route(payload: CompileRequest, current_user=Depends(get_current_active_user)):
     try:
-        # 1) prefer signals saved during /derive for this dataset
+        SAFETY_RESERVE = 0.25  # leave a little runway in the user's token balance
+
+        # ---- identity ----
+        user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthenticated")
+
+        # ---- helpers ----
+        def to_dict(x):
+            if x is None: return {}
+            if hasattr(x, "model_dump"): return x.model_dump()
+            if hasattr(x, "dict"): return x.dict()
+            if hasattr(x, "__dict__"): return dict(getattr(x, "__dict__"))
+            if isinstance(x, dict): return dict(x)
+            return {}
+
+        # ---- 1) Signals: load saved → else build from processed → else preview map → finally payload overrides ----
         signals_dict: Dict[str, Any] = {}
-        if payload.dataset_id is not None and payload.dataset_id in SIGNALS_STORE:
-            mdl = SIGNALS_STORE[payload.dataset_id]
-            signals_dict = mdl.model_dump() if hasattr(mdl, "model_dump") else getattr(mdl, "__dict__", {}) or {}
+        meta_used_auto: Dict[str, Any] = {}
 
-        # 2) else, map UX target → PlannerSignals on the fly
-        if not signals_dict and payload.target is not None:
-            preview_rows = load_preview_for_dataset(payload.dataset_id)
-            mapped = map_target_to_signals(payload.target, preview_rows)
-            signals_dict = mapped.model_dump() if hasattr(mapped, "model_dump") else getattr(mapped, "__dict__", {}) or {}
+        dataset_id = getattr(payload, "dataset_id", None)
+        preferred_target = None
+        if getattr(payload, "target", None):
+            try:
+                preferred_target = (payload.target.target_column
+                                    if hasattr(payload.target, "target_column")
+                                    else (payload.target or {}).get("target_column"))
+            except Exception:
+                preferred_target = None
 
-        # 3) else, fall back to whatever the client sent (may be empty/nulls)
-        if not signals_dict and payload.signals is not None:
-            signals_dict = payload.signals.model_dump()
+        if dataset_id is not None:
+            # 1a) Try saved signals first
+            saved = load_signals(user_id=user_id, dataset_id=int(dataset_id))
+            if isinstance(saved, dict) and saved:
+                signals_dict.update(saved)
+                meta_used_auto = {
+                    "rows": saved.get("rows"),
+                    "cols": saved.get("cols"),
+                    "tsColumn": saved.get("tsColumn"),
+                    "idColumn": saved.get("idColumn"),
+                    "hasLabel": saved.get("hasLabel"),
+                    "labelType": saved.get("labelType"),
+                    "hasTime": saved.get("hasTime"),
+                    "horizonDays": saved.get("horizonDays"),
+                }
+            else:
+                # 1b) No saved signals → attempt to build from processed dataset
+                df_proc = _load_processed_dataframe(int(dataset_id), current_user)
+                if df_proc is not None and len(df_proc):
+                    built = build_signals_from_processed(df_proc, preferred_target=preferred_target)
+                    signals_dict.update(built or {})
+                    meta_used_auto = {
+                        "rows": built.get("rows"),
+                        "cols": built.get("cols"),
+                        "tsColumn": built.get("tsColumn"),
+                        "idColumn": built.get("idColumn"),
+                        "hasLabel": built.get("hasLabel"),
+                        "labelType": built.get("labelType"),
+                        "hasTime": built.get("hasTime"),
+                        "horizonDays": built.get("horizonDays"),
+                    }
 
+        # 1c) If caller provided a target + we have a preview cache, nudge missing pieces
+        preview_rows = PREVIEW_STORE.get(int(dataset_id)) if dataset_id is not None else None
+        if getattr(payload, "target", None) and (preview_rows or []):
+            try:
+                t_model = _as_target_model(payload.target)
+                from pydantic import BaseModel
+                mapped = map_target_to_signals(t_model, preview_rows)
+                mapped_dict = mapped.model_dump() if hasattr(mapped, "model_dump") else dict(mapped or {})
+                # fill only missing
+                for k in FILL_FIELDS:
+                    if signals_dict.get(k) in (None, "", [], {}):
+                        v = mapped_dict.get(k)
+                        if v is not None:
+                            signals_dict[k] = v
+            except Exception:
+                pass
+
+        # 1d) Finally, explicit payload signals override everything
+        if getattr(payload, "signals", None):
+            signals_dict.update(to_dict(payload.signals))
+
+        # Nudge: if time present but unlabeled, set a sane default horizon
+        if signals_dict.get("hasTime") and not signals_dict.get("hasLabel") and not signals_dict.get("horizonDays"):
+            signals_dict["horizonDays"] = 14
+
+        # ---- 2) Budget enforcement ----
+        intent_dict: Dict[str, Any] = to_dict(payload.intent) or {}
+        cons: Dict[str, Any] = dict(intent_dict.get("constraints") or {})
+
+        ignore_caps = bool(cons.get("ignoreBudgetCaps", False))
+        requested_cap = cons.get("budgetCap", None)
+
+        balance = float(getattr(current_user, "tokens", 0.0) or 0.0)
+        cap_from_tokens = max(0.0, balance - SAFETY_RESERVE)
+
+        if not ignore_caps:
+            if requested_cap is None:
+                effective_cap = cap_from_tokens
+            else:
+                try:
+                    requested_cap = float(requested_cap)
+                except Exception:
+                    requested_cap = 0.0
+                effective_cap = max(0.0, min(requested_cap, cap_from_tokens))
+            cons["budgetCap"] = round(effective_cap, 2)
+            intent_dict["constraints"] = cons
+
+        # ---- 3) Compile plan ----
+        artifacts_dict = to_dict(payload.artifacts)
         plan = compile_plan(
-            intent=payload.intent.model_dump(),
+            intent=intent_dict,
             signals=signals_dict,
-            artifacts=payload.artifacts.model_dump(),
-            top_k=payload.top_k,
+            artifacts=artifacts_dict,
+            top_k=getattr(payload, "top_k", 1) or 1,
         )
 
-        # Summary (dataclass → dict)
+        # ---- 4) Materialize response ----
         summary = {
             "score": plan.summary.score,
             "value": plan.summary.value,
@@ -1418,7 +2012,6 @@ def compile_route(payload: CompileRequest, current_user=Depends(get_current_acti
             "chosen_core": plan.summary.chosen_core,
         }
 
-        # Steps (dict-safe; backwards-compatible with object-shaped steps)
         steps_out: List[Dict[str, Any]] = []
         for st in plan.steps:
             s = st if isinstance(st, dict) else {
@@ -1426,8 +2019,8 @@ def compile_route(payload: CompileRequest, current_user=Depends(get_current_acti
                 "name": getattr(st, "name", ""),
                 "endpoint": getattr(st, "endpoint", ""),
                 "depends_on": list(getattr(st, "depends_on", []) or []),
-                "produces":   list(getattr(st, "produces", []) or []),
-                "consumes":   list(getattr(st, "consumes", []) or []),
+                "produces": list(getattr(st, "produces", []) or []),
+                "consumes": list(getattr(st, "consumes", []) or []),
                 "est_cost": getattr(st, "est_cost", 0.0),
                 "est_latency_ms": getattr(st, "est_latency_ms", 0),
                 "est_risk": getattr(st, "est_risk", 0.0),
@@ -1436,14 +2029,16 @@ def compile_route(payload: CompileRequest, current_user=Depends(get_current_acti
                 "family": getattr(st, "family", "other"),
                 "headers": getattr(st, "headers", {}) or {},
             }
-
+            ep = s.get("endpoint", "") or ""
+            if not ep.startswith("/api/"):
+                ep = ("/api" + ep) if ep.startswith("/") else ("/api/" + ep)
             steps_out.append({
                 "idx": int(s.get("idx", 0)),
                 "name": s.get("name", ""),
-                "endpoint": s.get("endpoint", ""),
+                "endpoint": ep,
                 "depends_on": list(s.get("depends_on", []) or []),
-                "produces":   list(s.get("produces", []) or []),
-                "consumes":   list(s.get("consumes", []) or []),
+                "produces": list(s.get("produces", []) or []),
+                "consumes": list(s.get("consumes", []) or []),
                 "est_cost": float(s.get("est_cost", 0.0)),
                 "est_latency_ms": int(s.get("est_latency_ms", 0)),
                 "est_risk": float(s.get("est_risk", 0.0)),
@@ -1453,7 +2048,46 @@ def compile_route(payload: CompileRequest, current_user=Depends(get_current_acti
                 "headers": s.get("headers", {}) or {},
             })
 
-        return {"steps": steps_out, "summary": summary}
+        est_total_cost = round(sum(s["est_cost"] for s in steps_out), 2)
+        remaining = None
+        if not ignore_caps and cons.get("budgetCap") is not None:
+            try:
+                remaining = round(float(cons["budgetCap"]) - float(est_total_cost), 2)
+            except Exception:
+                remaining = None
 
+        budget_context = {
+            "balance": round(balance, 2),
+            "requested": None if requested_cap is None else float(requested_cap),
+            "cap_used": None if ignore_caps else float(cons.get("budgetCap", 0.0)),
+            "est_total_cost": float(est_total_cost),
+            "remaining_after_plan": remaining,
+            "ignore_caps": bool(ignore_caps),
+        }
+
+        meta_used = {
+            **{
+                "rows": None,
+                "cols": None,
+                "tsColumn": None,
+                "idColumn": None,
+                "hasLabel": None,
+                "labelType": None,
+                "hasTime": None,
+                "horizonDays": None,
+            },
+            **(meta_used_auto or {}),
+        }
+
+        return {
+            "steps": steps_out,
+            "summary": summary,
+            "budget_context": budget_context,
+            "meta_used": meta_used,
+            "signals": signals_dict,
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

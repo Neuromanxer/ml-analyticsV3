@@ -1781,8 +1781,16 @@ const token = localStorage.getItem('access_token');
 // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
   const API_BASE_URL = 'http://127.0.0.1:8000';
 
-// Global variables
-let savedActions = [];
+  let editingActionIndex = -1;
+window.savedActions = (() => {
+  try { return JSON.parse(localStorage.getItem('savedActions') || '[]'); }
+  catch { return []; }
+})();
+let currentPlanId = null;
+try {
+  const stored = localStorage.getItem('currentPlanId');
+  if (stored) currentPlanId = parseInt(stored, 10) || null;
+} catch {}
 const goalMapping = {
   'what-if-bulk':         'Test scenarios at scale (e.g. +5% price & –10% marketing)',
   'regression':           'Forecast continuous values (e.g. next quarter sales)',
@@ -2174,39 +2182,35 @@ function applyConfidenceBadge(selectEl, score, reasons) {
 
 
 
-        // Show popup function
-        function showPopup(actionIndex = -1) {
-            const popup = document.getElementById('actionPopup');
-            const title = document.getElementById('popupTitle');
-            const form = document.getElementById('actionForm');
-            
-            editingActionIndex = actionIndex;
-            
-            if (actionIndex >= 0) {
-                // Editing existing action
-                title.textContent = 'Edit Action';
-                const action = savedActions[actionIndex];
-                document.getElementById('action_name').value = action.name;
-                document.getElementById('action_channel').value = action.channel;
-                document.getElementById('action_cost').value = action.cost;
-                document.getElementById('action_cooldown').value = action.cooldown;
-                document.getElementById('action_daily_cap').value = action.dailyCap;
-                document.getElementById('action_provider').value = action.provider || '';
-            } else {
-                // Adding new action
-                title.textContent = 'Add Action';
-                form.reset();
-            }
-            
-            popup.classList.add('show');
-        }
+        /* ---------- Popup helpers ---------- */
+function showPopup(index = -1) {
+  editingActionIndex = Number.isInteger(index) ? index : -1;
 
-        // Hide popup function
-        function hidePopup() {
-            const popup = document.getElementById('actionPopup');
-            popup.classList.remove('show');
-            editingActionIndex = -1;
-        }
+  // reset form
+  const form = document.getElementById('actionForm');
+  form.reset();
+
+  // if editing, prefill fields
+  if (editingActionIndex >= 0 && window.savedActions[editingActionIndex]) {
+    const a = window.savedActions[editingActionIndex];
+    document.getElementById('action_name').value = a.name ?? '';
+    document.getElementById('action_channel').value = a.channel ?? 'Email';
+    document.getElementById('action_cost').value = a.cost ?? '';
+    document.getElementById('action_cooldown').value = a.cooldown ?? '';
+    document.getElementById('action_daily_cap').value = a.dailyCap ?? '';
+    document.getElementById('action_provider').value = a.provider ?? '';
+    document.getElementById('popupTitle').textContent = 'Edit Action';
+  } else {
+    document.getElementById('popupTitle').textContent = 'Add Action';
+  }
+
+  document.getElementById('actionPopup').style.display = 'block';
+}
+function hidePopup() {
+  document.getElementById('actionPopup').style.display = 'none';
+  editingActionIndex = -1;
+}
+
 
         // Handle form submission
         document.getElementById('actionForm').addEventListener('submit', function(e) {
@@ -2234,25 +2238,27 @@ function applyConfidenceBadge(selectEl, score, reasons) {
         });
 function renderActions() {
   const actionsContainer = document.getElementById('actions');
+  const actions = window.savedActions || [];
 
-  if (!window.savedActions.length) {
-    actionsContainer.innerHTML =
-      '<div class="empty-actions">No actions added yet. Click "Add Action" to get started.</div>';
+  if (!actions.length) {
+    actionsContainer.innerHTML = `
+      <div class="empty-actions">No actions added yet. Click "Add Action" to get started.</div>
+    `;
     return;
   }
 
-  actionsContainer.innerHTML = window.savedActions.map((action, index) => `
-    <div class="action-card" onclick="showPopup(${index})">
+  actionsContainer.innerHTML = actions.map((action, index) => `
+    <div class="action-card" onclick="showPopup(${index})" role="button" tabindex="0">
       <div class="action-card-header">
-        <div class="action-name">${action.name ?? ""}</div>
-        <div class="action-channel">${action.channel ?? ""}</div>
+        <div class="action-name">${action.name ?? ''}</div>
+        <div class="action-channel">${action.channel ?? ''}</div>
       </div>
       <div class="action-details">
         <div class="action-detail-item"><span class="action-detail-label">Cost:</span>
-          <span class="action-detail-value">$${action.cost ?? 0}</span>
+          <span class="action-detail-value">$${(action.cost ?? 0)}</span>
         </div>
         <div class="action-detail-item"><span class="action-detail-label">Cooldown:</span>
-          <span class="action-detail-value">${action.cooldown ?? 0}d</span>
+          <span class="action-detail-value">${(action.cooldown ?? 0)}d</span>
         </div>
         <div class="action-detail-item"><span class="action-detail-label">Daily cap:</span>
           <span class="action-detail-value">${Number(action.dailyCap ?? 0).toLocaleString()}</span>
@@ -2419,17 +2425,52 @@ function displayTablePreview(content, isCSV) {
     
     previewTable.innerHTML = html;
 }
-function goNext() {
-  if (currentStep < totalSteps) {
-    // move steps
-    document.getElementById(`step${currentStep}`).classList.remove('active');
-    currentStep++;
-    document.getElementById(`step${currentStep}`).classList.add('active');
-    updateProgress();
-    updateButtons();
+window.goNext = async function goNext() {
+  try {
+    // Only gate on Step 1
+    if (typeof currentStep === 'number' && currentStep === 1) {
+      const { ok, errors } = validateStep1Inputs();       // your validator
+      if (!ok) { showStepError(errors); return; }
 
+      setNextDisabled(true);                               // disable Next
+
+      // keep local mirror for resilience
+      try { localStorage.setItem('savedActions', JSON.stringify(window.savedActions || [])); } catch {}
+
+      const plan = await saveStep1ToServer();              // POST /actions/save_step1
+      // remember plan id for future updates
+      window.currentPlanId = plan.id;
+      try { localStorage.setItem('currentPlanId', String(plan.id)); } catch {}
+
+      // (optional) reconcile actions from server
+      if (Array.isArray(plan.actions)) {
+        window.savedActions = plan.actions.map(a => ({
+          id: a.id, name: a.name, channel: a.channel,
+          cost: a.cost, cooldown: a.cooldown, dailyCap: a.daily_cap, provider: a.provider
+        }));
+        localStorage.setItem('savedActions', JSON.stringify(window.savedActions));
+        renderActions?.();
+      }
+
+      // clear errors if any
+      const mount = document.getElementById('step1-errors');
+      if (mount) { mount.innerHTML = ''; mount.style.display = 'none'; }
+    }
+
+    // proceed to next step (same behavior as before)
+    if (typeof currentStep === 'number' && typeof totalSteps === 'number' && currentStep < totalSteps) {
+      document.getElementById(`step${currentStep}`)?.classList.remove('active');
+      currentStep++;
+      document.getElementById(`step${currentStep}`)?.classList.add('active');
+      updateProgress?.(); updateButtons?.();
+    }
+  } catch (err) {
+    console.error('Step 1 save failed:', err);
+    showStepError(err?.message || 'Failed to save. Please try again.');
+  } finally {
+    setNextDisabled(false);
   }
-}
+};
 
 
 function updateProgress() {
@@ -2627,21 +2668,109 @@ function updateDeriveReadiness() {
 // Ensure a global store exists even if the popup code runs earlier/later
 window.savedActions = Array.isArray(window.savedActions) ? window.savedActions : [];
 
-/** Convert UI actions → API payload */
 function getActionsForPayload() {
   const arr = Array.isArray(window.savedActions) ? window.savedActions : [];
   return arr
     .filter(a => a && (a.name || a.channel))
-    .map(a => ({
-      name:        String(a.name || '').trim(),
-      channel:     String(a.channel || 'custom').trim(),
-      unit_cost:   Number.isFinite(+a.cost) ? +a.cost : 0,       // $ per send/call/etc.
-      cooldown_days: Number.isFinite(+a.cooldown) ? +a.cooldown : 0,
-      daily_cap:   Number.isFinite(+a.dailyCap) ? +a.dailyCap : 0,
-      provider:    a.provider ? String(a.provider).trim() : null
+    .map((a, i) => ({
+      name: String(a.name || '').trim(),
+      channel: String(a.channel || 'Other').trim(),
+      cost: Number.isFinite(+a.cost) ? +a.cost : 0,
+      cooldown: Number.isFinite(+a.cooldown) ? +a.cooldown : null,
+      daily_cap: Number.isFinite(+a.dailyCap) ? +a.dailyCap : null,
+      provider: a.provider ? String(a.provider).trim() : null,
+      active: true,
+      sort_order: i
     }))
     .filter(a => a.name); // require a name
 }
+/** Collect Step 1 fields into a payload for /actions/save_step1 */
+function collectStep1Payload() {
+  const goalAmountEl = document.getElementById('goal_amount');
+  const periodEl = document.getElementById('goal_period');
+  const startEl = document.getElementById('goal_start');
+  const endEl = document.getElementById('goal_end');
+  const riskEl = document.querySelector('input[name="risk"]:checked');
+
+  const goal_amount = Number(goalAmountEl?.value ?? 0);
+  const period = String(periodEl?.value || 'this_month');
+  const start_date = String(startEl?.value || '');
+  const end_date = String(endEl?.value || '');
+  const risk = String(riskEl?.value || 'balanced');
+
+  const actions = getActionsForPayload();
+
+  const body = { goal_amount, period, start_date, end_date, risk, actions };
+  if (currentPlanId) body.plan_id = currentPlanId;
+  return body;
+}
+function validateStep1Inputs() {
+  const errs = [];
+  const goal = Number(document.getElementById('goal_amount')?.value ?? 0);
+  const start = document.getElementById('goal_start')?.value;
+  const end = document.getElementById('goal_end')?.value;
+  const risk = document.querySelector('input[name="risk"]:checked')?.value;
+  const actions = getActionsForPayload();
+
+  if (!Number.isFinite(goal) || goal <= 0) errs.push('Enter a positive Net goal ($).');
+  if (!start) errs.push('Choose a Start date.');
+  if (!end) errs.push('Choose an End date.');
+  if (start && end && new Date(start) > new Date(end)) errs.push('Start must be on or before End.');
+  if (!risk) errs.push('Select a risk tolerance.');
+  if (!actions.length) errs.push('Add at least one Allowed action.');
+  // Per-action checks (optional strictness)
+  actions.forEach((a, i) => {
+    if (a.cost < 0) errs.push(`Action ${i + 1} "${a.name}": cost cannot be negative.`);
+    if (a.cooldown !== null && a.cooldown < 0) errs.push(`Action ${i + 1} "${a.name}": cooldown cannot be negative.`);
+    if (a.daily_cap !== null && a.daily_cap < 0) errs.push(`Action ${i + 1} "${a.name}": daily cap cannot be negative.`);
+  });
+
+  return { ok: errs.length === 0, errors: errs };
+}
+async function saveStep1ToServer(){
+  const token = safeStorageGet?.('access_token');
+  const body = collectStep1Payload(); // build {goal_*, period, start_date, end_date, risk, actions[, plan_id]}
+  const res = await fetch('/actions/save_step1', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', ...(token?{'Authorization':`Bearer ${token}`}:{})},
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(await res.text().catch(()=>`HTTP ${res.status}`));
+  return res.json();
+}
+
+window.goNext = async function(){
+  if (currentStep === 1) {
+    const { ok, errors } = validateStep1Inputs();
+    if (!ok) { showStepError(errors); return; }
+    const plan = await saveStep1ToServer();
+    currentPlanId = plan.id;
+    localStorage.setItem('currentPlanId', String(plan.id));
+  }
+};
+
+
+/** Utility: show inline error list (falls back to alert). */
+function showStepError(messages) {
+  const list = Array.isArray(messages) ? messages : [String(messages)];
+  const mount = document.getElementById('step1-errors');
+  if (mount) {
+    mount.innerHTML = `<ul>${list.map(m => `<li>${m}</li>`).join('')}</ul>`;
+    mount.style.display = 'block';
+  } else {
+    alert(list.join('\n'));
+  }
+}
+
+/** Utility: disable/enable the Next button while saving. */
+function setNextDisabled(disabled) {
+  const nextBtn =
+    document.querySelector('[data-next]') ||
+    document.getElementById('nextBtn') ||
+    document.querySelector('.next-btn');
+  if (nextBtn) nextBtn.disabled = !!disabled;
+}
+
 function b64ToBlob(b64, mime='text/csv') {
   try {
     const bin = atob(b64);
@@ -3654,11 +3783,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
   });
-    try {
-    const raw = localStorage.getItem('savedActions');
-    if (raw) window.savedActions = JSON.parse(raw);
-  } catch {}
-  renderActions?.();
+  const form = document.getElementById('actionForm');
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const actionData = {
+        name: document.getElementById('action_name').value.trim(),
+        channel: document.getElementById('action_channel').value,
+        cost: parseFloat(document.getElementById('action_cost').value),
+        cooldown: parseInt(document.getElementById('action_cooldown').value, 10),
+        dailyCap: parseInt(document.getElementById('action_daily_cap').value, 10),
+        provider: document.getElementById('action_provider').value.trim()
+      };
+
+      if (!Array.isArray(window.savedActions)) window.savedActions = [];
+
+      if (Number.isInteger(editingActionIndex) && editingActionIndex >= 0) {
+        window.savedActions[editingActionIndex] = actionData;
+      } else {
+        window.savedActions.push(actionData);
+      }
+
+      // persist + refresh UI
+      localStorage.setItem('savedActions', JSON.stringify(window.savedActions));
+      renderActions();
+      hidePopup();
+    });
+  }
   // Initial state
   updateDeriveReadiness();
     // Initialize
