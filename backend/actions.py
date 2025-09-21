@@ -1,40 +1,38 @@
 # routers/actions.py
+from __future__ import annotations
+
+from datetime import datetime, date
+from decimal import Decimal
+from typing import List, Optional, Literal
+
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
-from datetime import datetime, date
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, Date,
-    UniqueConstraint, ForeignKey
+    Column, Integer, BigInteger, String, Boolean, DateTime, Date,
+    Numeric, ForeignKey, UniqueConstraint, text
 )
-from sqlalchemy import Column, Integer, BigInteger, Text, Boolean, Numeric, JSON, DateTime
-from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import declarative_base, relationship, Session
 from sqlalchemy.sql import func
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from decimal import Decimal
-# Reuse your auth and DB helpers
+
+# Auth / DB helpers (your existing utilities)
 from auth import get_current_active_user, get_user_db
 
 router = APIRouter(prefix="/actions", tags=["actions"])
-
 Base = declarative_base()
 
 # -----------------------------
 # DB Models
 # -----------------------------
-# --- Plan model: add user_id (+ optional dataset_id) and timezone-aware timestamps ---
 class Plan(Base):
     __tablename__ = "plans"
-    id = Column(Integer, primary_key=True, index=True)
 
+    id = Column(Integer, primary_key=True, index=True)
     user_id = Column(BigInteger, nullable=False, index=True)
     dataset_id = Column(BigInteger, nullable=True, index=True)
 
-    goal_amount = Column(Numeric(12,2), nullable=False)
+    goal_amount = Column(Numeric(12, 2), nullable=False)
     period = Column(String(32), nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
@@ -45,14 +43,17 @@ class Plan(Base):
 
     actions = relationship("Action", back_populates="plan", cascade="all, delete-orphan")
 
+
 class Action(Base):
-    __tablename__ = "actions"  # matches the table you just migrated
+    __tablename__ = "actions"
+
     id = Column(Integer, primary_key=True, index=True)
-    plan_id = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), index=True, nullable=True)  # keep nullable while legacy rows exist
+    # kept nullable=True while legacy rows exist; see ensure_schema to tighten later
+    plan_id = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), index=True, nullable=True)
 
     name = Column(String(128), nullable=False)
     channel = Column(String(64), nullable=False)
-    cost = Column(Numeric(10,4), nullable=False, default=0)
+    cost = Column(Numeric(10, 4), nullable=False, default=0)
     cooldown = Column(Integer)
     daily_cap = Column(Integer)
     provider = Column(String(128))
@@ -67,7 +68,10 @@ class Action(Base):
     __table_args__ = (
         UniqueConstraint("plan_id", "name", "channel", name="uq_actions_plan_name_channel"),
     )
-# ---------- Schemas ----------
+
+# -----------------------------
+# Pydantic Schemas
+# -----------------------------
 class ActionIn(BaseModel):
     name: str
     channel: str
@@ -78,6 +82,7 @@ class ActionIn(BaseModel):
     active: bool = True
     sort_order: Optional[int] = None
 
+
 class ActionOut(ActionIn):
     id: int
     created_at: datetime
@@ -86,14 +91,16 @@ class ActionOut(ActionIn):
     class Config:
         from_attributes = True  # Pydantic v2
 
+
 class SaveStep1Request(BaseModel):
     plan_id: Optional[int] = None
     goal_amount: float = Field(..., ge=0)
     period: Literal["this_month", "next_30d", "custom"]
     start_date: date
     end_date: date
-    risk: Literal["conservative","balanced","aggressive"]
+    risk: Literal["conservative", "balanced", "aggressive"]
     actions: List[ActionIn] = Field(default_factory=list)
+
 
 class PlanOut(BaseModel):
     id: int
@@ -108,12 +115,16 @@ class PlanOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+# -----------------------------
+# Schema bootstrap (idempotent)
+# -----------------------------
 def ensure_schema(db: Session, default_user_id: int | None = None) -> None:
-    # 1) create tables if missing (includes user_id in the definition)
+    # 1) Create base tables if missing
     db.execute(text("""
     CREATE TABLE IF NOT EXISTS plans (
       id           BIGSERIAL PRIMARY KEY,
-      user_id      BIGINT,              -- nullable during backfill
+      user_id      BIGINT,
       dataset_id   BIGINT,
       goal_amount  NUMERIC(12,2) NOT NULL,
       period       VARCHAR(32) NOT NULL,
@@ -142,14 +153,14 @@ def ensure_schema(db: Session, default_user_id: int | None = None) -> None:
     );
     """))
 
-    # 2) upgrade existing schemas in-place (idempotent)
+    # 2) In-place upgrades (idempotent columns)
     db.execute(text("ALTER TABLE plans   ADD COLUMN IF NOT EXISTS user_id BIGINT"))
     db.execute(text("ALTER TABLE plans   ADD COLUMN IF NOT EXISTS dataset_id BIGINT"))
     db.execute(text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS plan_id BIGINT"))
     db.execute(text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0"))
     db.execute(text("ALTER TABLE actions ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE"))
 
-    # make sure FK exists
+    # 3) Ensure FK
     db.execute(text("""
     DO $$
     BEGIN
@@ -161,16 +172,83 @@ def ensure_schema(db: Session, default_user_id: int | None = None) -> None:
     END $$;
     """))
 
-    # indexes
-    db.execute(text("CREATE INDEX IF NOT EXISTS ix_plans_user_id     ON plans(user_id)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS ix_plans_dataset_id  ON plans(dataset_id)"))
-    db.execute(text("CREATE INDEX IF NOT EXISTS ix_actions_plan_id   ON actions(plan_id)"))
+    # 4) Indexes
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_plans_user_id    ON plans(user_id)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_plans_dataset_id ON plans(dataset_id)"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_actions_plan_id  ON actions(plan_id)"))
 
-    # 3) backfill user_id for existing rows (so your filters work)
+    # 5) Drop ANY legacy unique on (user_id,name,channel) by inspecting columns; then add the correct unique
+    # 6b) Ensure created_at / updated_at have defaults + backfill any NULLs
+    db.execute(text("""
+    DO $$
+    BEGIN
+    -- created_at: ensure DEFAULT now()
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name='actions' AND column_name='created_at'
+        AND column_default IS NOT NULL
+    ) THEN
+        ALTER TABLE actions ALTER COLUMN created_at SET DEFAULT now();
+    END IF;
+
+    -- updated_at: ensure DEFAULT now()
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name='actions' AND column_name='updated_at'
+        AND column_default IS NOT NULL
+    ) THEN
+        ALTER TABLE actions ALTER COLUMN updated_at SET DEFAULT now();
+    END IF;
+
+    -- backfill any NULLs that were inserted before defaults existed
+    UPDATE actions SET created_at = now()  WHERE created_at IS NULL;
+    UPDATE actions SET updated_at = now()  WHERE updated_at IS NULL;
+    END $$;
+    """))
+    # --- Ensure timestamp defaults exist + backfill nulls (idempotent) ---
+    # PLANS
+    db.execute(text("UPDATE plans   SET created_at = NOW() WHERE created_at IS NULL"))
+    db.execute(text("UPDATE plans   SET updated_at = NOW() WHERE updated_at IS NULL"))
+    db.execute(text("ALTER TABLE plans   ALTER COLUMN created_at SET DEFAULT now()"))
+    db.execute(text("ALTER TABLE plans   ALTER COLUMN updated_at SET DEFAULT now()"))
+    db.execute(text("ALTER TABLE plans   ALTER COLUMN created_at SET NOT NULL"))
+    db.execute(text("ALTER TABLE plans   ALTER COLUMN updated_at SET NOT NULL"))
+
+    # ACTIONS
+    db.execute(text("UPDATE actions SET created_at = NOW() WHERE created_at IS NULL"))
+    db.execute(text("UPDATE actions SET updated_at = NOW() WHERE updated_at IS NULL"))
+    db.execute(text("ALTER TABLE actions ALTER COLUMN created_at SET DEFAULT now()"))
+    db.execute(text("ALTER TABLE actions ALTER COLUMN updated_at SET DEFAULT now()"))
+    db.execute(text("ALTER TABLE actions ALTER COLUMN created_at SET NOT NULL"))
+    db.execute(text("ALTER TABLE actions ALTER COLUMN updated_at SET NOT NULL"))
+
+
+    # 6) Optionally tighten plan_id to NOT NULL after backfill
+    db.execute(text("""
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='actions' AND column_name='plan_id' AND is_nullable='NO'
+      ) THEN
+        IF NOT EXISTS (SELECT 1 FROM actions WHERE plan_id IS NULL) THEN
+          ALTER TABLE actions ALTER COLUMN plan_id SET NOT NULL;
+        END IF;
+      END IF;
+    END $$;
+    """))
+
+    # 7) Backfill user_id for plans so filters work
     if default_user_id is not None:
         db.execute(text("UPDATE plans SET user_id = :uid WHERE user_id IS NULL"), {"uid": default_user_id})
 
     db.commit()
+
+# -----------------------------
+# Helpers
+# -----------------------------
 def get_plan_or_404(db: Session, plan_id: int, user_id: int) -> Plan:
     obj = (db.query(Plan)
              .filter(Plan.id == plan_id, Plan.user_id == user_id)
@@ -178,16 +256,25 @@ def get_plan_or_404(db: Session, plan_id: int, user_id: int) -> Plan:
     if not obj:
         raise HTTPException(status_code=404, detail="Plan not found")
     return obj
-# ---------- Endpoints ----------
+
+# -----------------------------
+# Endpoints
+# -----------------------------
 @router.post("/save_step1", response_model=PlanOut, status_code=status.HTTP_201_CREATED)
 def save_step1(body: SaveStep1Request, current_user=Depends(get_current_active_user)):
     if body.start_date > body.end_date:
         raise HTTPException(status_code=400, detail="start_date must be <= end_date")
 
+    def _canon(s: str | None) -> str:
+        return (s or "").strip()
+
+    def _key(name: str, channel: str) -> tuple[str, str]:
+        return (_canon(name).lower(), _canon(channel).lower())
+
     with get_user_db(current_user) as db:
         ensure_schema(db, default_user_id=current_user.id)
 
-        # Create or update Plan
+        # Upsert plan
         if body.plan_id:
             plan = get_plan_or_404(db, body.plan_id, current_user.id)
             plan.goal_amount = Decimal(str(body.goal_amount))
@@ -205,29 +292,56 @@ def save_step1(body: SaveStep1Request, current_user=Depends(get_current_active_u
                 risk=body.risk,
             )
             db.add(plan)
-            db.flush()  # get plan.id
+            db.flush()  # ensure plan.id exists
 
-        # Replace actions for this plan
-        db.query(Action).filter(Action.plan_id == plan.id).delete()
-        for idx, a in enumerate(body.actions):
-            db.add(Action(
+        # Optional: serialize per-plan updates to avoid races
+        db.query(Plan).filter(Plan.id == plan.id).with_for_update().one()
+
+        # Normalize & de-duplicate incoming actions
+        seen: set[tuple[str, str]] = set()
+        cleaned: list[Action] = []
+        for idx, a in enumerate(body.actions or []):
+            name = _canon(a.name)
+            chan = _canon(a.channel)
+            if not name or not chan:
+                continue
+            k = _key(name, chan)
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(Action(
                 plan_id=plan.id,
-                name=a.name,
-                channel=a.channel,
+                name=name,
+                channel=chan,
                 cost=Decimal(str(a.cost or 0)),
                 cooldown=a.cooldown,
                 daily_cap=a.daily_cap,
-                provider=a.provider,
-                active=True if a.active is None else a.active,
+                provider=_canon(a.provider),
+                active=True if a.active is None else bool(a.active),
                 sort_order=idx if a.sort_order is None else a.sort_order,
             ))
 
+        # Hard-replace actions: delete then insert (flush after delete!)
+        db.query(Action).filter(Action.plan_id == plan.id).delete(synchronize_session=False)
+        db.flush()  # make the delete visible before inserts
+
+        for act in cleaned:
+            db.add(act)
+
+        # Commit with diagnostic on constraint name if it fails
         try:
             db.commit()
         except IntegrityError as ie:
             db.rollback()
-            raise HTTPException(status_code=409, detail="Duplicate (name, channel) within this plan") from ie
+            cname = None
+            try:
+                cname = getattr(getattr(ie, "orig", None), "diag", None).constraint_name
+            except Exception:
+                pass
+            logging.exception("IntegrityError on save_step1; constraint=%s", cname)
+            raise HTTPException(status_code=409, detail=f"Duplicate constraint hit: {cname or 'unknown'}") from ie
 
+        # Reload and return
         db.refresh(plan)
         plan.actions = (db.query(Action)
                           .filter(Action.plan_id == plan.id)
@@ -235,10 +349,11 @@ def save_step1(body: SaveStep1Request, current_user=Depends(get_current_active_u
                           .all())
         return plan
 
+
 @router.get("/plan/{plan_id}", response_model=PlanOut)
 def get_plan(plan_id: int, current_user=Depends(get_current_active_user)):
     with get_user_db(current_user) as db:
-        ensure_tables(db)
+        ensure_schema(db)
         plan = get_plan_or_404(db, plan_id, current_user.id)
         plan.actions = (db.query(Action)
                           .filter(Action.plan_id == plan.id)
@@ -246,10 +361,11 @@ def get_plan(plan_id: int, current_user=Depends(get_current_active_user)):
                           .all())
         return plan
 
+
 @router.get("/plan/latest", response_model=PlanOut)
 def get_latest_plan(current_user=Depends(get_current_active_user)):
     with get_user_db(current_user) as db:
-        ensure_tables(db)
+        ensure_schema(db)
         plan = (db.query(Plan)
                   .filter(Plan.user_id == current_user.id)
                   .order_by(Plan.created_at.desc())

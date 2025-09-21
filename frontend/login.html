@@ -979,7 +979,7 @@ signupForm.addEventListener('submit', async function (event) {
 
                 if (meResp.ok) {
                     const meData = await meResp.json();
-                    const targetUrl = meData.hasCompletedWizard ? 'dashboard.html' : 'wizard.html';
+                    const targetUrl = meData.hasCompletedWizard ? 'dashboard.html' : 'wizard2.html';
                     window.location.href = targetUrl;
                 } else {
                     window.location.href = nextPage;

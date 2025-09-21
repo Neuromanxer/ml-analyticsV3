@@ -817,7 +817,7 @@
         <div class="sidebar-section-title">MAIN</div>
         <ul class="sidebar-menu">
             <li class="sidebar-menu-item">
-                <a href="wizard.html">
+                <a href="wizard2.html">
                     <i class="fas fa-rocket"></i>
                     Run New Experiment
                 </a>
@@ -1128,62 +1128,18 @@
   
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let currentStep = 1;
-        let selectedColumns = [];
-        let selectedBusinessGoal = '';
-        let selectedTargetVariable = '';
-        const API_BASE_URL = 'http://127.0.0.1:8000';
-        // const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
-        // Add this code to the beginning of your datasets.html JavaScript
-    function signOutUser() {
-    // Clear tokens from localStorage or wherever you saved them
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("current_user");
+   let currentStep = 1;
+let selectedColumns = [];
+let selectedBusinessGoal = '';
+let selectedTargetVariable = '';
+let currentQueryDatasetId = null;
+const API_BASE_URL = 'http://127.0.0.1:8000';
+// const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
 
-    // Optional: Clear session storage if used
-    sessionStorage.clear();
+// Constants
+const MAX_FILE_MB = 200;
+const ALLOWED_EXTENSIONS = new Set(['csv','tsv','xlsx','xls','parquet','json','jsonl']);
 
-    // Redirect to login page
-    window.location.href = "/index.html"; // Adjust the path if needed
-}
-    document.addEventListener('DOMContentLoaded', function() {
-    // 1️⃣ Delegate all download-button clicks from the container
-    const list = document.getElementById('datasetsList');
-    list.addEventListener('click', function(e) {
-        const btn = e.target.closest('.download-btn');
-        if (!btn) return;              // not a download button
-        const id   = btn.dataset.id;
-        const name = btn.dataset.name;
-        downloadDataset(id, name);
-    });
-
-    // 2️⃣ Auth guard + load
-    if (!checkAuthentication()) {
-        window.location.href = 
-        'login.html?next=datasets.html&reason=Please log in to view your datasets';
-        return;
-    }
-    loadDatasetsWithAuth();
-
-    // 3️⃣ Upload form handler
-    const uploadForm = document.getElementById('uploadForm');
-    uploadForm.addEventListener('submit', function(e) {
-        uploadDataset(e);
-    });
-       // Initialize wizard
-    updateButtons();
-    updateProgress();
-    updateNextButton();
-    });
-
-/**
- * Check if the user is authenticated
- * @returns {boolean} - Authentication status
- */
- /**
- * Download dataset with automatic token refresh support
- */
 // Target variable map
 const targetVariableMap = {
     clv: {
@@ -1286,6 +1242,748 @@ const targetVariableMap = {
     },
 };
 
+// ======= INITIALIZATION =======
+document.addEventListener('DOMContentLoaded', function() {
+    // Auth guard + load
+    if (!checkAuthentication()) {
+        window.location.href = 'login.html?next=datasets.html&reason=Please log in to view your datasets';
+        return;
+    }
+
+    // Set up event delegation for dataset actions
+    setupEventDelegation();
+    
+    // Load datasets
+    loadDatasetsWithAuth();
+
+    // Upload form handler
+    const uploadForm = document.getElementById('uploadForm');
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', uploadDataset);
+    }
+
+    // Initialize wizard
+    updateButtons();
+    updateProgress();
+    updateNextButton();
+});
+
+// ======= EVENT DELEGATION =======
+function setupEventDelegation() {
+    const datasetsList = document.getElementById('datasetsList');
+    if (!datasetsList) return;
+
+    datasetsList.addEventListener('click', function(e) {
+        const button = e.target.closest('button, a');
+        if (!button) return;
+
+        const datasetId = button.dataset.id;
+        const datasetName = button.dataset.name;
+
+        if (button.classList.contains('download-btn')) {
+            e.preventDefault();
+            downloadDataset(datasetId, datasetName);
+        } else if (button.classList.contains('btn-preview')) {
+            e.preventDefault();
+            previewDataset(datasetId);
+        } else if (button.classList.contains('btn-query')) {
+            e.preventDefault();
+            openQueryModal(datasetId, datasetName);
+        } else if (button.classList.contains('btn-delete')) {
+            e.preventDefault();
+            deleteDataset(datasetId);
+        }
+        // Note: data cleaner button uses href, so no preventDefault needed
+    });
+}
+
+// ======= AUTHENTICATION UTILITIES =======
+function safeStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        console.error(`Error getting ${key} from localStorage:`, error);
+        return null;
+    }
+}
+
+function safeStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (error) {
+        console.error('Error setting localStorage:', error);
+        return false;
+    }
+}
+
+function isTokenExpired(token) {
+    if (!token) return true;
+    
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (!payload.exp) return false;
+        const currentTime = Math.floor(Date.now() / 1000);
+        return payload.exp < (currentTime + 30);
+    } catch (error) {
+        console.error('Error parsing token:', error);
+        return true;
+    }
+}
+
+function checkAuthentication() {
+    const token = safeStorageGet('access_token');
+    const userLoggedIn = safeStorageGet('userLoggedIn');
+    
+    const hasValidToken = token && !isTokenExpired(token);
+    const hasLoginFlag = userLoggedIn === 'true';
+    
+    if (hasValidToken && !hasLoginFlag) {
+        safeStorageSet('userLoggedIn', 'true');
+        return true;
+    }
+    
+    if (hasLoginFlag && !hasValidToken) {
+        clearAuthStorage();
+        return false;
+    }
+    
+    return hasValidToken && hasLoginFlag;
+}
+
+function clearAuthStorage() {
+    try {
+        const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail'];
+        keys.forEach(key => localStorage.removeItem(key));
+        console.log('Cleared authentication storage');
+    } catch (error) {
+        console.error('Error clearing auth storage:', error);
+    }
+}
+
+function signOutUser() {
+    clearAuthStorage();
+    window.location.href = "/index.html";
+}
+
+// ======= TOKEN REFRESH UTILITIES =======
+function storeAuthTokens(tokenData) {
+    if (!tokenData) return false;
+    let success = true;
+
+    if (tokenData.access_token) {
+        success = safeStorageSet('access_token', tokenData.access_token) && success;
+    }
+    if (tokenData.refresh_token) {
+        success = safeStorageSet('refresh_token', tokenData.refresh_token) && success;
+    }
+
+    success = safeStorageSet('userLoggedIn', 'true') && success;
+
+    if (tokenData.name) {
+        success = safeStorageSet('userName', tokenData.name) && success;
+    }
+    if (tokenData.email) {
+        success = safeStorageSet('userEmail', tokenData.email) && success;
+    }
+
+    if (success) {
+        const tok = safeStorageGet('access_token');
+        const flag = safeStorageGet('userLoggedIn');
+        success = !!(tok && flag === 'true');
+    }
+    return success;
+}
+
+async function refreshUserToken() {
+    const refreshToken = safeStorageGet('refresh_token');
+    if (!refreshToken) {
+        throw new Error('No refresh token available');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: 'include'
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    const stored = storeAuthTokens({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || refreshToken,
+        name: data.name,
+        email: data.email
+    });
+    
+    if (!stored) {
+        throw new Error('Failed to store refreshed tokens');
+    }
+
+    return true;
+}
+
+async function fetchWithTokenRefresh(url, options = {}) {
+    const opts = { ...options, credentials: 'include' };
+
+    let response = await fetch(url, opts);
+    if (response.ok || (response.status !== 401 && response.status !== 403)) {
+        return response;
+    }
+
+    console.warn('Auth failed, attempting refresh…');
+    try {
+        await refreshUserToken();
+
+        const newToken = safeStorageGet('access_token');
+        const retryOpts = {
+            ...opts,
+            headers: {
+                ...(opts.headers || {}),
+                'Authorization': `Bearer ${newToken}`
+            }
+        };
+        const retryResp = await fetch(url, retryOpts);
+        if (retryResp.ok) {
+            return retryResp;
+        }
+        console.error(`Retry after refresh also failed: ${retryResp.status}`);
+    } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError.message);
+    }
+
+    setTimeout(() => {
+        clearAuthStorage();
+        window.location.href = `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
+    }, 2000);
+
+    throw new Error('Authentication and refresh both failed');
+}
+
+// ======= UTILITY FUNCTIONS =======
+function formatDate(dateString) {
+    if (!dateString) return 'Unknown date';
+    
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'Invalid date';
+        
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    } catch (error) {
+        console.warn('Date formatting error:', error);
+        return 'Invalid date';
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function slugify(s) {
+    return String(s || '').trim().toLowerCase()
+        .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 40);
+}
+
+function detectFileKind(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'jsonl' || ext === 'ndjson') return 'jsonl';
+    return ALLOWED_EXTENSIONS.has(ext) ? ext : null;
+}
+
+function sanitizeDatasetName(raw) {
+    return (raw || '')
+        .trim()
+        .replace(/\.[^.]+$/, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_]/g, '_')
+        .toLowerCase()
+        .slice(0, 60);
+}
+
+// ======= DATASET LOADING =======
+function loadDatasetsWithAuth() {
+    const errorDiv = document.querySelector('.error-message');
+    if (errorDiv) {
+        errorDiv.style.display = 'none';
+    }
+    
+    const container = document.getElementById('datasetsList');
+    container.innerHTML = '<div class="col-12"><p>Loading datasets...</p></div>';
+    
+    const token = safeStorageGet('access_token');
+    
+    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.datasets || data.datasets.length === 0) {
+            container.innerHTML = '<div class="col-12"><p>No datasets available. Upload your first dataset above.</p></div>';
+            return;
+        }
+        renderDatasetCards(data.datasets);
+    })
+    .catch(error => {
+        console.error('Error loading datasets:', error);
+        container.innerHTML = '<div class="col-12"><p class="text-danger">Error loading datasets. Please try again later.</p></div>';
+    });
+}
+
+function renderDatasetCards(datasets) {
+    const container = document.getElementById('datasetsList');
+    container.className = 'row g-3';
+    container.innerHTML = '';
+
+    datasets.forEach(dataset => {
+        const key = `${slugify(dataset.name)}-${dataset.id}`;
+        const card = document.createElement('div');
+        card.className = 'col-md-6 col-lg-4';
+        card.innerHTML = `
+            <div class="card dataset-card">
+                <div class="card-body">
+                    <h5 class="card-title">${escapeHtml(dataset.name)}</h5>
+                    <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
+                    <p class="card-text">${escapeHtml(dataset.description || 'No description provided')}</p>
+                    <div class="dataset-actions">
+                        <button class="btn btn-outline-primary btn-preview" data-id="${dataset.id}">
+                            <i class="fas fa-eye"></i> Preview
+                        </button>
+                        <button class="btn btn-outline-primary download-btn" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                        <button class="btn btn-outline-info btn-query" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
+                            <i class="fas fa-search"></i> Query
+                        </button>
+                        <a class="btn btn-success" href="data_cleaner.html?id=${dataset.id}&key=${encodeURIComponent(key)}">
+                            <i class="fas fa-broom"></i> Open in Cleaner
+                        </a>
+                        <button class="btn btn-outline-danger btn-delete" data-id="${dataset.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// ======= DATASET ACTIONS =======
+async function previewDataset(datasetId, options = {}) {
+    const { previewLimit = 5, columnLimit = 10 } = options;
+    
+    if (!datasetId || (typeof datasetId !== 'string' && typeof datasetId !== 'number')) {
+        throw new Error('Valid dataset ID is required');
+    }
+
+    const token = safeStorageGet('access_token');
+    if (!token) {
+        throw new Error('Authentication token not found');
+    }
+
+    showPreviewLoading();
+
+    try {
+        const [metadataResponse, previewResponse] = await Promise.all([
+            fetchWithTokenRefresh(`${API_BASE_URL}/datasets/${datasetId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }),
+            fetchWithTokenRefresh(`${API_BASE_URL}/datasets/${datasetId}/preview?limit=${previewLimit}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+        ]);
+
+        const [metadata, previewData] = await Promise.all([
+            metadataResponse.json(),
+            previewResponse.json()
+        ]);
+
+        validatePreviewData(previewData);
+        renderDatasetPreview(metadata, previewData, columnLimit);
+        
+    } catch (error) {
+        handlePreviewError(error);
+    }
+}
+
+function showPreviewLoading() {
+    const container = document.getElementById('inlinePreviewContainer');
+    if (container) {
+        container.style.display = 'block';
+        container.innerHTML = `
+            <div class="dataset-card">
+                <div class="dataset-card-body">
+                    <div class="text-center p-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading dataset preview...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function validatePreviewData(data) {
+    if (!data || !data.preview_data || !Array.isArray(data.preview_data)) {
+        throw new Error('Invalid preview data format');
+    }
+    
+    if (data.preview_data.length === 0) {
+        throw new Error('No preview data available');
+    }
+}
+
+function renderDatasetPreview(metadata, previewData, columnLimit) {
+    const rows = previewData.preview_data;
+    const allColumns = Object.keys(rows[0]);
+    const displayColumns = allColumns.slice(0, columnLimit);
+    const hasMoreColumns = allColumns.length > columnLimit;
+
+    const sanitizedMetadata = {
+        name: escapeHtml(metadata.name || 'Unnamed Dataset'),
+        description: escapeHtml(metadata.description || 'No description provided'),
+        createdAt: formatDate(metadata.created_at),
+        rowCount: Number(metadata.row_count) || rows.length,
+        columnCount: Number(metadata.column_count) || allColumns.length
+    };
+
+    const containerHTML = `
+        <div class="dataset-card">
+            <div class="dataset-card-body">
+                ${buildInfoSection(sanitizedMetadata, hasMoreColumns, columnLimit)}
+                ${buildTableSection(displayColumns, rows, hasMoreColumns)}
+            </div>
+        </div>
+    `;
+
+    const container = document.getElementById('inlinePreviewContainer');
+    if (container) {
+        container.innerHTML = containerHTML;
+        container.style.display = 'block';
+    }
+}
+
+function buildInfoSection(metadata, hasMoreColumns, columnLimit) {
+    return `
+        <div id="inlineDatasetInfo">
+            <h4 style="color: #0066cc; margin-bottom: 1rem;">${metadata.name}</h4>
+            <p style="margin-bottom: 0.5rem;">${metadata.description}</p>
+            <p style="margin-bottom: 0.5rem;">
+                <small class="text-muted">Created on ${metadata.createdAt}</small>
+            </p>
+            <div class="row mb-3">
+                <div class="col-sm-6">
+                    <strong>Rows:</strong> ${metadata.rowCount.toLocaleString()}
+                </div>
+                <div class="col-sm-6">
+                    <strong>Columns:</strong> ${metadata.columnCount.toLocaleString()}
+                </div>
+            </div>
+            <p class="text-muted">
+                <em>Preview of first ${metadata.rowCount} rows${hasMoreColumns ? ` and ${columnLimit} columns` : ''}:</em>
+                ${hasMoreColumns ? `<br><small>Showing ${columnLimit} of ${metadata.columnCount} columns</small>` : ''}
+            </p>
+        </div>
+    `;
+}
+
+function buildTableSection(columns, rows, hasMoreColumns) {
+    const headerRow = columns.map(col => `<th scope="col">${escapeHtml(col)}</th>`).join('');
+    const moreColumnsIndicator = hasMoreColumns ? '<th scope="col" class="text-muted">...</th>' : '';
+    
+    const bodyRows = rows.map(row => {
+        const cells = columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('');
+        const moreCell = hasMoreColumns ? '<td class="text-muted">...</td>' : '';
+        return `<tr>${cells}${moreCell}</tr>`;
+    }).join('');
+
+    return `
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-light">
+                    <tr>${headerRow}${moreColumnsIndicator}</tr>
+                </thead>
+                <tbody>
+                    ${bodyRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function handlePreviewError(error) {
+    console.error('Dataset preview error:', error);
+    
+    const container = document.getElementById('inlinePreviewContainer');
+    if (container) {
+        let userMessage = 'Unable to load dataset preview.';
+        
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            userMessage = 'Authentication failed. Please log in again.';
+        } else if (error.message.includes('404')) {
+            userMessage = 'Dataset not found.';
+        } else if (error.message.includes('403')) {
+            userMessage = 'Access denied to this dataset.';
+        } else if (error.message.includes('No preview data')) {
+            userMessage = 'This dataset appears to be empty.';
+        }
+        
+        container.innerHTML = `
+            <div class="dataset-card">
+                <div class="dataset-card-body">
+                    <div class="alert alert-warning" role="alert">
+                        <h6 class="alert-heading">Preview Unavailable</h6>
+                        <p class="mb-0">${escapeHtml(userMessage)}</p>
+                        ${error.message !== userMessage ? `<small class="text-muted d-block mt-1">Error: ${escapeHtml(error.message)}</small>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        container.style.display = 'block';
+    }
+}
+
+async function downloadDataset(datasetId, datasetName) {
+    if (!datasetId) {
+        alert('Dataset ID is required for download');
+        return;
+    }
+
+    const token = safeStorageGet('access_token');
+    if (!token) {
+        alert('Authentication required. Please log in.');
+        return;
+    }
+
+    try {
+        const response = await fetchWithTokenRefresh(`${API_BASE_URL}/datasets/${datasetId}/download`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${datasetName || 'dataset'}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error('Download error:', error);
+        alert(`Error downloading dataset: ${error.message}`);
+    }
+}
+
+function deleteDataset(datasetId) {
+    if (!confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
+        return;
+    }
+
+    const token = safeStorageGet('access_token');
+    
+    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/${datasetId}`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+        },
+        credentials: 'include'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.message || data.success) {
+            loadDatasetsWithAuth();
+            alert("Dataset deleted successfully");
+        } else {
+            alert(`Error: ${data.detail || 'Unknown error occurred'}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting dataset:', error);
+        alert('Error deleting dataset. Please try again.');
+    });
+}
+
+// ======= UPLOAD FUNCTIONALITY =======
+function showUploadStatus(message, type = 'success') {
+    const statusDiv = document.getElementById('uploadStatus');
+    if (statusDiv) {
+        statusDiv.className = 'alert alert-' + type;
+        statusDiv.textContent = message;
+        statusDiv.style.display = 'block';
+    }
+}
+
+async function uploadDataset(event) {
+    event.preventDefault();
+
+    const form = document.getElementById('uploadForm');
+    const fileInput = form.querySelector('input[type="file"]');
+    const nameInput = form.querySelector('input[name="name"]');
+
+    const file = fileInput.files[0];
+    if (!file) return showUploadStatus('Please select a file to upload', 'danger');
+
+    if (!nameInput.value.trim()) {
+        nameInput.value = sanitizeDatasetName(file.name);
+    }
+
+    const kind = detectFileKind(file);
+    if (!kind) {
+        return showUploadStatus('Unsupported file type. Allowed: CSV, TSV, XLSX/XLS, Parquet, JSON, JSONL.', 'danger');
+    }
+    
+    const sizeMb = file.size / (1024 * 1024);
+    if (sizeMb > MAX_FILE_MB) {
+        return showUploadStatus(`File too large (${sizeMb.toFixed(1)} MB). Max ${MAX_FILE_MB} MB.`, 'danger');
+    }
+
+    const fd = new FormData(form);
+    fd.set('name', sanitizeDatasetName(nameInput.value));
+    fd.append('fmt_hint', kind);
+
+    if (kind === 'tsv') fd.append('delimiter', 'tab');
+
+    showUploadStatus('Uploading dataset...', 'info');
+
+    const token = safeStorageGet('access_token');
+
+    try {
+        const res = await fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            },
+            body: fd,
+            credentials: 'include'
+        });
+
+        if (!res.ok) {
+            let detail = `${res.status} ${res.statusText}`;
+            try {
+                const errorData = await res.json();
+                detail = errorData.detail || detail;
+            } catch {}
+            throw new Error(detail);
+        }
+
+        const data = await res.json();
+
+        if (data?.dataset_id || data?.id) {
+            const rows = data.rows ?? data.row_count ?? '?';
+            const cols = data.columns ?? data.column_count ?? '?';
+            showUploadStatus(`Dataset "${data.name}" uploaded with ${rows} rows and ${cols} columns.`, 'success');
+            form.reset();
+            loadDatasetsWithAuth();
+            setTimeout(() => {
+                const statusDiv = document.getElementById('uploadStatus');
+                if (statusDiv) statusDiv.style.display = 'none';
+            }, 3000);
+        } else {
+            showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
+        }
+    } catch (err) {
+        console.error('Error uploading dataset:', err);
+        showUploadStatus(`Error uploading dataset: ${err.message}`, 'danger');
+    }
+}
+
+// ======= QUERY MODAL =======
+function openQueryModal(datasetId, datasetName) {
+    currentQueryDatasetId = datasetId;
+    document.getElementById('queryPopupTitle').innerText = `Query: ${datasetName}`;
+    document.getElementById('queryInput').value = '';
+    document.getElementById('queryResults').innerHTML = '';
+    document.getElementById('queryPopup').style.display = 'flex';
+}
+
+function closeQueryPopup() {
+    document.getElementById('queryPopup').style.display = 'none';
+}
+
+function runDatasetQuery() {
+    const token = safeStorageGet('access_token');
+    const query = document.getElementById('queryInput').value;
+
+    if (!query.trim().toLowerCase().startsWith('select')) {
+        alert('Only SELECT queries are allowed.');
+        return;
+    }
+
+    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/${currentQueryDatasetId}/query`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ query }),
+        credentials: 'include'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => { 
+                throw new Error(data.detail || 'Query failed'); 
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        const resultsDiv = document.getElementById('queryResults');
+        const columns = data.columns;
+        const rows = data.data;
+
+        let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr>' +
+            columns.map(col => `<th>${escapeHtml(col)}</th>`).join('') +
+            '</tr></thead><tbody>' +
+            rows.map(row => `<tr>${columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('')}</tr>`).join('') +
+            '</tbody></table></div>';
+
+        resultsDiv.innerHTML = html;
+    })
+    .catch(error => {
+        alert(`Query error: ${error.message}`);
+        console.error('Query error:', error);
+    });
+}
+
+// ======= WIZARD FUNCTIONALITY =======
 function toggleColumn(columnId) {
     const checkbox = document.getElementById(columnId);
     const item = checkbox.closest('.column-item');
@@ -1304,7 +2002,7 @@ function toggleColumn(columnId) {
     
     updateNextButton();
 }
-  
+
 function selectTargetVariable(targetType) {
     selectedTargetVariable = targetType;
     document.querySelectorAll('.target-options input[name="target_variable"]').forEach(radio => {
@@ -1320,6 +2018,7 @@ function selectTargetVariable(targetType) {
     
     updateNextButton();
 }
+
 function selectBusinessGoal(goal) {
     selectedBusinessGoal = goal;
     document.querySelectorAll('.target-option input[name="business_goal"]').forEach(radio => {
@@ -1335,6 +2034,7 @@ function selectBusinessGoal(goal) {
     
     updateNextButton();
 }
+
 function updateNextButton() {
     const nextBtn = document.getElementById('nextBtn');
     if (!nextBtn) return;
@@ -1352,6 +2052,7 @@ function updateNextButton() {
         nextBtn.disabled = false;
     }
 }
+
 function nextStep() {
     if (currentStep < 5) {
         if (currentStep === 2) {
@@ -1369,6 +2070,7 @@ function nextStep() {
         updateNextButton();
     }
 }
+
 function previousStep() {
     if (currentStep > 1) {
         currentStep--;
@@ -1407,6 +2109,7 @@ function updateButtons() {
     
     updateNextButton();
 }
+
 function updateProgress() {
     const progressFill = document.getElementById('progressFill');
     if (progressFill) {
@@ -1455,6 +2158,7 @@ function populateTargetVariables() {
         container.appendChild(option);
     });
 }
+
 function showResults() {
     const resultDetails = document.getElementById('resultDetails');
     if (!resultDetails) return;
@@ -1511,6 +2215,7 @@ function showColumnInputForm() {
         container.appendChild(div);
     });
 }
+
 function generatePythonCode(targetType) {
     const codeMap = {
         clv: `df["visit_date"] = pd.to_datetime(df["visit_date"])
@@ -1524,19 +2229,12 @@ agg["aov"] = agg["total_spent"] / agg["total_visits"]
 agg["frequency"] = agg["total_visits"] / agg["days_active"]
 agg["target"] = agg["aov"] * agg["frequency"] * (agg["days_active"] / 30)`,
 
-
         revenue_per_customer: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
     "amount_paid": "sum",
     "visit_date": "count"
 }).rename(columns={"amount_paid": "total_spent", "visit_date": "total_visits"})
 agg["target"] = agg["total_spent"] / agg["total_visits"]`,
-
-        churn: `df["visit_date"] = pd.to_datetime(df["visit_date"])
-last = df.groupby("customer_id")["visit_date"].max()
-agg = pd.DataFrame(last).rename(columns={"visit_date": "last_activity"})
-agg["target"] = (pd.Timestamp.now() - agg["last_activity"]).dt.days > 60
-agg["target"] = agg["target"].astype(int)`,
 
         aov: `df["visit_date"] = pd.to_datetime(df["visit_date"])
 agg = df.groupby("customer_id").agg({
@@ -1611,12 +2309,10 @@ agg["target"] = agg["referrals"] / (agg["total_visits"] + 1)`
     return codeMap[targetType] || "# No formula available for this target type";
 }
 
-
-
 function applyConfiguration() {
     alert(`Configuration completed!\n\nTarget Variable: ${selectedTargetVariable}\nBusiness Goal: ${selectedBusinessGoal}\nColumns Used: ${selectedColumns.join(', ')}`);
     
-    // Reset wizard or close it
+    // Reset wizard
     currentStep = 1;
     selectedColumns = [];
     selectedBusinessGoal = '';
@@ -1669,11 +2365,8 @@ async function generateTargetFromCSV() {
         if (data.error) {
             alert(`Error: ${data.error}`);
         } else if (Array.isArray(data) && data.length > 0) {
-            // Log dataset info for verification
             console.log(`Dataset contains ${data.length} rows`);
             console.log(`Columns: ${Object.keys(data[0]).join(', ')}`);
-            
-            // Convert data to CSV and download
             downloadCSV(data, `target_variable_${selectedTargetVariable}.csv`);
         } else {
             alert("No data returned from the API.");
@@ -1684,7 +2377,6 @@ async function generateTargetFromCSV() {
     }
 }
 
-// Enhanced helper function to convert JSON data to CSV and trigger download
 function downloadCSV(data, filename) {
     if (!data || data.length === 0) {
         alert("No data to download");
@@ -1693,20 +2385,16 @@ function downloadCSV(data, filename) {
 
     console.log(`Preparing to download ${data.length} rows`);
 
-    // Get all unique column headers from all rows (in case some rows have different keys)
     const allHeaders = new Set();
     data.forEach(row => {
         Object.keys(row).forEach(key => allHeaders.add(key));
     });
     const headers = Array.from(allHeaders);
 
-    // Create CSV content with proper escaping
     let csvContent = '';
     
-    // Add header row
     csvContent += headers.map(header => escapeCSVValue(header)).join(',') + '\n';
 
-    // Add data rows
     data.forEach((row, index) => {
         const values = headers.map(header => {
             const value = row[header];
@@ -1714,7 +2402,6 @@ function downloadCSV(data, filename) {
         });
         csvContent += values.join(',') + '\n';
         
-        // Log progress for large datasets
         if (index > 0 && index % 1000 === 0) {
             console.log(`Processed ${index} rows...`);
         }
@@ -1722,10 +2409,8 @@ function downloadCSV(data, filename) {
 
     console.log(`CSV content generated: ${csvContent.split('\n').length - 1} total lines (including header)`);
 
-    // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     
-    // Verify blob size
     console.log(`Blob size: ${blob.size} bytes`);
     
     const link = document.createElement('a');
@@ -1737,7 +2422,6 @@ function downloadCSV(data, filename) {
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         
-        // Add event listener to confirm download started
         link.addEventListener('click', () => {
             console.log(`Download initiated for ${filename}`);
         });
@@ -1745,7 +2429,6 @@ function downloadCSV(data, filename) {
         link.click();
         document.body.removeChild(link);
         
-        // Clean up URL after a delay to ensure download starts
         setTimeout(() => {
             URL.revokeObjectURL(url);
         }, 1000);
@@ -1756,17 +2439,13 @@ function downloadCSV(data, filename) {
     }
 }
 
-// Helper function for proper CSV value escaping
 function escapeCSVValue(value) {
-    // Handle null/undefined values
     if (value === null || value === undefined) {
         return '';
     }
 
-    // Convert to string
     let stringValue = String(value);
 
-    // Always wrap in quotes if contains comma, quote, newline, or starts/ends with whitespace
     if (stringValue.includes(',') || 
         stringValue.includes('"') || 
         stringValue.includes('\n') || 
@@ -1774,899 +2453,11 @@ function escapeCSVValue(value) {
         stringValue.startsWith(' ') || 
         stringValue.endsWith(' ')) {
         
-        // Escape existing quotes by doubling them
         stringValue = stringValue.replace(/"/g, '""');
         return `"${stringValue}"`;
     }
 
     return stringValue;
-}
-
-// Optional: Add a function to verify the download
-function verifyDownload(originalData, filename) {
-    // This would need to be called after the user confirms the file was downloaded
-    console.log(`Original dataset: ${originalData.length} rows`);
-    console.log(`Expected filename: ${filename}`);
-    console.log('Please verify the downloaded file contains the expected number of rows.');
-}
-function safeStorageGet(key) {
-    try {
-        return localStorage.getItem(key);
-    } catch (error) {
-        console.error(`Error getting ${key} from localStorage:`, error);
-        return null;
-    }
-}
-
-function safeStorageSet(key, value) {
-    try {
-        localStorage.setItem(key, value);
-        return true;
-    } catch (error) {
-        console.error('Error setting localStorage:', error);
-        return false;
-    }
-}
-
-function isTokenExpired(token) {
-    if (!token) return true;
-    
-    try {
-        // Parse the JWT token to get the payload
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        
-        // Check if the token has an expiration time
-        if (!payload.exp) return false;
-        
-        // Compare expiration time with current time (with consistent 30-second buffer)
-        const currentTime = Math.floor(Date.now() / 1000);
-        return payload.exp < (currentTime + 30); // Match the login script logic
-    } catch (error) {
-        console.error('Error parsing token:', error);
-        return true; // Consider invalid tokens as expired
-    }
-}
-
-// FIXED: Robust authentication check
-function checkAuthentication() {
-    const token = safeStorageGet('access_token');
-    const userLoggedIn = safeStorageGet('userLoggedIn');
-    
-    console.log('Authentication check:', {
-        token: token ? 'Token found' : 'No token found',
-        userLoggedIn: userLoggedIn,
-        tokenExpired: token ? isTokenExpired(token) : 'No token to check'
-    });
-    
-    // Must have valid token AND login flag must be set
-    const hasValidToken = token && !isTokenExpired(token);
-    const hasLoginFlag = userLoggedIn === 'true';
-    
-    console.log('Auth validation:', { hasValidToken, hasLoginFlag });
-    
-    // If we have a valid token but missing login flag, set it
-    if (hasValidToken && !hasLoginFlag) {
-        console.log('Valid token found but login flag missing, setting it...');
-        safeStorageSet('userLoggedIn', 'true');
-        return true;
-    }
-    
-    // If login flag is set but token is invalid, clear everything
-    if (hasLoginFlag && !hasValidToken) {
-        console.log('Login flag set but token invalid, clearing auth state...');
-        clearAuthStorage();
-        return false;
-    }
-    
-    return hasValidToken && hasLoginFlag;
-}
-
-function clearAuthStorage() {
-    try {
-        const keys = ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail'];
-        keys.forEach(key => localStorage.removeItem(key));
-        console.log('Cleared authentication storage');
-    } catch (error) {
-        console.error('Error clearing auth storage:', error);
-    }
-}
-
-function isTokenExpired(token) {
-    if (!token) return true;
-    
-    try {
-        // Parse the JWT token to get the payload
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        
-        // Check if the token has an expiration time
-        if (!payload.exp) return false;
-        
-        // Compare expiration time with current time (with 30-second buffer)
-        const currentTime = Math.floor(Date.now() / 1000);
-        return payload.exp < currentTime;
-    } catch (error) {
-        console.error('Error parsing token:', error);
-        return true; // Consider invalid tokens as expired
-    }
-}
-// Function to format a date in 'YYYY-MM-DD' format
-function formatDate(dateString) {
-        const date = new Date(dateString);
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0'); // months are 0-based, so add 1
-        const day = date.getDate().toString().padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-const MAX_FILE_MB = 200; // or whatever your limit is
-
-function detectFileKind(file) {
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  // Normalize a few aliases here if you want
-  if (ext === 'jsonl' || ext === 'ndjson') return 'jsonl';
-  return ['csv', 'tsv', 'xlsx', 'xls', 'parquet', 'json', 'jsonl'].includes(ext) ? ext : null;
-}
-
-function sanitizeDatasetName(raw) {
-  return (raw || '')
-    .trim()
-    .replace(/\.[^.]+$/, '')     // drop extension
-    .replace(/\s+/g, '_')
-    .replace(/[^a-zA-Z0-9_]/g, '_')
-    .toLowerCase()
-    .slice(0, 60);
-}
-
-function showUploadStatus(msg, kind) {
-  const el = document.getElementById('uploadStatus');
-  if (!el) return;
-  el.style.display = 'block';
-  el.className = `alert alert-${kind}`; // or your own classes
-  el.textContent = msg;
-}
-
-function loadDatasetsWithAuth() {
-    // Show loading indicator
-    const errorDiv = document.querySelector('.error-message');
-    if (errorDiv) {
-        errorDiv.style.display = 'none';
-    }
-    document.getElementById('datasetsList').innerHTML = '<div class="col-12"><p>Loading datasets...</p></div>';
-    
-    const token = safeStorageGet('access_token');
-    
-    fetchWithTokenRefresh(`${API_BASE_URL}/datasets/`, {
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    },
-    credentials: 'include'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (!data.datasets || data.datasets.length === 0) {
-            document.getElementById('datasetsList').innerHTML = 
-                '<div class="col-12"><p>No datasets available. Upload your first dataset above.</p></div>';
-            return;
-        }
-
-        const container = document.getElementById('datasetsList');
-        container.innerHTML = '';
-
-        data.datasets.forEach(dataset => {
-            const card = document.createElement('div');
-            card.className = 'col-md-6 col-lg-4';
-            card.innerHTML = `
-                <div class="card dataset-card">
-                    <div class="card-body">
-                        <h5 class="card-title">${dataset.name}</h5>
-                        <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
-                        <p class="card-text">${dataset.description || 'No description provided'}</p>
-                        <div class="dataset-actions">
-                            <button class="btn btn-outline-primary" onclick="previewDataset(${dataset.id})">
-                                <i class="fas fa-eye"></i> Preview
-                            </button>
-                            <button class="btn btn-outline-primary download-btn"
-                            data-id="${dataset.id}"
-                            data-name="${dataset.name}"
-                            >
-                            <i class="fas fa-download"></i> Download
-                            </button>
-                            <button class="btn btn-outline-info" onclick="openQueryModal(${dataset.id}, '${dataset.name}')">
-                                <i class="fas fa-search"></i> Query
-                            </button>
-                            <button class="btn btn-outline-danger" onclick="deleteDataset(${dataset.id})">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            container.appendChild(card);
-        });
-    })
-    .catch(error => {
-        console.error('Error loading datasets:', error);
-        document.getElementById('datasetsList').innerHTML = 
-            '<div class="col-12"><p class="text-danger">Error loading datasets. Please try again later.</p></div>';
-    });
-}
-let currentQueryDatasetId = null;
-function renderDatasetCards(datasets) {
-  const container = getListEl();
-  container.innerHTML = '';
-
-  datasets.forEach(dataset => {
-    container.insertAdjacentHTML('beforeend', `
-      <div class="col-md-6 col-lg-4">
-        <div class="card dataset-card" data-id="${dataset.id}">
-          <div class="card-body">
-            <h5 class="card-title">${escapeHtml(dataset.name)}</h5>
-            <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
-            <p class="card-text">${escapeHtml(dataset.description || 'No description provided')}</p>
-            <div class="dataset-actions">
-              <button class="btn btn-outline-primary btn-preview" data-id="${dataset.id}">
-                <i class="fas fa-eye"></i> Preview
-              </button>
-              <button class="btn btn-outline-primary download-btn" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
-                <i class="fas fa-download"></i> Download
-              </button>
-              <button class="btn btn-outline-info btn-query" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
-                <i class="fas fa-search"></i> Query
-              </button>
-              <!-- NEW -->
-              <button class="btn btn-success btn-cleaner" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
-                <i class="fas fa-magic"></i> Open in Cleaner
-              </button>
-              <button class="btn btn-outline-danger btn-delete" data-id="${dataset.id}">
-                <i class="fas fa-trash"></i> Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-  });
-}
-
-function openQueryModal(datasetId, datasetName) {
-  currentQueryDatasetId = datasetId;
-  document.getElementById('queryPopupTitle').innerText = `Query: ${datasetName}`;
-  document.getElementById('queryInput').value = '';
-  document.getElementById('queryResults').innerHTML = '';
-  document.getElementById('queryPopup').style.display = 'flex';
-}
-
-function closeQueryPopup() {
-  document.getElementById('queryPopup').style.display = 'none';
-}
-
-
-function runDatasetQuery() {
-    const token = safeStorageGet('access_token');
-    const query = document.getElementById('queryInput').value;
-
-    if (!query.trim().toLowerCase().startsWith('select')) {
-        alert('Only SELECT queries are allowed.');
-        return;
-    }
-
-    fetch(`${API_BASE_URL}/datasets/${currentQueryDatasetId}/query`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ query })
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.json().then(data => { throw new Error(data.detail || 'Query failed'); });
-        }
-        return response.json();
-    })
-    .then(data => {
-        const resultsDiv = document.getElementById('queryResults');
-        const columns = data.columns;
-        const rows = data.data;
-
-        let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr>' +
-            columns.map(col => `<th>${col}</th>`).join('') +
-            '</tr></thead><tbody>' +
-            rows.map(row => `<tr>${columns.map(col => `<td>${row[col]}</td>`).join('')}</tr>`).join('') +
-            '</tbody></table></div>';
-
-        resultsDiv.innerHTML = html;
-    })
-    .catch(error => {
-        alert(`Query error: ${error.message}`);
-        console.error('Query error:', error);
-    });
-}
-// ─── 1) Store tokens robustly ───
-function storeAuthTokens(tokenData) {
-  if (!tokenData) return false;
-  let success = true;
-
-  if (tokenData.access_token) {
-    success = safeStorageSet('access_token', tokenData.access_token) && success;
-  }
-  if (tokenData.refresh_token) {
-    success = safeStorageSet('refresh_token', tokenData.refresh_token) && success;
-  }
-
-  // Mark logged-in last, so it only flips true when tokens are in place
-  success = safeStorageSet('userLoggedIn', 'true') && success;
-
-  if (tokenData.name) {
-    success = safeStorageSet('userName', tokenData.name) && success;
-  }
-  if (tokenData.email) {
-    success = safeStorageSet('userEmail', tokenData.email) && success;
-  }
-
-  // Verify storage
-  if (success) {
-    const tok = safeStorageGet('access_token');
-    const flag = safeStorageGet('userLoggedIn');
-    success = !!(tok && flag === 'true');
-  }
-  return success;
-}
-
-// ─── 2) Use it in your refreshUserToken routine ───
-async function refreshUserToken() {
-  const refreshToken = safeStorageGet('refresh_token');
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-    credentials: 'include'
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  // Replace direct safeStorageSet calls with storeAuthTokens:
-  const stored = storeAuthTokens({
-    access_token:  data.access_token,
-    refresh_token: data.refresh_token || refreshToken,
-    name:           data.name,    // if your backend returns name/email
-    email:          data.email
-  });
-  if (!stored) {
-    throw new Error('Failed to store refreshed tokens');
-  }
-
-  return true;
-}
-
-async function fetchWithTokenRefresh(url, options = {}) {
-  // Always include cookies if you need them
-  const opts = { ...options, credentials: 'include' };
-
-  // 1️⃣ First attempt
-  let response = await fetch(url, opts);
-  if (response.ok || (response.status !== 401 && response.status !== 403)) {
-    return response;
-  }
-
-  console.warn('Auth failed, attempting refresh…');
-  try {
-    // 2️⃣ Try your verified refresh routine
-    await refreshUserToken();
-
-    // 3️⃣ On success, retry the original request with the new access token
-    const newToken = safeStorageGet('access_token');
-    const retryOpts = {
-      ...opts,
-      headers: {
-        ...(opts.headers || {}),
-        'Authorization': `Bearer ${newToken}`
-      }
-    };
-    const retryResp = await fetch(url, retryOpts);
-    if (retryResp.ok) {
-      return retryResp;
-    }
-    console.error(`Retry after refresh also failed: ${retryResp.status}`);
-  } catch (refreshError) {
-    console.error('Token refresh failed:', refreshError.message);
-  }
-
-  // 4️⃣ If we get here, both original and refresh→retry failed
-  // Give the user 3s to see any on-screen message, then redirect:
-  setTimeout(() => {
-    clearAuthStorage();  // wipe out stale tokens
-    window.location.href =
-      `login.html?next=${encodeURIComponent(window.location.pathname)}&reason=Your session has expired`;
-  }, 2000);
-
-  throw new Error('Authentication and refresh both failed');
-}
-
-
-function showUploadStatus(message, type = 'success') {
-    const statusDiv = document.getElementById('uploadStatus');
-    
-    statusDiv.className = 'alert alert-' + type;
-    statusDiv.textContent = message;
-    statusDiv.style.display = 'block';
-}
-// Allowed types & sane size limit
-const ALLOWED_EXTENSIONS = new Set(['csv','tsv','xlsx','xls','parquet','json','jsonl']);
-
-function extOf(filename='') {
-  const m = /\.(\w+)$/.exec(filename.toLowerCase());
-  return m ? m[1] : '';
-}
-
-function detectFileKind(file) {
-  // Prefer extension (more reliable across browsers than MIME)
-  const ext = extOf(file.name);
-  if (ALLOWED_EXTENSIONS.has(ext)) return ext;
-
-  // Fallback: MIME hints (not all browsers set these)
-  const mime = (file.type || '').toLowerCase();
-  if (mime.includes('csv')) return 'csv';
-  if (mime.includes('spreadsheet') || mime.includes('excel')) return 'xlsx';
-  if (mime.includes('parquet')) return 'parquet';
-  if (mime.includes('json')) {
-    // distinguish jsonl vs json if you want: keep as 'json' and detect server-side
-    return 'json';
-  }
-  return ''; // unknown
-}
-async function uploadDataset(event) {
-  event.preventDefault();
-
-  const form = document.getElementById('uploadForm');
-  const fileInput = form.querySelector('input[type="file"]');
-  const nameInput = form.querySelector('input[name="name"]');
-  const statusDiv = document.getElementById('uploadStatus');
-
-  const file = fileInput.files[0];
-  if (!file) return showUploadStatus('Please select a file to upload', 'danger');
-
-  if (!nameInput.value.trim()) {
-    // auto-suggest a sane name from file if user left it empty
-    nameInput.value = sanitizeDatasetName(file.name);
-  }
-
-  // Validate kind + size
-  const kind = detectFileKind(file);
-  if (!kind) {
-    return showUploadStatus('Unsupported file type. Allowed: CSV, TSV, XLSX/XLS, Parquet, JSON, JSONL.', 'danger');
-  }
-  const sizeMb = file.size / (1024 * 1024);
-  if (sizeMb > MAX_FILE_MB) {
-    return showUploadStatus(`File too large (${sizeMb.toFixed(1)} MB). Max ${MAX_FILE_MB} MB.`, 'danger');
-  }
-
-  // Build multipart form
-  // IMPORTANT: ensure your file input has name="file"
-  // e.g. <input type="file" name="file" ... />
-  const fd = new FormData(form);       // includes: file, name, description (if present)
-  fd.set('name', sanitizeDatasetName(nameInput.value)); // enforce sanitized name
-
-  // FIX: backend expects fmt_hint, not "format"
-  fd.append('fmt_hint', kind);
-
-  // Optional: delimiter hint for TSV
-  if (kind === 'tsv') fd.append('delimiter', 'tab');
-
-  showUploadStatus('Uploading dataset...', 'info');
-
-  const token = safeStorageGet('access_token');
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/datasets/`, {
-      method: 'POST',
-      headers: {
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        'Accept': 'application/json'
-        // DO NOT set Content-Type when sending FormData
-      },
-      body: fd,
-      credentials: 'include'
-    });
-
-    // Handle non-OK with best-effort detail
-    if (!res.ok) {
-      let detail = `${res.status} ${res.statusText}`;
-      try {
-        const t = await res.text();
-        if (t) detail += ` - ${t}`;
-      } catch {}
-      if (res.status === 401 || res.status === 403) {
-        return (window.location.href = 'login.html?next=datasets.html&reason=Your session has expired');
-      }
-      throw new Error(detail);
-    }
-
-    const data = await res.json();
-
-    if (data?.dataset_id) {
-      const rows = data.rows ?? data.row_count ?? '?';
-      const cols = data.columns ?? data.column_count ?? '?';
-      showUploadStatus(
-        `Dataset "${data.name}" uploaded with ${rows} rows and ${cols} columns.`,
-        'success'
-      );
-      form.reset();
-      // Refresh your list, if you have a function for it
-      if (typeof loadDatasetsWithAuth === 'function') loadDatasetsWithAuth();
-      setTimeout(() => { if (statusDiv) statusDiv.style.display = 'none'; }, 1500);
-    } else {
-      showUploadStatus(`Error: ${data?.detail || 'Unknown error occurred'}`, 'danger');
-    }
-  } catch (err) {
-    console.error('Error uploading dataset:', err);
-    showUploadStatus(`Error uploading dataset. ${err?.message || ''}`, 'danger');
-  }
-}
-
-function closePreviewModal() {
-  document.getElementById('datasetPreviewModal').style.display = 'none';
-}
-async function fetchWithAuth(url, token) {
-  const response = await fetch(url, {
-    headers: { 
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    credentials: 'include'  // ⬅️ ensures session/cookie support
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
-  }
-
-  return response;
-}
-
-async function previewDataset(datasetId, options = {}) {
-  const { previewLimit = 5, columnLimit = 3 } = options;
-  
-  // Validate input
-  if (!datasetId || (typeof datasetId !== 'string' && typeof datasetId !== 'number')) {
-    throw new Error('Valid dataset ID is required');
-}
-
-  const token = safeStorageGet('access_token');
-  if (!token) {
-    throw new Error('Authentication token not found');
-  }
-
-  // Show loading state
-  showPreviewLoading();
-
-  try {
-    // Fetch metadata and preview data concurrently
-    const [metadataResponse, previewResponse] = await Promise.all([
-      fetchWithAuth(`${API_BASE_URL}/datasets/${datasetId}`, token),
-      fetchWithAuth(`${API_BASE_URL}/datasets/${datasetId}/preview?limit=${previewLimit}`, token)
-    ]);
-
-    const [metadata, previewData] = await Promise.all([
-      metadataResponse.json(),
-      previewResponse.json()
-    ]);
-
-    // Validate data
-    validatePreviewData(previewData);
-    
-    // Render the preview
-    renderDatasetPreview(metadata, previewData, columnLimit);
-    
-  } catch (error) {
-    handlePreviewError(error);
-  }
-}
-function slugify(s){
-  return String(s||'').trim().toLowerCase()
-    .replace(/[^\w\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').slice(0,40);
-}
-
-function renderDatasetCards(datasets) {
-  const container = document.getElementById('datasetsList');
-  container.classList.add('row','g-3');
-  container.innerHTML = '';
-
-  datasets.forEach(dataset => {
-    const key = `${slugify(dataset.name)}-${dataset.id}`;
-    const card = document.createElement('div');
-    card.className = 'col-md-6 col-lg-4';
-    card.innerHTML = `
-      <div class="card dataset-card">
-        <div class="card-body">
-          <h5 class="card-title">${escapeHtml(dataset.name)}</h5>
-          <p class="card-text text-muted small">${dataset.created_at ? formatDate(dataset.created_at) : 'Unknown date'}</p>
-          <p class="card-text">${escapeHtml(dataset.description || 'No description provided')}</p>
-          <div class="dataset-actions">
-            <button class="btn btn-outline-primary btn-preview" data-id="${dataset.id}">
-              <i class="fas fa-eye"></i> Preview
-            </button>
-            <button class="btn btn-outline-primary download-btn" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
-              <i class="fas fa-download"></i> Download
-            </button>
-            <button class="btn btn-outline-info btn-query" data-id="${dataset.id}" data-name="${escapeHtml(dataset.name)}">
-              <i class="fas fa-search"></i> Query
-            </button>
-
-            <!-- New: link to data_cleaner.html with ID (and friendly key) -->
-            <a class="btn btn-success"
-               href="data_cleaner.html?id=${dataset.id}&key=${encodeURIComponent(key)}">
-              <i class="fas fa-broom"></i> Open in Cleaner
-            </a>
-
-            <button class="btn btn-outline-danger btn-delete" data-id="${dataset.id}">
-              <i class="fas fa-trash"></i> Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function validatePreviewData(data) {
-  if (!data || !data.preview_data || !Array.isArray(data.preview_data)) {
-    throw new Error('Invalid preview data format');
-  }
-  
-  if (data.preview_data.length === 0) {
-    throw new Error('No preview data available');
-  }
-}
-function showPreviewLoading() {
-  const container = document.getElementById('inlinePreviewContainer');
-  if (container) {
-    container.style.display = 'block';
-    container.innerHTML = `
-      <div class="dataset-card">
-        <div class="dataset-card-body">
-          <div class="text-center p-4">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2">Loading dataset preview...</p>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-}
-function renderDatasetPreview(metadata, previewData, columnLimit) {
-  const rows = previewData.preview_data;
-  const allColumns = Object.keys(rows[0]);
-  const displayColumns = allColumns.slice(0, columnLimit);
-  const hasMoreColumns = allColumns.length > columnLimit;
-
-  // Sanitize and format metadata
-  const sanitizedMetadata = {
-    name: escapeHtml(metadata.name || 'Unnamed Dataset'),
-    description: escapeHtml(metadata.description || 'No description provided'),
-    createdAt: formatDate(metadata.created_at),
-    rowCount: Number(metadata.row_count) || rows.length,
-    columnCount: Number(metadata.column_count) || allColumns.length
-  };
-
-  // Build the complete HTML
-  const containerHTML = `
-    <div class="dataset-card">
-      <div class="dataset-card-body">
-        ${buildInfoSection(sanitizedMetadata, hasMoreColumns, columnLimit)}
-        ${buildTableSection(displayColumns, rows, hasMoreColumns)}
-      </div>
-    </div>
-  `;
-
-  // Update DOM
-  const container = document.getElementById('inlinePreviewContainer');
-  if (container) {
-    container.innerHTML = containerHTML;
-    container.style.display = 'block';
-  }
-}
-
-/**
- * Build the dataset info section
- */
-function buildInfoSection(metadata, hasMoreColumns, columnLimit) {
-  return `
-    <div id="inlineDatasetInfo">
-      <h4 style="color: #0066cc; margin-bottom: 1rem;">${metadata.name}</h4>
-      <p style="margin-bottom: 0.5rem;">${metadata.description}</p>
-      <p style="margin-bottom: 0.5rem;">
-        <small class="text-muted">Created on ${metadata.createdAt}</small>
-      </p>
-      <div class="row mb-3">
-        <div class="col-sm-6">
-          <strong>Rows:</strong> ${metadata.rowCount.toLocaleString()}
-        </div>
-        <div class="col-sm-6">
-          <strong>Columns:</strong> ${metadata.columnCount.toLocaleString()}
-        </div>
-      </div>
-      <p class="text-muted">
-        <em>Preview of first ${metadata.rowCount} rows${hasMoreColumns ? ` and ${columnLimit} columns` : ''}:</em>
-        ${hasMoreColumns ? `<br><small>Showing ${columnLimit} of ${metadata.columnCount} columns</small>` : ''}
-      </p>
-    </div>
-  `;
-}
-
-/**
- * Build the preview table section
- */
-function buildTableSection(columns, rows, hasMoreColumns) {
-  const headerRow = columns.map(col => `<th scope="col">${escapeHtml(col)}</th>`).join('');
-  const moreColumnsIndicator = hasMoreColumns ? '<th scope="col" class="text-muted">...</th>' : '';
-  
-  const bodyRows = rows.map(row => {
-    const cells = columns.map(col => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('');
-    const moreCell = hasMoreColumns ? '<td class="text-muted">...</td>' : '';
-    return `<tr>${cells}${moreCell}</tr>`;
-  }).join('');
-
-  return `
-    <div class="table-responsive">
-      <table class="table table-striped table-hover">
-        <thead class="table-light">
-          <tr>${headerRow}${moreColumnsIndicator}</tr>
-        </thead>
-        <tbody>
-          ${bodyRows}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-/**
- * Handle preview errors with user-friendly messages
- */
-function handlePreviewError(error) {
-  console.error('Dataset preview error:', error);
-  
-  const container = document.getElementById('inlinePreviewContainer');
-  if (container) {
-    let userMessage = 'Unable to load dataset preview.';
-    
-    if (error.message.includes('401') || error.message.includes('Authentication')) {
-      userMessage = 'Authentication failed. Please log in again.';
-    } else if (error.message.includes('404')) {
-      userMessage = 'Dataset not found.';
-    } else if (error.message.includes('403')) {
-      userMessage = 'Access denied to this dataset.';
-    } else if (error.message.includes('No preview data')) {
-      userMessage = 'This dataset appears to be empty.';
-    }
-    
-    container.innerHTML = `
-      <div class="dataset-card">
-        <div class="dataset-card-body">
-          <div class="alert alert-warning" role="alert">
-            <h6 class="alert-heading">Preview Unavailable</h6>
-            <p class="mb-0">${escapeHtml(userMessage)}</p>
-            ${error.message !== userMessage ? `<small class="text-muted d-block mt-1">Error: ${escapeHtml(error.message)}</small>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-    container.style.display = 'block';
-  }
-}
-
-/**
- * Utility function to escape HTML and prevent XSS
- */
-
-/**
- * Escape HTML to prevent XSS
- * @param {string} unsafe - Unsafe string
- * @returns {string} - Safe HTML string
- */
- function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-/**
- * Format file size in human readable format
- * @param {number} bytes - File size in bytes
- * @returns {string} - Formatted file size
- */
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-/**
- * Enhanced date formatting with error handling
- */
-function formatDate(dateString) {
-  if (!dateString) return 'Unknown date';
-  
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid date';
-    
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch (error) {
-    console.warn('Date formatting error:', error);
-    return 'Invalid date';
-  }
-}
-/**
- * Modified function to include authentication token in dataset deletion
- */
-function deleteDataset(datasetId) {
-    if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
-        // Get the authentication token
-        const token = safeStorageGet('access_token');
-        
-        fetch(`${API_BASE_URL}/datasets/${datasetId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            },
-            credentials: 'include'
-        })
-
-        .then(response => {
-            if (!response.ok) {
-                if (response.status === 401 || response.status === 403) {
-                    throw new Error('Authentication failed');
-                }
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.message) {
-                // Reload the datasets list
-                loadDatasetsWithAuth();
-                previewDataset(String(data.dataset_id)); // Convert to string just in case
-
-                alert("Dataset deleted successfully");
-            } else {
-                alert(`Error: ${data.detail || 'Unknown error occurred'}`);
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting dataset:', error);
-            if (error.message === 'Authentication failed') {
-                // Redirect to login page
-                window.location.href = 'login.html?next=datasets.html&reason=Your session has expired';
-            } else {
-                alert('Error deleting dataset. Please try again.');
-            }
-        })
-    }
 }
 
     </script>

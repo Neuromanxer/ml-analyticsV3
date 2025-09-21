@@ -1774,112 +1774,100 @@
     </div>
 
     <script>
+
+// Global variables
 let currentStep = 1;
 const totalSteps = 5;
 let selectedData = {};
 const token = localStorage.getItem('access_token');
-// const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
-  const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
-  let editingActionIndex = -1;
+let editingActionIndex = -1;
+let currentPlanId = null;
+let savingStep1 = false;
+let lastFire = 0;
+let _autosaveArmed = false;
+let _saveTimer = null;
+
+// Initialize savedActions from localStorage
 window.savedActions = (() => {
   try { return JSON.parse(localStorage.getItem('savedActions') || '[]'); }
   catch { return []; }
 })();
-let currentPlanId = null;
+
+// Initialize currentPlanId from localStorage
 try {
   const stored = localStorage.getItem('currentPlanId');
   if (stored) currentPlanId = parseInt(stored, 10) || null;
 } catch {}
-const goalMapping = {
-  'what-if-bulk':         'Test scenarios at scale (e.g. +5% price & –10% marketing)',
-  'regression':           'Forecast continuous values (e.g. next quarter sales)',
-  'classification':       'Group items into categories (e.g. high vs. low risk)',
-  'time-series-analysis': 'Model trends over time (e.g. seasonal peaks)',
-  'ab-test':              'Compare two variants (e.g. Email A vs. Email B)',
-  'customer-segments':    'Identify customer groups (e.g. heavy vs. light buyers)',
-  'decision-paths':       'Uncover key decision rules (e.g. steps leading to purchase)',
-  'visualize-relationships':'Chart data patterns (e.g. order size vs. spend)'
-}; 
-const uploadedData = {
-            customers: { file: null, mapping: null, confirmed: false },
-            orders: { file: null, mapping: null, confirmed: false },
-            marketing: { file: null, mapping: null, confirmed: false }
-        };
 
-        // Sample data
-        const sampleData = {
-            customers: {
-                headers: ['customer_id', 'email', 'phone', 'created_date', 'country', 'marketing_opt_in'],
-                rows: [
-                    ['CUST_001', 'john@example.com', '+1-555-0123', '2024-01-15', 'US', 'true'],
-                    ['CUST_002', 'jane@example.com', '+1-555-0456', '2024-02-20', 'CA', 'false'],
-                    ['CUST_003', 'bob@example.com', '+1-555-0789', '2024-03-10', 'US', 'true'],
-                    ['CUST_004', 'alice@example.com', '', '2024-04-05', 'UK', 'true']
-                ],
-                csv: `customer_id,email,phone,created_date,country,marketing_opt_in
+// Mapping and file handling variables
+const uploadedData = {
+  customers: { file: null, mapping: null, confirmed: false },
+  orders: { file: null, mapping: null, confirmed: false },
+  marketing: { file: null, mapping: null, confirmed: false }
+};
+
+const mappingState = {
+  customers: { confirmed: false },
+  orders: { confirmed: false },
+  marketing: { confirmed: false }
+};
+
+const fileStore = { customers: null, orders: null, marketing: null };
+const MIN_UPLOADS_TO_COMPUTE = 1;
+let deriveAbort = null;
+
+// Sample data
+const sampleData = {
+  customers: {
+    headers: ['customer_id', 'email', 'phone', 'created_date', 'country', 'marketing_opt_in'],
+    rows: [
+      ['CUST_001', 'john@example.com', '+1-555-0123', '2024-01-15', 'US', 'true'],
+      ['CUST_002', 'jane@example.com', '+1-555-0456', '2024-02-20', 'CA', 'false'],
+      ['CUST_003', 'bob@example.com', '+1-555-0789', '2024-03-10', 'US', 'true'],
+      ['CUST_004', 'alice@example.com', '', '2024-04-05', 'UK', 'true']
+    ],
+    csv: `customer_id,email,phone,created_date,country,marketing_opt_in
 CUST_001,john@example.com,+1-555-0123,2024-01-15,US,true
 CUST_002,jane@example.com,+1-555-0456,2024-02-20,CA,false
 CUST_003,bob@example.com,+1-555-0789,2024-03-10,US,true
 CUST_004,alice@example.com,,2024-04-05,UK,true
 CUST_005,charlie@example.com,+1-555-0321,2024-05-12,AU,false`
-            },
-            orders: {
-                headers: ['order_id', 'customer_id', 'order_date', 'total_amount', 'status', 'category'],
-                rows: [
-                    ['ORD_001', 'CUST_001', '2024-06-15', '129.99', 'completed', 'electronics'],
-                    ['ORD_002', 'CUST_002', '2024-06-20', '89.50', 'completed', 'clothing'],
-                    ['ORD_003', 'CUST_001', '2024-07-01', '249.99', 'shipped', 'electronics'],
-                    ['ORD_004', 'CUST_003', '2024-07-05', '45.00', 'completed', 'books']
-                ],
-                csv: `order_id,customer_id,order_date,total_amount,status,category
+  },
+  orders: {
+    headers: ['order_id', 'customer_id', 'order_date', 'total_amount', 'status', 'category'],
+    rows: [
+      ['ORD_001', 'CUST_001', '2024-06-15', '129.99', 'completed', 'electronics'],
+      ['ORD_002', 'CUST_002', '2024-06-20', '89.50', 'completed', 'clothing'],
+      ['ORD_003', 'CUST_001', '2024-07-01', '249.99', 'shipped', 'electronics'],
+      ['ORD_004', 'CUST_003', '2024-07-05', '45.00', 'completed', 'books']
+    ],
+    csv: `order_id,customer_id,order_date,total_amount,status,category
 ORD_001,CUST_001,2024-06-15,129.99,completed,electronics
 ORD_002,CUST_002,2024-06-20,89.50,completed,clothing
 ORD_003,CUST_001,2024-07-01,249.99,shipped,electronics
 ORD_004,CUST_003,2024-07-05,45.00,completed,books
 ORD_005,CUST_002,2024-07-10,199.99,pending,home`
-            },
-            marketing: {
-                headers: ['campaign_id', 'customer_id', 'channel', 'sent_date', 'opened', 'clicked', 'converted', 'cost'],
-                rows: [
-                    ['CAMP_001', 'CUST_001', 'email', '2024-06-10', 'true', 'true', 'true', '0.50'],
-                    ['CAMP_001', 'CUST_002', 'email', '2024-06-10', 'true', 'false', 'false', '0.50'],
-                    ['CAMP_002', 'CUST_003', 'sms', '2024-07-15', 'true', 'true', 'false', '0.25'],
-                    ['CAMP_003', 'CUST_001', 'push', '2024-08-01', 'false', 'false', 'false', '0.10']
-                ],
-                csv: `campaign_id,customer_id,channel,sent_date,opened,clicked,converted,cost
+  },
+  marketing: {
+    headers: ['campaign_id', 'customer_id', 'channel', 'sent_date', 'opened', 'clicked', 'converted', 'cost'],
+    rows: [
+      ['CAMP_001', 'CUST_001', 'email', '2024-06-10', 'true', 'true', 'true', '0.50'],
+      ['CAMP_001', 'CUST_002', 'email', '2024-06-10', 'true', 'false', 'false', '0.50'],
+      ['CAMP_002', 'CUST_003', 'sms', '2024-07-15', 'true', 'true', 'false', '0.25'],
+      ['CAMP_003', 'CUST_001', 'push', '2024-08-01', 'false', 'false', 'false', '0.10']
+    ],
+    csv: `campaign_id,customer_id,channel,sent_date,opened,clicked,converted,cost
 CAMP_001,CUST_001,email,2024-06-10,true,true,true,0.50
 CAMP_001,CUST_002,email,2024-06-10,true,false,false,0.50
 CAMP_002,CUST_003,sms,2024-07-15,true,true,false,0.25
 CAMP_003,CUST_001,push,2024-08-01,false,false,false,0.10
 CAMP_004,CUST_002,email,2024-08-05,true,true,true,0.50`
-            }
-        };
-// Extend your existing mappingConfig with hints (safe to merge)
-const FIELD_HINTS = {
-  // customers
-  customer_id: { expect: ['id'],         patterns: ['uuid','idlike'], unique: true },
-  email:       { expect: ['email'],      patterns: ['email'],          unique: true },
-  phone:       { expect: ['phone'],      patterns: ['e164','phone'],   unique: false },
-  created_date:{ expect: ['created','date','signup','joined'], patterns: ['date'] },
-
-  // orders
-  order_id:    { expect: ['order','id'], patterns: ['uuid','idlike'], unique: true },
-  order_date:  { expect: ['order','date'], patterns: ['date'] },
-  order_total: { expect: ['total','amount','revenue','price'], patterns: ['amount','numeric'] },
-  order_status:{ expect: ['status','state'], patterns: ['status','category'] },
-  product_category:{ expect: ['category','product','segment'], patterns: ['category'] },
-
-  // marketing
-  campaign_id: { expect: ['campaign','id'], patterns: ['uuid','idlike'], unique: true },
-  channel:     { expect: ['channel','medium'], patterns: ['channel','category'] },
-  sent_date:   { expect: ['sent','date','send'], patterns: ['date'] },
-  opened:      { expect: ['open'],     patterns: ['bool'] },
-  clicked:     { expect: ['click'],    patterns: ['bool'] },
-  converted:   { expect: ['convert'],  patterns: ['bool'] },
-  cost:        { expect: ['cost','spend','cpc','cpm'], patterns: ['amount','numeric'] },
+  }
 };
-// 1) Canonical → DOM id
+
+// Field mapping configuration
 const FIELD_IDS = {
   customers: {
     customer_id: 'map-customer-id',
@@ -1893,9 +1881,9 @@ const FIELD_IDS = {
     order_id: 'map-order-id',
     customer_id: 'map-order-customer-id',
     order_date: 'map-order-date',
-    order_total: 'map-order-total',           // <- canonical, not total_amount
-    order_status: 'map-order-status',         // <- canonical, not status
-    product_category: 'map-product-category'  // <- canonical, not category
+    order_total: 'map-order-total',
+    order_status: 'map-order-status',
+    product_category: 'map-product-category'
   },
   marketing: {
     campaign_id: 'map-campaign-id',
@@ -1908,14 +1896,7 @@ const FIELD_IDS = {
     cost: 'map-campaign-cost'
   }
 };
-function getSelectId(type, field) {
-  return FIELD_IDS?.[type]?.[field];
-}
 
-function fieldsFor(type) {
-  return Object.keys(FIELD_IDS?.[type] || {});
-}
-// Base mappingConfig — define required/optional fields for each dataset type
 const mappingConfig = {
   customers: {
     required: ["customer_id"],
@@ -1955,287 +1936,203 @@ const mappingConfig = {
   }
 };
 
-// --- Regexes
-const RX = {
-  email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/,
-  e164: /^\+[1-9]\d{7,14}$/, // allow 8-15 digits with leading '+'
-  uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-  isoDate: /^\d{4}-\d{2}-\d{2}([ tT]\d{2}:\d{2}(:\d{2})?([.,]\d+)?([zZ]|[+\-]\d{2}:\d{2})?)?$/,
-  boolWord: /^(true|false|yes|no|y|n|0|1)$/i,
-  moneyish: /^[\s$€£¥]?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*$/ // very lenient
-};
-
-// --- Safely coerce to string
-const s = v => (v === null || v === undefined) ? '' : String(v).trim();
-function signOutUser() {
-    // Clear tokens from localStorage or wherever you saved them
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("current_user");
-
-    // Optional: Clear session storage if used
-    sessionStorage.clear();
-
-    // Redirect to login page
-    window.location.href = "/index.html"; // Adjust the path if needed
-}
-
-// Helper function to handle authentication errors
-function handleAuthError(error) {
-  console.error('Authentication error:', error);
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('user_id');
-  localStorage.removeItem('user');
-  window.location.href = 'login.html?next=gallery.html&reason=Session expired, please log in again';
-}
-
-// Helper function to make authenticated requests
-async function authenticatedFetch(url, options = {}) {
-  const token = localStorage.getItem('access_token');
-  if (!token) {
-    throw new Error('No token available');
+// Utility functions
+function safeStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.error(`Error getting ${key}:`, error);
+    return null;
   }
-
-  const defaultOptions = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options.headers
-    }
-  };
-
-  const response = await fetch(url, { ...options, headers: defaultOptions.headers });
-  
-  if (response.status === 401) {
-    handleAuthError(new Error('Token expired or invalid'));
-    return;
-  }
-  
-  return response;
 }
 
-// Helper: is JWT expired?
+function safeStorageSet(key, value) {
+  try { 
+    localStorage.setItem(key, value); 
+  } catch (e) { 
+    console.error(`Error setting ${key}:`, e); 
+  }
+}
+
 function isTokenExpired(token) {
-    if (!token) return true;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (!payload.exp) return false;
-      return (Math.floor(Date.now()/1000) + 30) >= payload.exp;
-    } catch (err) {
-      console.error('Error parsing token:', err);
-      return true;
-    }
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (!payload.exp) return false;
+    return (Math.floor(Date.now()/1000) + 30) >= payload.exp;
+  } catch (err) {
+    console.error('Error parsing token:', err);
+    return true;
+  }
 }
 
-// --- Sample extraction (works with rows as arrays OR objects OR a prebuilt column map)
-function getColumnValues(type, header, limit=200) {
-  const src = uploadedData?.[type];
-  if (!src) return [];
-  // If precomputed columns exist
-  if (src.columns && Array.isArray(src.columns[header])) {
-    return src.columns[header].slice(0, limit);
-  }
-  const rows = src.rows || src.preview || [];
-  if (!Array.isArray(rows)) return [];
-  const idx = src.headers?.findIndex(h => h === header) ?? -1;
-
-  const out = [];
-  for (let i = 0; i < rows.length && out.length < limit; i++) {
-    const row = rows[i];
-    if (row && typeof row === 'object' && !Array.isArray(row)) {
-      out.push(row[header]);
-    } else if (Array.isArray(row) && idx >= 0) {
-      out.push(row[idx]);
-    }
-  }
-  return out;
+function apiHeaders(method = "GET") {
+  const t = localStorage.getItem("access_token");
+  const h = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  if (method !== "GET" && method !== "HEAD") h["Content-Type"] = "application/json";
+  return h;
 }
 
-// --- Column profiling
-function profileColumn(type, header) {
-  const vals = getColumnValues(type, header, 400);
-  const n = vals.length || 0;
-  const sv = vals.map(s);
+function _val(field, elementId) {
+  const el = document.getElementById(elementId);
+  return el ? el.value : '';
+}
 
-  const notNull = sv.filter(v => v !== '').length;
-  const pctNotNull = n ? notNull / n : 0;
+function setPlanId(id) {
+  currentPlanId = id;
+  localStorage.setItem('currentPlanId', String(id));
+}
 
-  const uniqueSet = new Set(sv.filter(v => v !== ''));
-  const uniqRatio = n ? uniqueSet.size / n : 0;
+function persistActions() {
+  localStorage.setItem('savedActions', JSON.stringify(window.savedActions));
+}
+// ---- Validation (single source of truth) ----
+function validateStep1Payload(payload) {
+  const errs = [];
 
-  // pattern scores: fraction matching
-  const score = (rx) => (n ? sv.filter(v => rx.test(v)).length / n : 0);
+  if (!Number.isFinite(payload.goal_amount) || payload.goal_amount <= 0)
+    errs.push('Enter a positive Net goal ($).');
 
-  const emailScore = score(RX.email);
-  const e164Score  = score(RX.e164);
-  const uuidScore  = score(RX.uuid);
-  const boolScore  = score(RX.boolWord);
-  const isoScore   = score(RX.isoDate);
+  if (!payload.start_date) errs.push('Choose a Start date.');
+  if (!payload.end_date)   errs.push('Choose an End date.');
+  if (payload.start_date && payload.end_date &&
+      new Date(payload.start_date) > new Date(payload.end_date)) {
+    errs.push('Start must be on or before End.');
+  }
 
-  // numeric / amount-ish
-  const numScore = n ? sv.filter(v => v !== '' && !Number.isNaN(Number(v.replace(/[, ]/g,'')))).length / n : 0;
-  const moneyScore = score(RX.moneyish);
+  if (!payload.risk) errs.push('Select a risk tolerance.');
+  if (!Array.isArray(payload.actions) || payload.actions.length === 0)
+    errs.push('Add at least one Allowed action.');
 
-  // small-cardinality category-ish (ignore empties)
-  const nonEmpty = sv.filter(v => v !== '');
-  const cardinality = new Set(nonEmpty).size;
-  const categoryScore = (nonEmpty.length > 0 && cardinality <= Math.max(10, Math.floor(nonEmpty.length * 0.1))) ? 1 : 0;
+  (payload.actions || []).forEach((a, i) => {
+    if (a.cost < 0) errs.push(`Action ${i + 1} "${a.name}": cost cannot be negative.`);
+    if (a.cooldown !== null && a.cooldown < 0) errs.push(`Action ${i + 1} "${a.name}": cooldown cannot be negative.`);
+    if (a.daily_cap !== null && a.daily_cap < 0) errs.push(`Action ${i + 1} "${a.name}": daily cap cannot be negative.`);
+    if (!a.name || !a.channel) errs.push(`Action ${i + 1}: name and channel are required.`);
+  });
 
-  // status-ish words
-  const STATUS_WORDS = ['pending','completed','shipped','cancelled','failed','open','closed','processing','refunded','paid','unpaid'];
-  const statusScore = n ? sv.filter(v => STATUS_WORDS.includes(v.toLowerCase())).length / n : 0;
+  return errs;
+}
 
-  // id-like (alnum strings with good uniqueness and length 6-64)
-  const idlikeScore = n ? sv.filter(v => /^[A-Za-z0-9\-_]{6,64}$/.test(v)).length / n : 0;
+// DOM → payload (normalize keys to API)
+function collectStep1FromDOM() {
+  const goalAmount = Number(document.getElementById('goal_amount')?.value ?? 0);
+  const period     = _val?.('period','goal_period') || 'this_month';
+  const startDate  = document.getElementById('goal_start')?.value || '';
+  const endDate    = document.getElementById('goal_end')?.value || '';
+  const riskEl     = document.querySelector('input[name="risk"]:checked');
+  const risk       = riskEl ? riskEl.value : null;
+
+  const actions = (Array.isArray(window.savedActions) ? window.savedActions : [])
+    .filter(a => a && (a.name || a.channel))
+    .map((a, idx) => ({
+      name: String(a.name || '').trim(),
+      channel: String(a.channel || 'Other').trim(),
+      cost: Number.isFinite(+a.cost) ? +a.cost : 0,
+      cooldown: Number.isFinite(+a.cooldown) ? +a.cooldown : null,
+      daily_cap: Number.isFinite(+a.dailyCap) ? +a.dailyCap : null,
+      provider: a.provider ? String(a.provider).trim() : null,
+      active: a.active !== false,
+      sort_order: Number.isFinite(+a.sort_order) ? +a.sort_order : idx,
+    }));
 
   return {
-    n, pctNotNull, uniqRatio,
-    emailScore, e164Score, uuidScore, boolScore, isoScore,
-    numScore, moneyScore, categoryScore, statusScore, idlikeScore
+    plan_id: window.currentPlanId,
+    goal_amount: goalAmount,
+    period,
+    start_date: startDate,
+    end_date: endDate,
+    risk,
+    actions,
   };
 }
-function normalizeHeader(h) {
-  return s(h).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-function tokenSim(a, b) {
-  const A = new Set(normalizeHeader(a).split(' ').filter(Boolean));
-  const B = new Set(normalizeHeader(b).split(' ').filter(Boolean));
-  if (!A.size || !B.size) return 0;
-  let inter = 0;
-  for (const t of A) if (B.has(t)) inter++;
-  return inter / Math.max(A.size, B.size); // 0..1
-}
-function scoreColumnForField(field, header, profile, config) {
-  const fh = FIELD_HINTS[field] || { expect: [], patterns: [] };
-  const aliases = (config.aliases?.[field] || []).concat(fh.expect || []);
 
-  // Header score: max token similarity to any alias (0..1), weight 0.6
-  const headerScore = aliases.reduce((m, a) => Math.max(m, tokenSim(header, a)), 0);
-
-  // Pattern score depends on field
-  let patternScore = 0;
-  const P = profile;
-  const pats = fh.patterns || [];
-
-  const pick = (name) => ({
-    email:    P.emailScore,
-    e164:     P.e164Score,
-    uuid:     P.uuidScore,
-    idlike:   P.idlikeScore,
-    date:     P.isoScore,
-    bool:     Math.max(P.boolScore, (P.categoryScore && P.uniqRatio <= 0.2 ? 0.4 : 0)), // weak fallback
-    amount:   Math.max(P.moneyScore, P.numScore * 0.8),
-    numeric:  P.numScore,
-    status:   Math.max(P.statusScore, P.categoryScore * 0.6),
-    category: P.categoryScore,
-    channel:  P.categoryScore // crude; could boost common channels later
-  }[name] || 0);
-
-  if (pats.length) {
-    patternScore = Math.max(...pats.map(pick));
+function showStep1Errors(errors) {
+  const list = Array.isArray(errors) ? errors : [String(errors)];
+  const mount = document.getElementById('step1-errors');
+  if (mount) {
+    mount.innerHTML = `<ul>${list.map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>`;
+    mount.classList.remove('hidden');
+    mount.setAttribute('role','alert');
+    mount.setAttribute('aria-live','assertive');
   } else {
-    // generic fallback: rely on header more
-    patternScore = 0;
+    alert(list.join('\n'));
+  }
+}
+function clearStep1Errors() {
+  const mount = document.getElementById('step1-errors');
+  if (mount) {
+    mount.innerHTML = '';
+    mount.classList.add('hidden');
+    mount.removeAttribute('role');
+    mount.removeAttribute('aria-live');
+  }
+}
+async function upsertPlanToBackend({ skipValidate = true } = {}) {
+  const payload = collectStep1FromDOM();
+  if (!skipValidate) {
+    const errs = validateStep1Payload(payload);
+    if (errs.length) {
+      showStep1Errors(errs);
+      return false;
+    }
   }
 
-  // Uniqueness/coverage boosters
-  let boost = 0;
-  if (fh.unique) boost += Math.max(0, Math.min(0.2, (P.uniqRatio - 0.5))); // up to +0.2 if >50% unique
-  boost += Math.max(0, Math.min(0.1, (P.pctNotNull - 0.5))); // up to +0.1 if >50% not-null
+  try {
+    const res = await fetch(`${API_BASE_URL}/actions/save_step1`, {
+      method: "POST",
+      headers: { ...apiHeaders?.("POST"), "Idempotency-Key": (crypto.randomUUID?.() || String(Date.now())) },
+      body: JSON.stringify(payload),
+    });
 
-  // Weighted blend
-  const score = (0.6 * headerScore) + (0.4 * patternScore) + boost;
+    if (!res.ok) {
+      if (res.status === 401) showStep1Errors(["You're not logged in."]);
+      else if (res.status === 409) showStep1Errors(["Duplicate Action: Name + Channel must be unique."]);
+      else {
+        const txt = await res.text().catch(()=>"");
+        showStep1Errors([`Save failed (${res.status}). ${txt}`.trim()]);
+      }
+      return false;
+    }
 
-  // Reasons for tooltip
-  const reasons = [];
-  if (headerScore > 0.5) reasons.push(`header≈alias (${(headerScore*100).toFixed(0)}%)`);
-  if (patternScore > 0.5) reasons.push(`values≈${pats.join('+')} (${(patternScore*100).toFixed(0)}%)`);
-  if (fh.unique && P.uniqRatio >= 0.6) reasons.push(`unique ${(P.uniqRatio*100).toFixed(0)}%`);
-  if (P.pctNotNull >= 0.8) reasons.push(`non-null ${(P.pctNotNull*100).toFixed(0)}%`);
+    const plan = await res.json();
+    if (plan?.id) { window.currentPlanId = plan.id; setPlanId?.(plan.id); }
 
-  return { score: Math.max(0, Math.min(1, score)), reasons };
-}
-
-function applyConfidenceBadge(selectEl, score, reasons) {
-  const pct = Math.round(score * 100);
-  const tier = (score >= 0.75) ? 'high' : (score >= 0.5) ? 'med' : 'low';
-
-  let badge = selectEl.parentElement?.querySelector('.conf-badge');
-  if (!badge) {
-    badge = document.createElement('span');
-    badge.className = 'conf-badge';
-    selectEl.parentElement?.appendChild(badge);
+    if (Array.isArray(plan.actions)) {
+      window.savedActions = plan.actions.map(a => ({
+        id: a.id, name: a.name, channel: a.channel, cost: a.cost,
+        cooldown: a.cooldown, dailyCap: a.daily_cap, provider: a.provider,
+        active: a.active, sort_order: a.sort_order,
+      }));
+      persistActions?.(); refreshActionsUI?.();
+    }
+    return true;
+  } catch (e) {
+    console.error("save_step1 exception:", e);
+    showStep1Errors(["Network error while saving."]);
+    return false;
   }
-  badge.textContent = (tier === 'high' ? '✅' : tier === 'med' ? '◇' : '⚠️') + ` ${pct}%`;
-  badge.dataset.tier = tier;
-
-  // *** Important: never intercept clicks ***
-  badge.style.pointerEvents = 'none';
-  badge.style.zIndex = '0';
-  // Ensure the select is clickable
-  selectEl.style.pointerEvents = 'auto';
-  selectEl.style.zIndex = '1';
-
-  selectEl.setAttribute('data-confidence', String(score));
-  selectEl.title = `Confidence ${pct}%. ${reasons.join('; ')}`;
 }
 
-
-
-        /* ---------- Popup helpers ---------- */
-function showPopup(index = -1) {
-  editingActionIndex = Number.isInteger(index) ? index : -1;
-
-  // reset form
-  const form = document.getElementById('actionForm');
-  form.reset();
-
-  // if editing, prefill fields
-  if (editingActionIndex >= 0 && window.savedActions[editingActionIndex]) {
-    const a = window.savedActions[editingActionIndex];
-    document.getElementById('action_name').value = a.name ?? '';
-    document.getElementById('action_channel').value = a.channel ?? 'Email';
-    document.getElementById('action_cost').value = a.cost ?? '';
-    document.getElementById('action_cooldown').value = a.cooldown ?? '';
-    document.getElementById('action_daily_cap').value = a.dailyCap ?? '';
-    document.getElementById('action_provider').value = a.provider ?? '';
-    document.getElementById('popupTitle').textContent = 'Edit Action';
-  } else {
-    document.getElementById('popupTitle').textContent = 'Add Action';
-  }
-
-  document.getElementById('actionPopup').style.display = 'block';
-}
-function hidePopup() {
-  document.getElementById('actionPopup').style.display = 'none';
-  editingActionIndex = -1;
+// Action management functions
+function getActionsForPayload() {
+  const arr = Array.isArray(window.savedActions) ? window.savedActions : [];
+  return arr
+    .filter(a => a && (a.name || a.channel))
+    .map((a, i) => ({
+      name: String(a.name || '').trim(),
+      channel: String(a.channel || 'Other').trim(),
+      cost: Number.isFinite(+a.cost) ? +a.cost : 0,
+      cooldown: Number.isFinite(+a.cooldown) ? +a.cooldown : null,
+      daily_cap: Number.isFinite(+a.dailyCap) ? +a.dailyCap : null,
+      provider: a.provider ? String(a.provider).trim() : null,
+      active: true,
+      sort_order: i
+    }))
+    .filter(a => a.name);
 }
 
-
-        // Handle form submission
-        document.getElementById('actionForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const actionData = {
-                name: document.getElementById('action_name').value,
-                channel: document.getElementById('action_channel').value,
-                cost: parseFloat(document.getElementById('action_cost').value),
-                cooldown: parseInt(document.getElementById('action_cooldown').value),
-                dailyCap: parseInt(document.getElementById('action_daily_cap').value),
-                provider: document.getElementById('action_provider').value
-            };
-            
-            if (editingActionIndex >= 0) {
-                // Update existing action
-                savedActions[editingActionIndex] = actionData;
-            } else {
-                // Add new action
-                savedActions.push(actionData);
-            }
-            
-            renderActions();
-            hidePopup();
-        });
 function renderActions() {
   const actionsContainer = document.getElementById('actions');
   const actions = window.savedActions || [];
@@ -2254,13 +2151,16 @@ function renderActions() {
         <div class="action-channel">${action.channel ?? ''}</div>
       </div>
       <div class="action-details">
-        <div class="action-detail-item"><span class="action-detail-label">Cost:</span>
+        <div class="action-detail-item">
+          <span class="action-detail-label">Cost:</span>
           <span class="action-detail-value">$${(action.cost ?? 0)}</span>
         </div>
-        <div class="action-detail-item"><span class="action-detail-label">Cooldown:</span>
+        <div class="action-detail-item">
+          <span class="action-detail-label">Cooldown:</span>
           <span class="action-detail-value">${(action.cooldown ?? 0)}d</span>
         </div>
-        <div class="action-detail-item"><span class="action-detail-label">Daily cap:</span>
+        <div class="action-detail-item">
+          <span class="action-detail-label">Daily cap:</span>
           <span class="action-detail-value">${Number(action.dailyCap ?? 0).toLocaleString()}</span>
         </div>
         ${action.provider ? `
@@ -2273,280 +2173,418 @@ function renderActions() {
   `).join('');
 }
 
-        // Close popup when clicking outside
-        document.getElementById('actionPopup').addEventListener('click', function(e) {
-            if (e.target === this) {
-                hidePopup();
-            }
-        });
+function refreshActionsUI() { renderActions(); }
 
-        // Close popup on Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                hidePopup();
-            }
-        });
-
- // Initialize
- function init() {
-            renderSampleTables();
-            setupFileUploads();
-            updateProgress();
-            updateNavigation();
-        }
-
-        // Render sample tables
-        function renderSampleTables() {
-            Object.keys(sampleData).forEach(type => {
-                renderTable(`${type}-sample-table`, sampleData[type].headers, sampleData[type].rows.slice(0, 4));
-            });
-        }
-
-        // Setup file uploads
-        function setupFileUploads() {
-            ['customers', 'orders', 'marketing'].forEach(type => {
-                const fileInput = document.getElementById(`${type}-file`);
-                const uploadLabel = document.getElementById(`${type}-upload`);
-                const filename = document.getElementById(`${type}-filename`);
-
-                fileInput.addEventListener('change', (e) => handleFileUpload(e, type));
-                
-                // Drag and drop
-                uploadLabel.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    uploadLabel.classList.add('drag-active');
-                });
-                
-                uploadLabel.addEventListener('dragleave', () => {
-                    uploadLabel.classList.remove('drag-active');
-                });
-                
-                uploadLabel.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    uploadLabel.classList.remove('drag-active');
-                    const files = e.dataTransfer.files;
-                    if (files.length > 0) {
-                        handleFileUpload({ target: { files } }, type);
-                    }
-                });
-            });
-        }
-
-
-
-function showPreview(file) {
-    // Implementation for showing file preview
-    console.log('Showing preview for:', file.name);
-    
-    // Example preview implementation
-    const previewContainer = document.getElementById('preview-container');
-    const previewInfo = document.getElementById('preview-info');
-    const fileInfo = document.getElementById('file-info');
-    
-    if (previewContainer) {
-        previewContainer.style.display = 'block';
-    }
-    
-    if (previewInfo) {
-        previewInfo.innerHTML = `
-            <span><i class="fas fa-file"></i> ${file.name}</span>
-            <span>${(file.size / 1024).toFixed(1)} KB</span>
-        `;
-    }
-    
-    if (fileInfo) {
-        fileInfo.innerHTML = `
-            <div class="info-item">
-                <span class="info-label">File Type:</span>
-                <span class="info-value">${file.type || 'Unknown'}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Size:</span>
-                <span class="info-value">${(file.size / 1024).toFixed(1)} KB</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Last Modified:</span>
-                <span class="info-value">${new Date(file.lastModified).toLocaleDateString()}</span>
-            </div>
-        `;
-    }
-    
-    // Read and preview file content if it's CSV or TXT
-    if (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const content = e.target.result;
-            displayTablePreview(content, file.name.endsWith('.csv'));
-        };
-        reader.readAsText(file);
-    }
+function addAction(action) {
+  window.savedActions = Array.isArray(window.savedActions) ? window.savedActions : [];
+  window.savedActions.push(action);
+  persistActions(); refreshActionsUI();
+  // no save here — only on Next
 }
 
-function displayTablePreview(content, isCSV) {
-    const previewTable = document.getElementById('preview-table');
-    if (!previewTable) return;
-    
-    const lines = content.split('\n').filter(line => line.trim());
-    const maxRows = 10; // Show first 10 rows
-    
-    let html = '';
-    
-    if (isCSV) {
-        // Parse CSV
-        const rows = lines.slice(0, maxRows).map(line => 
-            line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''))
-        );
-        
-        if (rows.length > 0) {
-            // Header row
-            html += '<thead><tr>';
-            rows[0].forEach(header => {
-                html += `<th>${header}</th>`;
-            });
-            html += '</tr></thead>';
-            
-            // Data rows
-            html += '<tbody>';
-            rows.slice(1).forEach(row => {
-                html += '<tr>';
-                row.forEach(cell => {
-                    html += `<td>${cell}</td>`;
-                });
-                html += '</tr>';
-            });
-            html += '</tbody>';
-        }
-    } else {
-        // Plain text preview
-        html = '<tbody><tr><td colspan="100%"><pre>' + 
-               lines.slice(0, maxRows).join('\n') + 
-               '</pre></td></tr></tbody>';
+function removeAction(idx) {
+  if (!Array.isArray(window.savedActions)) return;
+  window.savedActions.splice(idx, 1);
+  persistActions(); refreshActionsUI();
+  // no save here — only on Next
+}
+// Popup functions
+function showPopup(index = -1) {
+  editingActionIndex = Number.isInteger(index) ? index : -1;
+
+  const form = document.getElementById('actionForm');
+  form.reset();
+
+  if (editingActionIndex >= 0 && window.savedActions[editingActionIndex]) {
+    const a = window.savedActions[editingActionIndex];
+    document.getElementById('action_name').value = a.name ?? '';
+    document.getElementById('action_channel').value = a.channel ?? 'Email';
+    document.getElementById('action_cost').value = a.cost ?? '';
+    document.getElementById('action_cooldown').value = a.cooldown ?? '';
+    document.getElementById('action_daily_cap').value = a.dailyCap ?? '';
+    document.getElementById('action_provider').value = a.provider ?? '';
+    document.getElementById('popupTitle').textContent = 'Edit Action';
+  } else {
+    document.getElementById('popupTitle').textContent = 'Add Action';
+  }
+
+  document.getElementById('actionPopup').style.display = 'block';
+}
+
+function hidePopup() {
+  document.getElementById('actionPopup').style.display = 'none';
+  editingActionIndex = -1;
+}
+
+// ===== Navigation / UI =====
+function updateProgress() {
+  const progress = (currentStep / totalSteps) * 100;
+  document.getElementById('progressFill').style.width = progress + '%';
+}
+function updateButtons() {
+  const backBtn = document.getElementById('backBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  if (backBtn) backBtn.style.display = currentStep === 1 ? 'none' : 'inline-flex';
+  if (nextBtn) nextBtn.textContent = currentStep === totalSteps ? '🚀 Launch ML Dashboard' : 'Next Step →';
+}
+function updateNavigation() {
+  // silent gating: disable next if obviously missing, but DO NOT show errors
+  const nextBtn = document.getElementById('nextBtn');
+  let canProceed = false;
+
+  switch (currentStep) {
+    case 1: {
+      const goalAmount = Number(document.getElementById('goal_amount')?.value || 0);
+      const riskChosen = !!document.querySelector('input[name="risk"]:checked');
+      const hasActions = Array.isArray(window.savedActions) && window.savedActions.length > 0;
+      const start = document.getElementById('goal_start')?.value;
+      const end   = document.getElementById('goal_end')?.value;
+      canProceed = goalAmount > 0 && riskChosen && hasActions && start && end;
+      break;
     }
-    
-    previewTable.innerHTML = html;
+    case 2: canProceed = !!uploadedData?.customers?.confirmed; break;
+    case 3: canProceed = !!uploadedData?.orders?.confirmed; break;
+    case 4: canProceed = !!uploadedData?.marketing?.confirmed; break;
+    default: canProceed = true;
+  }
+  if (nextBtn) nextBtn.disabled = !canProceed;
+}
+
+// Optional helper to disable Next
+function setNextDisabled(disabled) {
+  const b = document.getElementById('nextBtn');
+  if (b) b.disabled = disabled;
 }
 window.goNext = async function goNext() {
-  try {
-    // Only gate on Step 1
-    if (typeof currentStep === 'number' && currentStep === 1) {
-      const { ok, errors } = validateStep1Inputs();       // your validator
-      if (!ok) { showStepError(errors); return; }
+  if (savingStep1) return;
 
-      setNextDisabled(true);                               // disable Next
-
-      // keep local mirror for resilience
-      try { localStorage.setItem('savedActions', JSON.stringify(window.savedActions || [])); } catch {}
-
-      const plan = await saveStep1ToServer();              // POST /actions/save_step1
-      // remember plan id for future updates
-      window.currentPlanId = plan.id;
-      try { localStorage.setItem('currentPlanId', String(plan.id)); } catch {}
-
-      // (optional) reconcile actions from server
-      if (Array.isArray(plan.actions)) {
-        window.savedActions = plan.actions.map(a => ({
-          id: a.id, name: a.name, channel: a.channel,
-          cost: a.cost, cooldown: a.cooldown, dailyCap: a.daily_cap, provider: a.provider
-        }));
-        localStorage.setItem('savedActions', JSON.stringify(window.savedActions));
-        renderActions?.();
-      }
-
-      // clear errors if any
-      const mount = document.getElementById('step1-errors');
-      if (mount) { mount.innerHTML = ''; mount.style.display = 'none'; }
+  if (currentStep === 1) {
+    const payload = collectStep1FromDOM();
+    const errs = validateStep1Payload(payload);
+    if (errs.length) {
+      showStep1Errors(errs);
+      return;
     }
 
-    // proceed to next step (same behavior as before)
-    if (typeof currentStep === 'number' && typeof totalSteps === 'number' && currentStep < totalSteps) {
-      document.getElementById(`step${currentStep}`)?.classList.remove('active');
-      currentStep++;
-      document.getElementById(`step${currentStep}`)?.classList.add('active');
-      updateProgress?.(); updateButtons?.();
+    clearStep1Errors();
+    setNextDisabled(true);
+    savingStep1 = true;
+    try {
+      const ok = await upsertPlanToBackend({ skipValidate: true }); // already validated
+      if (!ok) return;
+      stepAdvance();
+    } finally {
+      savingStep1 = false;
+      setNextDisabled(false);
     }
-  } catch (err) {
-    console.error('Step 1 save failed:', err);
-    showStepError(err?.message || 'Failed to save. Please try again.');
-  } finally {
-    setNextDisabled(false);
+  } else {
+    stepAdvance();
   }
 };
 
 
-function updateProgress() {
-    const progress = (currentStep / totalSteps) * 100;
-    document.getElementById('progressFill').style.width = progress + '%';
+function stepAdvance() {
+  if (typeof currentStep !== 'number' || typeof totalSteps !== 'number') return;
+  if (currentStep >= totalSteps) return;
+  document.getElementById(`step${currentStep}`)?.classList.remove('active');
+  currentStep++;
+  document.getElementById(`step${currentStep}`)?.classList.add('active');
+  updateProgress?.(); updateButtons?.(); updateNavigation?.();
+}
+
+document.getElementById('nextBtn')?.addEventListener('click', () => window.goNext(), { passive: true });
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+// ---- Autofill: period -> dates ----
+function ensureDatesFromPeriod() {
+  const periodEl = document.getElementById("goal_period") || document.getElementById("period");
+  const startEl  = document.getElementById("goal_start")  || document.getElementById("start_date");
+  const endEl    = document.getElementById("goal_end")    || document.getElementById("end_date");
+  if (!periodEl || !startEl || !endEl) return;
+
+  const period = periodEl.value || "this_month";
+  const today = new Date();
+  let start = new Date(today), end = new Date(today);
+
+  if (period === "this_month") {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end   = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (period === "next_30d") {
+    start = today;
+    end   = new Date(today); end.setDate(end.getDate() + 30);
+  } else {
+    // custom: allow manual editing
+    startEl.removeAttribute("disabled");
+    endEl.removeAttribute("disabled");
+    return;
+  }
+
+  const toYMD = (d) => {
+    const m = String(d.getMonth() + 1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  };
+
+  startEl.value = toYMD(start);
+  endEl.value   = toYMD(end);
+  startEl.setAttribute("disabled", "disabled");
+  endEl.setAttribute("disabled", "disabled");
+}
+
+// ---- Autofill: default goal ----
+function ensureDefaultGoal() {
+  const goalEl = document.getElementById('goal_amount');
+  if (!goalEl) return;
+  const cur = parseFloat(goalEl.value);
+  if (!Number.isFinite(cur) || cur <= 0) {
+    const stored = parseFloat(localStorage.getItem('goal_amount') || '');
+    const val = (Number.isFinite(stored) && stored > 0) ? stored : 1000; // your default
+    goalEl.value = val;
+  }
+}
+
+// persist goal locally as user types (no backend)
+document.getElementById('goal_amount')?.addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v) && v > 0) localStorage.setItem('goal_amount', String(v));
+});
+
+// wire period change to autofill dates (no backend)
+(document.getElementById('goal_period') || document.getElementById('period'))
+  ?.addEventListener('change', () => {
+    ensureDatesFromPeriod();
+    updateNavigation?.();
+  });
+
+// run once on load
+function hydrateStep1Defaults() {
+  ensureDefaultGoal();
+  ensureDatesFromPeriod();
+  updateNavigation?.();
 }
 
 function goBack() {
-    if (currentStep > 1) {
-        document.getElementById(`step${currentStep}`).classList.remove('active');
-        currentStep--;
-        document.getElementById(`step${currentStep}`).classList.add('active');
-        updateProgress();
-        updateButtons();
-        
-        // Re-enable next button if option is already selected
-        if (currentStep === 1) {
-            document.getElementById('nextBtn').disabled = false;
-        } else if (currentStep === 2) {
-            document.getElementById('nextBtn').disabled = false;
-        } else if (currentStep === 3) {
-            document.getElementById('nextBtn').disabled = false;
-        }
-    }
+  if (currentStep > 1) {
+    document.getElementById(`step${currentStep}`)?.classList.remove('active');
+    currentStep--;
+    document.getElementById(`step${currentStep}`)?.classList.add('active');
+    updateProgress(); updateButtons(); updateNavigation();
+  }
 }
 
-function updateButtons() {
-    const backBtn = document.getElementById('backBtn');
-    const nextBtn = document.getElementById('nextBtn');
+// File handling functions
+function handleFileUpload(event, type) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  fileStore[type] = file;
+  uploadedData[type].file = file;
+  
+  document.getElementById(`${type}-filename`).textContent = file.name;
+  parseFile(file, type);
+  updateDeriveReadiness();
+}
+
+function parseFile(file, type) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const content = e.target.result;
+    const lines = content.split('\n').filter(line => line.trim());
     
-    if (currentStep === 1) {
-        backBtn.style.display = 'none';
-    } else {
-        backBtn.style.display = 'inline-flex';
-    }
-    
-    if (currentStep === totalSteps) {
-        nextBtn.textContent = '🚀 Launch ML Dashboard';
-    } else {
-        nextBtn.textContent = 'Next Step →';
-    }
-}
+    if (lines.length === 0) return;
 
-// ---- Config: how many uploads are required to enable Compute ----
-const MIN_UPLOADS_TO_COMPUTE = 1; // set to 0 to allow compute even with no files (not recommended)
+    const headers = parseCSVLine(lines[0]);
+    const rows = lines.slice(1, Math.min(11, lines.length))
+      .map(line => parseCSVLine(line));
 
-// Keep your mappingState as-is
-const mappingState = {
-  customers: { confirmed: false },
-  orders:    { confirmed: false },
-  marketing: { confirmed: false }
-};
+    uploadedData[type].headers = headers;
+    uploadedData[type].rows = rows;
 
-// Count helper
-function countUploadedFiles(files) {
-  return ['customers', 'orders', 'marketing'].reduce((n, k) => n + (files?.[k] ? 1 : 0), 0);
-}
-
-  // If you already have confirmMapping(kind), extend it by calling markMappingConfirmed(kind)
-  window.markMappingConfirmed = function(kind) {
-    if (kind === 'customers') mappingState.customers.confirmed = true;
-    if (kind === 'orders')    mappingState.orders.confirmed    = true;
-    if (kind === 'marketing') mappingState.marketing.confirmed = true;
-    updateDeriveReadiness();
+    showFilePreview(type, file, headers, rows, lines.length - 1);
+    setupMapping(type, headers);
   };
+  reader.readAsText(file);
+}
 
-  // Example: wire this into your existing confirm buttons
-  // In your current code, after a successful confirmMapping('customers'), call:
-  //   markMappingConfirmed('customers');
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function showFilePreview(type, file, headers, rows, totalRows) {
+  const fileInfo = document.getElementById(`${type}-info`);
+  fileInfo.innerHTML = `
+    <span><strong>${file.name}</strong></span>
+    <span>${totalRows} rows, ${headers.length} columns</span>
+  `;
+  
+  renderTable(`${type}-table`, headers, rows);
+  
+  document.getElementById(`${type}-preview`).style.display = 'block';
+  document.getElementById(`${type}-mapping`).style.display = 'block';
+}
+
+function renderTable(tableId, headers, rows) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headers.forEach(header => {
+    const th = document.createElement('th');
+    th.textContent = header;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    headers.forEach((_, index) => {
+      const td = document.createElement('td');
+      td.textContent = row[index] || '';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  table.innerHTML = '';
+  table.appendChild(thead);
+  table.appendChild(tbody);
+}
+
+// Mapping functions
+function getSelectId(type, field) {
+  return FIELD_IDS?.[type]?.[field];
+}
+
+function fieldsFor(type) {
+  return Object.keys(FIELD_IDS?.[type] || {});
+}
+
+function setupMapping(type, headers) {
+  const config = mappingConfig[type];
+  if (!config) return;
+
+  mappingState[type] = mappingState[type] || {};
+  const allFields = fieldsFor(type);
+  
+  allFields.forEach(field => {
+    const selectId = getSelectId(type, field);
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.disabled = false;
+    select.style.pointerEvents = 'auto';
+
+    const prev = select.value;
+    select.innerHTML = '<option value="">-- Select Column --</option>';
+    headers.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = h;
+      select.appendChild(opt);
+    });
+
+    const chosen = mappingState[type][field] ?? (prev || "");
+    if (chosen && headers.includes(chosen)) {
+      select.value = chosen;
+    }
+
+    select.onchange = () => {
+      mappingState[type][field] = select.value || null;
+      select.dataset.manual = select.value ? '1' : '0';
+
+      const badge = select.parentElement?.querySelector('.conf-badge');
+      if (badge) badge.textContent = '✅ set';
+      select.title = select.value ? `Manually set to "${select.value}"` : 'Not selected';
+    };
+  });
+}
+
+function confirmMapping(type) {
+  const config = mappingConfig[type] || { required: [], optional: [] };
+  const required = config.required || [];
+  const optional = config.optional || [];
+
+  const mapping = {};
+  let hasAllRequired = true;
+  const missing = [];
+
+  document.querySelectorAll(`#${type}-mapping select.missing-required`)
+    .forEach(el => el.classList.remove('missing-required'));
+
+  [...required, ...optional].forEach(field => {
+    const selectId = getSelectId(type, field);
+    const select = document.getElementById(selectId);
+    const value = select ? select.value : '';
+
+    if (!value && required.includes(field)) {
+      hasAllRequired = false;
+      missing.push(field);
+      if (select) select.classList.add('missing-required');
+    } else if (value) {
+      mapping[field] = value;
+    }
+  });
+
+  const statusEl = document.getElementById(`${type}-status`);
+  if (!hasAllRequired) {
+    if (statusEl) statusEl.textContent = `Missing: ${missing.join(', ')}`;
+    return false;
+  }
+
+  mappingState[type] = { ...(mappingState[type] || {}), ...mapping, confirmed: true };
+  uploadedData[type].confirmed = true;
+  if (statusEl) statusEl.textContent = 'Confirmed';
+  updateNavigation();
+  return mapping;
+}
+
+// File readiness and derive functions
+function countUploadedFiles(files) {
+  return ['customers', 'orders', 'marketing'].reduce((n, k) => n + (files[k] ? 1 : 0), 0);
+}
+
+function collectFiles() {
+  return {
+    customers: document.getElementById('customers-file')?.files?.[0] || fileStore.customers,
+    orders: document.getElementById('orders-file')?.files?.[0] || fileStore.orders,
+    marketing: document.getElementById('marketing-file')?.files?.[0] || fileStore.marketing
+  };
+}
+
+function updateFilename(kind) {
+  const f = fileStore[kind] || document.getElementById(`${kind}-file`)?.files?.[0] || null;
+  const label = document.getElementById(`${kind}-filename`);
+  if (label) label.textContent = f ? f.name : `Choose ${kind} file`;
+}
 
 function updateDeriveReadiness() {
-  const files = (typeof collectFiles === 'function') ? collectFiles() : {};
+  const files = collectFiles();
   const uploadedCount = countUploadedFiles(files);
   const canCompute = uploadedCount >= MIN_UPLOADS_TO_COMPUTE;
 
-  const btn    = document.getElementById('btn-compute-derive');
+  const btn = document.getElementById('btn-compute-derive');
   const status = document.getElementById('derive-status');
 
   if (btn) btn.disabled = !canCompute;
@@ -2561,230 +2599,280 @@ function updateDeriveReadiness() {
     }
   }
 
-  // Optional: reflect per-kind readiness (green checks if a file exists OR mapping confirmed)
-  const kindToChkId = { customers: 'chk-customers', orders: 'chk-orders', marketing: 'chk-mkt' };
-  ['customers','orders','marketing'].forEach(kind => {
-    const hasFile = !!files[kind];
-    const ok = hasFile || !!mappingState[kind]?.confirmed;
-    document.getElementById(kindToChkId[kind])?.classList.toggle('ok', ok);
-  });
-}
-
-// Hook readiness updates to file inputs (adjust IDs if yours differ)
-['file-customers','file-orders','file-marketing'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('change', updateDeriveReadiness);
-});
-
-  // Helpers to read mapping selects
-  function val(sel) { const el = document.querySelector(sel); return el ? el.value || null : null; }
-
-  function collectMappings() {
-    return {
-      customers: {
-        customer_id: val('#map-customer-id'),
-        email:       val('#map-email'),
-        phone:       val('#map-phone'),
-        created_at:  val('#map-created-date')
-      },
-      orders: {
-        order_id:    val('#map-order-id'),
-        customer_id: val('#map-order-customer-id'),
-        order_date:  val('#map-order-date'),
-        order_total: val('#map-order-total'),
-        status:      val('#map-order-status'),
-        product_cat: val('#map-product-category')
-      },
-      marketing: {
-        campaign_id: val('#map-campaign-id'),
-        customer_id: val('#map-marketing-customer-id'),
-        channel:     val('#map-channel'),
-        sent_date:   val('#map-sent-date'),
-        opened:      val('#map-opened'),
-        clicked:     val('#map-clicked'),
-        converted:   val('#map-converted'),
-        cost:        val('#map-campaign-cost')
-      }
-    };
-  }
-
-// ---- File store fallback so we always know what's uploaded,
-// even if a drop handler didn't set the <input>.files
-const fileStore = { customers: null, orders: null, marketing: null };
-
-// ---- Helpers
-function updateFilename(kind) {
-  const f = fileStore[kind] ||
-            document.getElementById(`${kind}-file`)?.files?.[0] || null;
-  const label = document.getElementById(`${kind}-filename`);
-  if (label) label.textContent = f ? f.name : `Choose ${kind} file`;
-}
-
-function collectFiles() {
-  // Prefer the input (so FormData uses the native FileList), fallback to store.
-  return {
-    customers: document.getElementById('customers-file')?.files?.[0] || fileStore.customers,
-    orders:    document.getElementById('orders-file')?.files?.[0]    || fileStore.orders,
-    marketing: document.getElementById('marketing-file')?.files?.[0] || fileStore.marketing
-  };
-}
-
-function countUploadedFiles(files) {
-  return ['customers','orders','marketing'].reduce((n,k)=>n + (files[k] ? 1 : 0), 0);
-}
-
-// ---- Permissive readiness: enable compute with >= MIN_UPLOADS_TO_COMPUTE files
-function updateDeriveReadiness() {
-  const files = collectFiles();
-  const uploadedCount = countUploadedFiles(files);
-  const canCompute = uploadedCount >= MIN_UPLOADS_TO_COMPUTE;
-
-  const btn    = document.getElementById('btn-compute-derive');
-  const status = document.getElementById('derive-status');
-
-  if (btn) btn.disabled = !canCompute;
-
-  if (status) {
-    if (uploadedCount === 0) status.textContent = 'Upload at least one dataset to compute.';
-    else if (uploadedCount === 1) status.textContent = 'Ready to compute with 1 dataset (best effort).';
-    else status.textContent = `Ready to compute with ${uploadedCount} datasets.`;
-  }
-
-  // Optional: tick the per-kind checks green if a file is present
-  const chk = { customers:'chk-customers', orders:'chk-orders', marketing:'chk-mkt' };
-  ['customers','orders','marketing'].forEach(kind => {
+  const chk = { customers: 'chk-customers', orders: 'chk-orders', marketing: 'chk-mkt' };
+  ['customers', 'orders', 'marketing'].forEach(kind => {
     const hasFile = !!files[kind];
     document.getElementById(chk[kind])?.classList.toggle('ok', hasFile);
   });
 }
 
+function markMappingConfirmed(kind) {
+  if (kind === 'customers') mappingState.customers.confirmed = true;
+  if (kind === 'orders') mappingState.orders.confirmed = true;
+  if (kind === 'marketing') mappingState.marketing.confirmed = true;
+  updateDeriveReadiness();
+}
 
-  // Optional knobs (pull from earlier steps if you have inputs; otherwise defaults)
-  function collectOptions() {
-    const riskPreset = document.querySelector('#risk_preset')?.value || 'balanced';
-    const horizons = [7, 14, 30]; // adjust/drive from UI if desired
-    return { risk_preset: riskPreset, horizons };
+// Compute functions
+function collectMappings() {
+  function val(sel) { 
+    const el = document.querySelector(sel); 
+    return el ? el.value || null : null; 
   }
-// Ensure a global store exists even if the popup code runs earlier/later
-window.savedActions = Array.isArray(window.savedActions) ? window.savedActions : [];
 
-function getActionsForPayload() {
-  const arr = Array.isArray(window.savedActions) ? window.savedActions : [];
-  return arr
-    .filter(a => a && (a.name || a.channel))
-    .map((a, i) => ({
-      name: String(a.name || '').trim(),
-      channel: String(a.channel || 'Other').trim(),
-      cost: Number.isFinite(+a.cost) ? +a.cost : 0,
-      cooldown: Number.isFinite(+a.cooldown) ? +a.cooldown : null,
-      daily_cap: Number.isFinite(+a.dailyCap) ? +a.dailyCap : null,
-      provider: a.provider ? String(a.provider).trim() : null,
-      active: true,
-      sort_order: i
-    }))
-    .filter(a => a.name); // require a name
+  return {
+    customers: {
+      customer_id: val('#map-customer-id'),
+      email: val('#map-email'),
+      phone: val('#map-phone'),
+      created_at: val('#map-created-date')
+    },
+    orders: {
+      order_id: val('#map-order-id'),
+      customer_id: val('#map-order-customer-id'),
+      order_date: val('#map-order-date'),
+      order_total: val('#map-order-total'),
+      status: val('#map-order-status'),
+      product_cat: val('#map-product-category')
+    },
+    marketing: {
+      campaign_id: val('#map-campaign-id'),
+      customer_id: val('#map-marketing-customer-id'),
+      channel: val('#map-channel'),
+      sent_date: val('#map-sent-date'),
+      opened: val('#map-opened'),
+      clicked: val('#map-clicked'),
+      converted: val('#map-converted'),
+      cost: val('#map-campaign-cost')
+    }
+  };
 }
-/** Collect Step 1 fields into a payload for /actions/save_step1 */
-function collectStep1Payload() {
-  const goalAmountEl = document.getElementById('goal_amount');
-  const periodEl = document.getElementById('goal_period');
-  const startEl = document.getElementById('goal_start');
-  const endEl = document.getElementById('goal_end');
-  const riskEl = document.querySelector('input[name="risk"]:checked');
 
-  const goal_amount = Number(goalAmountEl?.value ?? 0);
-  const period = String(periodEl?.value || 'this_month');
-  const start_date = String(startEl?.value || '');
-  const end_date = String(endEl?.value || '');
-  const risk = String(riskEl?.value || 'balanced');
-
+function collectOptions() {
+  const riskPreset = document.querySelector('input[name="risk"]:checked')?.value || 'balanced';
+  const horizons = [7, 14, 30];
   const actions = getActionsForPayload();
-
-  const body = { goal_amount, period, start_date, end_date, risk, actions };
-  if (currentPlanId) body.plan_id = currentPlanId;
-  return body;
+  
+  return { 
+    risk_preset: riskPreset, 
+    horizons, 
+    allowed_actions: actions 
+  };
 }
-function validateStep1Inputs() {
-  const errs = [];
-  const goal = Number(document.getElementById('goal_amount')?.value ?? 0);
-  const start = document.getElementById('goal_start')?.value;
-  const end = document.getElementById('goal_end')?.value;
-  const risk = document.querySelector('input[name="risk"]:checked')?.value;
-  const actions = getActionsForPayload();
 
-  if (!Number.isFinite(goal) || goal <= 0) errs.push('Enter a positive Net goal ($).');
-  if (!start) errs.push('Choose a Start date.');
-  if (!end) errs.push('Choose an End date.');
-  if (start && end && new Date(start) > new Date(end)) errs.push('Start must be on or before End.');
-  if (!risk) errs.push('Select a risk tolerance.');
-  if (!actions.length) errs.push('Add at least one Allowed action.');
-  // Per-action checks (optional strictness)
-  actions.forEach((a, i) => {
-    if (a.cost < 0) errs.push(`Action ${i + 1} "${a.name}": cost cannot be negative.`);
-    if (a.cooldown !== null && a.cooldown < 0) errs.push(`Action ${i + 1} "${a.name}": cooldown cannot be negative.`);
-    if (a.daily_cap !== null && a.daily_cap < 0) errs.push(`Action ${i + 1} "${a.name}": daily cap cannot be negative.`);
+async function computeAutoDerivations() {
+  const btn = document.getElementById('btn-compute-derive');
+  const cancel = document.getElementById('btn-cancel-derive');
+  const status = document.getElementById('derive-status');
+
+  const files = collectFiles();
+  const uploads = ['customers', 'orders', 'marketing'].filter(k => !!files[k]);
+
+  console.log('[derive] uploads detected:', uploads, files);
+
+  if (uploads.length < MIN_UPLOADS_TO_COMPUTE) {
+    status.textContent = 'Please upload at least one dataset.';
+    return;
+  }
+
+  btn.disabled = true;
+  cancel.hidden = false;
+  status.innerHTML = '<span class="spinner"></span>Computing…';
+
+  const mappings = collectMappings();
+  const options = collectOptions();
+
+  const filteredMappings = {};
+  uploads.forEach(k => { 
+    filteredMappings[k] = mappings?.[k] || {}; 
   });
 
-  return { ok: errs.length === 0, errors: errs };
-}
-async function saveStep1ToServer(){
-  const token = safeStorageGet?.('access_token');
-  const body = collectStep1Payload(); // build {goal_*, period, start_date, end_date, risk, actions[, plan_id]}
-  const res = await fetch('/actions/save_step1', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json', ...(token?{'Authorization':`Bearer ${token}`}:{})},
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error(await res.text().catch(()=>`HTTP ${res.status}`));
-  return res.json();
-}
+  const fd = new FormData();
+  if (files.customers) fd.append('customers_file', files.customers);
+  if (files.orders) fd.append('orders_file', files.orders);
+  if (files.marketing) fd.append('marketing_file', files.marketing);
+  fd.append('present_kinds', JSON.stringify(uploads));
+  fd.append('mappings', JSON.stringify(filteredMappings));
+  fd.append('options', JSON.stringify(options));
+  fd.append('actions', JSON.stringify(options.allowed_actions));
 
-window.goNext = async function(){
-  if (currentStep === 1) {
-    const { ok, errors } = validateStep1Inputs();
-    if (!ok) { showStepError(errors); return; }
-    const plan = await saveStep1ToServer();
-    currentPlanId = plan.id;
-    localStorage.setItem('currentPlanId', String(plan.id));
-  }
-};
+  const token = safeStorageGet('access_token');
+  const headers = new Headers();
+  headers.set('Accept', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
 
+  deriveAbort = new AbortController();
 
-/** Utility: show inline error list (falls back to alert). */
-function showStepError(messages) {
-  const list = Array.isArray(messages) ? messages : [String(messages)];
-  const mount = document.getElementById('step1-errors');
-  if (mount) {
-    mount.innerHTML = `<ul>${list.map(m => `<li>${m}</li>`).join('')}</ul>`;
-    mount.style.display = 'block';
-  } else {
-    alert(list.join('\n'));
-  }
-}
-
-/** Utility: disable/enable the Next button while saving. */
-function setNextDisabled(disabled) {
-  const nextBtn =
-    document.querySelector('[data-next]') ||
-    document.getElementById('nextBtn') ||
-    document.querySelector('.next-btn');
-  if (nextBtn) nextBtn.disabled = !!disabled;
-}
-
-function b64ToBlob(b64, mime='text/csv') {
   try {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-    return new Blob([bytes], { type: mime });
-  } catch (e) { console.warn('Invalid base64 CSV:', e); return null; }
+    const resp = await fetch(`${API_BASE_URL}/api/plan/derive`, {
+      method: 'POST',
+      headers,
+      body: fd,
+      credentials: 'include',
+      signal: deriveAbort.signal,
+      cache: 'no-store',
+      mode: 'cors'
+    });
+
+    if (!resp.ok) {
+      const ct = resp.headers.get('content-type') || '';
+      let detail = '';
+      try {
+        if (ct.includes('application/json')) {
+          const errJson = await resp.json();
+          detail = errJson?.detail
+            ? (typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail))
+            : JSON.stringify(errJson).slice(0, 300);
+        } else {
+          detail = (await resp.text()).slice(0, 300);
+        }
+      } catch (_) {}
+      
+      if (resp.status === 401 || resp.status === 403) {
+        status.textContent = 'Authentication required. Please sign in again.';
+        throw new Error(`HTTP ${resp.status}: ${detail || 'Unauthorized'}`);
+      }
+      throw new Error(`HTTP ${resp.status}: ${detail || 'Request failed'}`);
+    }
+
+    const json = await resp.json();
+
+    if (json.schema_contract) {
+      applyFieldBadges(json.schema_contract);
+    } else if (json.file_health) {
+      applyFieldBadges({
+        customers: json.file_health?.customers?.levels || { required: [], recommended: [], optional: [] },
+        orders: json.file_health?.orders?.levels || { required: [], recommended: [], optional: [] },
+        marketing: json.file_health?.marketing?.levels || { required: [], recommended: [], optional: [] },
+      });
+    }
+
+    ['customers', 'orders', 'marketing'].forEach(t => {
+      const h = json.file_health?.[t];
+      if (h) {
+        renderInlinePreview(t, h);
+        renderFileHealth(t, h);
+      }
+    });
+
+    renderDeriveResult(json);
+    document.getElementById('derive-result').style.display = 'block';
+
+    if (json.modified_csvs) {
+      const exp = document.getElementById('exports-section');
+      if (exp) exp.style.display = 'block';
+      renderModifiedCsvs(json.modified_csvs);
+    }
+    status.textContent = 'Done.';
+
+  } catch (err) {
+    console.error(err);
+    status.textContent = (err?.name === 'AbortError') ? 'Cancelled.' : 'Error computing. See console for details.';
+    if (err?.name !== 'AbortError') alert('Compute error: ' + (err?.message || err));
+  } finally {
+    btn.disabled = false;
+    cancel.hidden = true;
+    deriveAbort = null;
+  }
+}
+
+function cancelDerive() {
+  if (deriveAbort) deriveAbort.abort();
+}
+
+// Render functions for results
+function renderDeriveResult(json) {
+  const wrap = document.getElementById('derive-result');
+  const grid = document.getElementById('derive-summaries');
+  const pre = document.getElementById('derive-json');
+
+  wrap.style.display = 'block';
+  pre.textContent = JSON.stringify(json, null, 2);
+
+  grid.innerHTML = '';
+
+  const d = json.derived || json;
+
+  const cards = [
+    ['Eligible population', d?.eligible_population && [
+      `Total: ${fmtNum(d.eligible_population.total)}`,
+      `Emailable %: ${fmtPct(d.eligible_population.emailable_pct)}`,
+      `SMS opt-in %: ${fmtPct(d.eligible_population.sms_opt_in_pct)}`
+    ]],
+    ['Target horizon', d?.target_horizon && [
+      `Chosen: ${d.target_horizon.chosen}d`,
+      d.target_horizon.tested ? `Tested: ${d.target_horizon.tested.join('/')}` : null
+    ]],
+    ['Unit economics', d?.unit_economics && [
+      `AOV: ${fmtCur(d.unit_economics.aov)}`,
+      `Margin: ${fmtPct(d.unit_economics.margin_pct)}`,
+      `Returns: ${fmtPct(d.unit_economics.return_pct)}`,
+      `Profit/TP: ${fmtCur(d.unit_economics.profit_per_tp)}`
+    ]]
+  ];
+
+  for (const [title, lines] of cards) {
+    if (!lines) continue;
+    const cleaned = lines.filter(Boolean);
+    if (!cleaned.length) continue;
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#fff;';
+    card.innerHTML = `<div style="font-weight:600; margin-bottom:6px;">${title}</div>
+                      <ul style="margin:0; padding-left:18px;">${cleaned.map(li => `<li>${li}</li>`).join('')}</ul>`;
+    grid.appendChild(card);
+  }
+}
+
+function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+function fmtCur(n) { return n == null ? '—' : `${Number(n).toFixed(2)}`; }
+function fmtPct(p) { return p == null ? '—' : `${(Number(p) * 100).toFixed(1)}%`; }
+
+function renderInlinePreview(type, health) {
+  const container = document.getElementById(`${type}-table`);
+  if (!container || !health?.preview?.length) return;
+
+  const [headers, ...rows] = health.preview;
+  const html = `
+    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr>${r.map(c => `<td>${c ?? ''}</td>`).join('')}</tr>`).join('')}
+    </tbody>
+  `;
+  container.innerHTML = html;
+}
+
+function renderFileHealth(type, health) {
+  const infoEl = document.getElementById(`${type}-info`);
+  if (!infoEl || !health) return;
+
+  const rc = health.row_count ?? 0;
+  const dup = health.duplicate_keys ?? 0;
+
+  const nulls = Object.entries(health.null_rates || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([col, rate]) => `<li>${col}: ${(rate * 100).toFixed(0)}% null</li>`)
+    .join('');
+
+  const issues = (health.issues || [])
+    .map(x => `<li class="${x.severity}">${x.message}</li>`).join('');
+
+  infoEl.innerHTML = `
+    <div class="file-health">
+      <div><strong>Status:</strong> ${health.status === 'ready' ? '✅ Ready' : '⚠️ Degraded'}</div>
+      <div><strong>Rows:</strong> ${rc.toLocaleString()}</div>
+      <div><strong>Duplicate keys:</strong> ${dup}</div>
+      ${nulls ? `<div><strong>Null rates (top):</strong><ul>${nulls}</ul></div>` : ''}
+      ${issues ? `<div><strong>Issues:</strong><ul>${issues}</ul></div>` : ''}
+    </div>
+  `;
 }
 
 function renderModifiedCsvs(mod) {
   const container = document.getElementById('csv-exports');
-  if (!container) { console.warn('[derive] No #csv-exports container'); return; }
+  if (!container) return;
 
-  const kinds = ['customers','orders','marketing'];
+  const kinds = ['customers', 'orders', 'marketing'];
   const cards = kinds.map(k => {
     const info = mod?.[k];
     if (!info) return '';
@@ -2800,1004 +2888,160 @@ function renderModifiedCsvs(mod) {
 
     const label = k[0].toUpperCase() + k.slice(1);
     const filename = info.filename || `${k}.csv`;
-    const size = info.size_bytes ? ` (${(info.size_bytes/1024).toFixed(1)} KB)` : '';
-
-    let previewHtml = '';
-    if (Array.isArray(info.preview) && info.preview.length) {
-      const [hdr, ...rows] = info.preview;
-      previewHtml = `
-        <div class="csv-preview">
-          <table>
-            <thead><tr>${hdr.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-            <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
-          </table>
-        </div>`;
-    }
-
-    const id = `dl-${k}-${Date.now()}`;
-    queueMicrotask(() => {
-      const a = document.getElementById(id);
-      if (a && href.startsWith('blob:')) {
-        a.addEventListener('click', () => setTimeout(()=>URL.revokeObjectURL(href), 4000), { once:true });
-      }
-    });
 
     return `
       <div class="csv-export-card">
-        <div class="csv-title">${label} CSV${size}</div>
+        <div class="csv-title">${label} CSV</div>
         <div class="csv-actions">
-          <a id="${id}" class="btn btn-outline" href="${href}" download="${filename}">⬇️ Download ${label}</a>
+          <a class="btn btn-outline" href="${href}" download="${filename}">⬇️ Download ${label}</a>
         </div>
-        ${previewHtml}
       </div>`;
   }).join('');
 
   container.innerHTML = cards || '<div class="muted">No CSVs to export.</div>';
 }
 
-function renderInlinePreview(type, health) {
-  const container = document.getElementById(`${type}-table`);
-  if (!container || !health?.preview?.length) return;
-
-  const [headers, ...rows] = health.preview;
-  const html = `
-    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>
-      ${rows.map(r => `<tr>${r.map(c => `<td>${c ?? ''}</td>`).join('')}</tr>`).join('')}
-    </tbody>
-  `;
-  container.innerHTML = html;
-}
-function renderFileHealth(type, health) {
-  const infoEl = document.getElementById(`${type}-info`);
-  if (!infoEl || !health) return;
-
-  const rc = health.row_count ?? 0;
-  const dup = health.duplicate_keys ?? 0;
-
-  // Null rates list (top 5 by null %, descending)
-  const nulls = Object.entries(health.null_rates || {})
-    .sort((a,b) => b[1]-a[1])
-    .slice(0, 5)
-    .map(([col, rate]) => `<li>${col}: ${(rate*100).toFixed(0)}% null</li>`)
-    .join('');
-
-  // Date ranges
-  const dates = Object.entries(health.min_max_dates || {})
-    .map(([col, mm]) => `<li>${col}: ${mm.min?.slice(0,10)} → ${mm.max?.slice(0,10)}</li>`)
-    .join('');
-
-  const issues = (health.issues || [])
-    .map(x => `<li class="${x.severity}">${x.message}</li>`).join('');
-
-  infoEl.innerHTML = `
-    <div class="file-health">
-      <div><strong>Status:</strong> ${health.status === 'ready' ? '✅ Ready' : '⚠️ Degraded'}</div>
-      <div><strong>Rows:</strong> ${rc.toLocaleString()}</div>
-      <div><strong>Duplicate keys:</strong> ${dup}</div>
-      ${nulls ? `<div><strong>Null rates (top):</strong><ul>${nulls}</ul></div>` : ''}
-      ${dates ? `<div><strong>Date ranges:</strong><ul>${dates}</ul></div>` : ''}
-      ${(issues && issues.length) ? `<div><strong>Issues:</strong><ul>${issues}</ul></div>` : ''}
-    </div>
-  `;
-}
-function safeStorageGet(key) {
-    try {
-        return localStorage.getItem(key);
-    } catch (error) {
-        console.error(`Error getting ${key}:`, error);
-        return null;
-    }
-}
-  // ---- Compute: send to backend ----
-  let deriveAbort = null;
-// ---- Your compute: now with Actions + Bearer token auth + cookies
-async function computeAutoDerivations() {
-  const btn    = document.getElementById('btn-compute-derive');
-  const cancel = document.getElementById('btn-cancel-derive');
-  const status = document.getElementById('derive-status');
-
-  // Gather inputs
-  const files   = collectFiles();
-  const uploads = ['customers','orders','marketing'].filter(k => !!files[k]);
-
-  // 🔍 Diagnostic
-  console.log('[derive] uploads detected:', uploads, files);
-
-  // Guard: require at least one
-  if (uploads.length < (typeof MIN_UPLOADS_TO_COMPUTE !== 'undefined' ? MIN_UPLOADS_TO_COMPUTE : 1)) {
-    status.textContent = 'Please upload at least one dataset.';
-    return;
-  }
-
-  // UI state
-  btn.disabled = true;
-  cancel.hidden = false;
-  status.innerHTML = '<span class="spinner"></span>Computing…';
-
-  const mappings = collectMappings?.() || {};
-  const options  = collectOptions?.()  || { risk_preset:'balanced', horizons:[7,14,30] };
-
-  // 🎯 Inject actions from popup
-  const actions = getActionsForPayload();
-  options.allowed_actions = actions; // primary place for backend to read from
-
-  // Filter mappings to uploaded kinds only
-  const filteredMappings = {};
-  uploads.forEach(k => { filteredMappings[k] = mappings?.[k] || {}; });
-
-  // Build FormData
-  const fd = new FormData();
-  if (files.customers) fd.append('customers_file', files.customers);
-  if (files.orders)    fd.append('orders_file',    files.orders);
-  if (files.marketing) fd.append('marketing_file', files.marketing);
-  fd.append('present_kinds', JSON.stringify(uploads));
-  fd.append('mappings',      JSON.stringify(filteredMappings));
-  fd.append('options',       JSON.stringify(options));
-  // Optional duplicate field for convenience (backend can parse either)
-  fd.append('actions',       JSON.stringify(actions));
-
-  // ---- Auth headers (Bearer) + include cookies
-  const token = safeStorageGet('access_token'); // your helper
-  const headers = new Headers();
-    headers.set('Accept', 'application/json');
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-
-    deriveAbort = new AbortController();
-
-    try {
-    const resp = await fetch(`${API_BASE_URL}/api/plan/derive`, {
-        method: 'POST',
-        headers,           // <-- do NOT set Content-Type manually for FormData
-        body: fd,          // FormData with files
-        credentials: 'include',
-        signal: deriveAbort.signal,
-        cache: 'no-store',
-        mode: 'cors'
-    });
-    if (!resp.ok) {
-      const ct = resp.headers.get('content-type') || '';
-      let detail = '';
-      try {
-        if (ct.includes('application/json')) {
-          const errJson = await resp.json();
-          detail = errJson?.detail
-            ? (typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail))
-            : JSON.stringify(errJson).slice(0, 300);
-        } else {
-          detail = (await resp.text()).slice(0, 300);
-        }
-      } catch (_) {}
-      if (resp.status === 401 || resp.status === 403) {
-        status.textContent = 'Authentication required. Please sign in again.';
-        throw new Error(`HTTP ${resp.status}: ${detail || 'Unauthorized'}`);
-      }
-      throw new Error(`HTTP ${resp.status}: ${detail || 'Request failed'}`);
-    }
-
-    const json = await resp.json();
-
-    // 1) Field badges
-    if (json.schema_contract) {
-    // schema_contract already has the {required, recommended, optional} arrays
-    applyFieldBadges(json.schema_contract);
-    } else if (json.file_health) {
-    // Fallback: synthesize a contract from file_health.levels
-    applyFieldBadges({
-        customers: json.file_health?.customers?.levels || { required:[], recommended:[], optional:[] },
-        orders:    json.file_health?.orders?.levels    || { required:[], recommended:[], optional:[] },
-        marketing: json.file_health?.marketing?.levels || { required:[], recommended:[], optional:[] },
-    });
-    }
-
-    // 2) Health + previews (post-coercion, per table)
-    ['customers','orders','marketing'].forEach(t => {
-    const h = json.file_health?.[t];
-    if (h) {
-        renderInlinePreview(t, h);
-        renderFileHealth(t, h);
-    }
-    });
-
-    // 3) Derived results + downloadable CSVs
-    renderDeriveResult(json);
-    document.getElementById('derive-result').style.display = 'block';
-
-    if (json.modified_csvs) {
-    // show the downloads section and render
-    const exp = document.getElementById('exports-section');
-    if (exp) exp.style.display = 'block';
-    renderModifiedCsvs(json.modified_csvs);
-    }
-    status.textContent = 'Done.';
-
-  } catch (err) {
-    console.error(err);
-    status.textContent = (err?.name === 'AbortError') ? 'Cancelled.' : 'Error computing. See console for details.';
-    if (err?.name !== 'AbortError') alert('Compute error: ' + (err?.message || err));
-  } finally {
-    btn.disabled = false;
-    cancel.hidden = true;
-    deriveAbort = null;
-  }
-}
-
-
-  function cancelDerive() {
-    if (deriveAbort) deriveAbort.abort();
-  }
-
-  // ---- Render results ----
-  function renderDeriveResult(json) {
-    const wrap = document.getElementById('derive-result');
-    const grid = document.getElementById('derive-summaries');
-    const pre  = document.getElementById('derive-json');
-
-    wrap.style.display = 'block';
-    pre.textContent = JSON.stringify(json, null, 2);
-
-    // Clear summaries
-    grid.innerHTML = '';
-
-    // Expecting a shape like:
-    // {
-    //   derived: {
-    //     eligible_population: { total: 12345, emailable_pct: 0.62, sms_opt_in_pct: 0.34 },
-    //     target_horizon: { chosen: 14, tested: [7,14,30], rationale: "max expected net" },
-    //     unit_economics: { aov: 58.2, margin_pct: 0.42, return_pct: 0.08, profit_per_tp: 22.4 },
-    //     channel_reach: { email:0.61, sms:0.33, calls:0.12, ops_cost_per_call: 1.8 },
-    //     baseline: { cvr_7d:0.012, weekly_pattern:"Mon high", seasonality:"Nov peak" },
-    //     modeling: { ece:0.03, coverage:0.92, alpha:0.1, threshold:0.71 },
-    //     threshold_volume: { tau:0.71, volume: 4300, expected_net: 12650, chance_to_goal:0.78 },
-    //     channel_mix: { email:0.7, sms:0.25, calls:0.05 },
-    //     experiment: { ramp: ["10%","50%","100%"], control_pct:10, stop_loss:"-15%" }
-    //   }
-    // }
-
-    const d = json.derived || json; // be flexible
-
-    const cards = [
-      ['Eligible population', d?.eligible_population && [
-        `Total: ${fmtNum(d.eligible_population.total)}`,
-        `Emailable %: ${fmtPct(d.eligible_population.emailable_pct)}`,
-        `SMS opt-in %: ${fmtPct(d.eligible_population.sms_opt_in_pct)}`
-      ]],
-      ['Target horizon', d?.target_horizon && [
-        `Chosen: ${d.target_horizon.chosen}d`,
-        d.target_horizon.tested ? `Tested: ${d.target_horizon.tested.join('/')}` : null
-      ]],
-      ['Unit economics', d?.unit_economics && [
-        `AOV: ${fmtCur(d.unit_economics.aov)}`,
-        `Margin: ${fmtPct(d.unit_economics.margin_pct)}`,
-        `Returns: ${fmtPct(d.unit_economics.return_pct)}`,
-        `Profit/TP: ${fmtCur(d.unit_economics.profit_per_tp)}`
-      ]],
-      ['Channel reach & ops', d?.channel_reach && [
-        `Email: ${fmtPct(d.channel_reach.email)}`,
-        `SMS: ${fmtPct(d.channel_reach.sms)}`,
-        `Calls: ${fmtPct(d.channel_reach.calls)}`,
-        d.channel_reach.ops_cost_per_call != null ? `Ops $/call: ${fmtCur(d.channel_reach.ops_cost_per_call)}` : null
-      ]],
-      ['Baseline & seasonality', d?.baseline && [
-        d.baseline.cvr_7d != null ? `CVR 7d: ${fmtPct(d.baseline.cvr_7d)}` : null,
-        d.baseline.weekly_pattern ? `Weekly: ${d.baseline.weekly_pattern}` : null,
-        d.baseline.seasonality ? `Seasonality: ${d.baseline.seasonality}` : null
-      ]],
-      ['Modeling', d?.modeling && [
-        d.modeling.ece != null ? `ECE: ${fmtPct(d.modeling.ece)}` : null,
-        d.modeling.coverage != null ? `Coverage: ${fmtPct(d.modeling.coverage)}` : null,
-        d.modeling.alpha != null ? `α: ${d.modeling.alpha}` : null,
-        d.modeling.threshold != null ? `τ: ${round(d.modeling.threshold)}` : null
-      ]],
-      ['Threshold & volume', d?.threshold_volume && [
-        `τ: ${round(d.threshold_volume.tau)}`,
-        `Volume: ${fmtNum(d.threshold_volume.volume)}`,
-        d.threshold_volume.expected_net != null ? `Expected net: ${fmtCur(d.threshold_volume.expected_net)}` : null,
-        d.threshold_volume.chance_to_goal != null ? `Chance to goal: ${fmtPct(d.threshold_volume.chance_to_goal)}` : null
-      ]],
-      ['Channel mix', d?.channel_mix && Object.keys(d.channel_mix).map(k => `${k}: ${fmtPct(d.channel_mix[k])}`)],
-      ['Experiment & safety', d?.experiment && [
-        d.experiment.ramp ? `Ramp: ${d.experiment.ramp.join('→')}` : null,
-        d.experiment.control_pct != null ? `Control: ${d.experiment.control_pct}%` : null,
-        d.experiment.stop_loss ? `Stop-loss: ${d.experiment.stop_loss}` : null
-      ]]
-    ];
-
-    for (const [title, lines] of cards) {
-      if (!lines) continue;
-      const cleaned = lines.filter(Boolean);
-      if (!cleaned.length) continue;
-      const card = document.createElement('div');
-      card.style.cssText = 'border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#fff;';
-      card.innerHTML = `<div style="font-weight:600; margin-bottom:6px;">${title}</div>
-                        <ul style="margin:0; padding-left:18px;">${cleaned.map(li => `<li>${li}</li>`).join('')}</ul>`;
-      grid.appendChild(card);
-    }
-  }
-
-  // Format helpers
-  function fmtNum(n){ return n==null ? '—' : Number(n).toLocaleString(); }
-  function fmtCur(n){ return n==null ? '—' : `$${Number(n).toFixed(2)}`; }
-  function fmtPct(p){ return p==null ? '—' : `${(Number(p)*100).toFixed(1)}%`; }
-  function round(x){ return x==null ? '—' : Number(x).toFixed(2); }
-
-  // Wire buttons
-  document.getElementById('btn-compute-derive').addEventListener('click', computeAutoDerivations);
-  document.getElementById('btn-cancel-derive').addEventListener('click', cancelDerive);
-
-  // Initialize readiness on load (in case some mappings already confirmed)
-  updateDeriveReadiness();
-
-function resetWizard() {
-    currentStep = 1;
-    selectedData = {};
-    
-    // Hide all steps
-    for (let i = 1; i <= totalSteps; i++) {
-        document.getElementById(`step${i}`).classList.remove('active');
-    }
-    
-    // Show first step
-    document.getElementById('step1').classList.add('active');
-    
-    // Reset selections
-    document.querySelectorAll('.option-card').forEach(card => {
-        card.classList.remove('selected');
-    });
-    
-    // Clear inputs
-    document.getElementById('targetColumn').value = '';
-    document.getElementById('successCriteria').value = '';
-    document.getElementById('timeColumn').value = '';
-    document.getElementById('aiRecommendations').textContent = 'Click "Get AI Recommendations" below to see tailored advice...';
-    
-    // Reset UI
-    updateProgress();
-    updateButtons();
-    updateDeriveReadiness();
-    document.getElementById('nextBtn').disabled = false;
-}
-
-
-function updateFileInfo(file, rowCount, columnCount) {
-    const fileInfo = document.getElementById('file-info');
-    const previewInfo = document.getElementById('preview-info');
-    
-    previewInfo.textContent = `Showing first 10 rows of ${rowCount} total rows`;
-    
-    fileInfo.innerHTML = `
-        <div class="info-item">
-            <i class="fas fa-file"></i>
-            <span class="info-label">File:</span>
-            <span class="info-value">${file.name}</span>
-        </div>
-        <div class="info-item">
-            <i class="fas fa-weight"></i>
-            <span class="info-label">Size:</span>
-            <span class="info-value">${(file.size / 1024).toFixed(2)} KB</span>
-        </div>
-        <div class="info-item">
-            <i class="fas fa-table"></i>
-            <span class="info-label">Rows:</span>
-            <span class="info-value">${rowCount.toLocaleString()}</span>
-        </div>
-        <div class="info-item">
-            <i class="fas fa-columns"></i>
-            <span class="info-label">Columns:</span>
-            <span class="info-value">${columnCount}</span>
-        </div>
-    `;
-}
-
-
-
-function createPreviewTable(headers, rows) {
-    const table = document.getElementById('preview-table');
-    
-    // Create header
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-
-    // Create body
-    const tbody = document.createElement('tbody');
-    rows.forEach(row => {
-        const tr = document.createElement('tr');
-        row.forEach((cell, index) => {
-            const td = document.createElement('td');
-            td.textContent = cell || '';
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-
-    // Clear and rebuild table
-    table.innerHTML = '';
-    table.appendChild(thead);
-    table.appendChild(tbody);
-}
-
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('open');
-}
-window.toggleSidebar = toggleSidebar; // Make it accessible in inline onclick
-
-// Close sidebar when clicking outside on mobile
-document.addEventListener('click', function (e) {
-    const sidebar = document.getElementById('sidebar');
-    const toggleBtn = document.querySelector('.mobile-toggle');
-
-    if (window.innerWidth <= 768 &&
-        !sidebar.contains(e.target) &&
-        !toggleBtn.contains(e.target) &&
-        sidebar.classList.contains('open')) {
-        sidebar.classList.remove('open');
-    }
-});
-
-// Auto close sidebar on window resize if width > 768px
-window.addEventListener('resize', function () {
-    const sidebar = document.getElementById('sidebar');
-    if (window.innerWidth > 768) {
-        sidebar.classList.remove('open');
-    }
-});
-
-// Keyboard navigation
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !document.getElementById('nextBtn').disabled) {
-        goNext();
-    } else if (e.key === 'Escape' && currentStep > 1) {
-        goBack();
-    }
-
-});
-updateProgress();
-updateButtons();
-document.getElementById('nextBtn').disabled = false;
-
-// Analytics tracking (placeholder for future implementation)
-function trackEvent(eventName, properties = {}) {
-    console.log('Analytics Event:', eventName, properties);
-    // Future: integrate with analytics service
-}
-function trackStepCompletion(step) {
-    trackEvent('wizard_step_completed', {
-        step: step,
-        goal: selectedData.goal,
-        dataType: selectedData.dataType
-    });
-}
-// File handling functions
-function handleFileUpload(event, type) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    uploadedData[type].file = file;
-    
-    // Update filename display
-    document.getElementById(`${type}-filename`).textContent = file.name;
-    
-    // Parse and preview file
-    parseFile(file, type);
-}
-
-function parseFile(file, type) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const content = e.target.result;
-        const lines = content.split('\n').filter(line => line.trim());
-        
-        if (lines.length === 0) return;
-
-        // Parse CSV (simple implementation)
-        const headers = parseCSVLine(lines[0]);
-        const rows = lines.slice(1, Math.min(11, lines.length))
-            .map(line => parseCSVLine(line));
-
-        uploadedData[type].headers = headers;
-        uploadedData[type].rows = rows;
-
-        // Show preview
-        showFilePreview(type, file, headers, rows, lines.length - 1);
-        
-        // Setup mapping
-        setupMapping(type, headers);
-    };
-    reader.readAsText(file);
-}
-
-function parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-            inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-            result.push(current.trim());
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    result.push(current.trim());
-    return result;
-}
-
-function showFilePreview(type, file, headers, rows, totalRows) {
-    // Update file info
-    const fileInfo = document.getElementById(`${type}-info`);
-    fileInfo.innerHTML = `
-        <span><strong>${file.name}</strong></span>
-        <span>${totalRows} rows, ${headers.length} columns</span>
-    `;
-    
-    // Render table
-    renderTable(`${type}-table`, headers, rows);
-    
-    // Show preview container
-    document.getElementById(`${type}-preview`).style.display = 'block';
-    document.getElementById(`${type}-mapping`).style.display = 'block';
-}
-
-function renderTable(tableId, headers, rows) {
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    
-    // Create header
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-
-    // Create body
-    const tbody = document.createElement('tbody');
-    rows.forEach(row => {
-        const tr = document.createElement('tr');
-        headers.forEach((_, index) => {
-            const td = document.createElement('td');
-            td.textContent = row[index] || '';
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-
-    // Clear and rebuild table
-    table.innerHTML = '';
-    table.appendChild(thead);
-    table.appendChild(tbody);
-
-}
-
-// --- setupMapping: preserve choices + mark manual on change
-function setupMapping(type, headers) {
-  const config = mappingConfig[type];
-  if (!config) return;
-
-  mappingState[type] = mappingState[type] || {};
-  const allFields = fieldsFor(type); 
-  allFields.forEach(field => {
-    const selectId = getSelectId(type, field);
-    const select = document.getElementById(selectId);
-    if (!select) return;
-
-    // Make sure the select can be clicked
-    select.disabled = false;
-    select.style.pointerEvents = 'auto';
-
-    // Rebuild options
-    const prev = select.value;
-    select.innerHTML = '<option value="">-- Select Column --</option>';
-    headers.forEach(h => {
-      const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = h;
-      select.appendChild(opt);
-    });
-
-    // Re-apply prior user choice if still available
-    const chosen = mappingState[type][field] ?? (prev || "");
-    if (chosen && headers.includes(chosen)) {
-      select.value = chosen;
-      // keep dataset.manual if it was set before
-    }
-
-    // Mark manual selection
-    select.onchange = () => {
-      mappingState[type][field] = select.value || null;
-      select.dataset.manual = select.value ? '1' : '0';
-
-      const badge = select.parentElement?.querySelector('.conf-badge');
-      if (badge) badge.textContent = '✅ set';
-      select.title = select.value ? `Manually set to "${select.value}"` : 'Not selected';
-    };
-  });
-}
-
-// --- suggestMapping: respect manual choices
-function suggestMapping(type, opts = { force: false }) {
-  const config  = mappingConfig[type];
-  const headers = uploadedData?.[type]?.headers || [];
-  if (!config || !headers.length) return;
-
-  mappingState[type] = mappingState[type] || {};
-
-  // cache profiles
-  uploadedData[type].__profiles = uploadedData[type].__profiles || {};
-  const prof = uploadedData[type].__profiles;
-  headers.forEach(h => { if (!prof[h]) prof[h] = profileColumn(type, h); });
-
-  const allFields = fieldsFor(type); 
-
-  allFields.forEach(field => {
-    const selectId = getSelectId(type, field);
-    const select = document.getElementById(selectId);
-    if (!select) return;
-
-    // NEW: do not touch if user set it (unless force)
-    const manual = select.dataset.manual === '1';
-    if (manual && !opts.force) {
-      applyConfidenceBadge(select, 1, ['manual mapping']);
-      return;
-    }
-
-    // Score headers
-    const scored = headers.map(h => {
-      const res = scoreColumnForField(field, h, prof[h], config);
-      return { header: h, ...res };
-    }).sort((a,b) => b.score - a.score);
-
-    if (!scored.length) return;
-
-    const best = scored[0];
-    const runnerUp = scored[1];
-    const exactHeaderHit = (config.aliases?.[field] || []).some(a => normalizeHeader(a) === normalizeHeader(best.header));
-    const nearTie = runnerUp && (best.score - runnerUp.score) < 0.06;
-
-    if (best.score >= 0.55 || exactHeaderHit || opts.force) {
-      // Only set if still not manual
-      if (!manual || opts.force) {
-        select.value = best.header;
-        mappingState[type][field] = best.header;
-      }
-      applyConfidenceBadge(select, best.score, best.reasons);
-      if (nearTie) {
-        select.title += ' (near-tie; please review)';
-        const badge = select.parentElement?.querySelector('.conf-badge');
-        if (badge) badge.textContent = '◇ review';
-      }
-    } else {
-      applyConfidenceBadge(select, best.score, ['low confidence suggestion', ...best.reasons]);
-      select.title += ` | Suggestion: ${best.header}`;
-      ensureSuggestionOption(select, best.header);
-    }
-  });
-}
-
-// Helper: add a non-intrusive suggestion option the user can pick
-function ensureSuggestionOption(select, header) {
-  const existing = Array.from(select.options).some(o => o.value === header);
-  if (existing) return;
-  const opt = document.createElement('option');
-  opt.value = header;
-  opt.textContent = `${header} (suggested)`;
-  opt.dataset.suggested = '1';
-  select.appendChild(opt);
-}
-function markFieldLevel(type, field, schemaContract) {
-  const levels = schemaContract?.[type];
-  if (!levels) return;
-
-  const selectId = getSelectId(type, field);
-  if (!selectId) return;
-
-  // Find the select first (safe)
-  const selectEl = document.getElementById(selectId);
-  if (!selectEl) return;
-
-  // Prefer explicit for= binding; fallback to closest container->label
-  const direct = document.querySelector(`#${type}-mapping label[for="${selectId}"]`);
-  const container = selectEl.closest('.mapping-field');
-  const fallback = container ? container.querySelector('label') : null;
-
-  const labelEl = direct || fallback;
-  if (!labelEl) return;
-
-  labelEl.classList.remove('required-field','recommended-field','optional-field');
-
-  if (levels.required?.includes(field)) {
-    labelEl.classList.add('required-field');
-    labelEl.dataset.level = 'required';
-  } else if (levels.recommended?.includes(field)) {
-    labelEl.classList.add('recommended-field');
-    labelEl.dataset.level = 'recommended';
-  } else {
-    labelEl.classList.add('optional-field');
-    labelEl.dataset.level = 'optional';
+function b64ToBlob(b64, mime = 'text/csv') {
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  } catch (e) { 
+    console.warn('Invalid base64 CSV:', e); 
+    return null; 
   }
 }
 
 function applyFieldBadges(schemaContract) {
-  ['customers','orders','marketing'].forEach(type => {
-    const spec = schemaContract?.[type];
-    if (!spec) return;
-
-    const known = new Set(fieldsFor(type)); // from FIELD_IDS
-    const fields = [...(spec.required||[]), ...(spec.recommended||[]), ...(spec.optional||[])];
-
-    fields.forEach(f => {
-      if (known.has(f)) markFieldLevel(type, f, {
-        [type]: {
-          required: spec.required || [],
-          recommended: spec.recommended || [],
-          optional: spec.optional || []
-        }
-      });
-    });
-  });
+  // Placeholder for field badge application
+  console.log('Applying field badges:', schemaContract);
 }
 
-function confirmMapping(type) {
-  const config = mappingConfig[type] || { required: [], optional: [] };
-  const required = config.required || [];
-  const optional = config.optional || [];
-
-  const mapping = {};
-  let hasAllRequired = true;
-  const missing = [];
-
-  // reset visuals
-  document.querySelectorAll(`#${type}-mapping select.missing-required`)
-    .forEach(el => el.classList.remove('missing-required'));
-
-  [...required, ...optional].forEach(field => {
-    const selectId = getSelectId(type, field);
-    const select = document.getElementById(selectId);
-    const value = select ? select.value : '';
-
-    if (!value && required.includes(field)) {
-      hasAllRequired = false;
-      missing.push(field);
-      if (select) select.classList.add('missing-required');
-    } else if (value) {
-      // map logical field -> actual header chosen by user
-      mapping[field] = value;
-    }
+// Sample data functions
+function renderSampleTables() {
+  Object.keys(sampleData).forEach(type => {
+    renderTable(`${type}-sample-table`, sampleData[type].headers, sampleData[type].rows.slice(0, 4));
   });
-
-  const statusEl = document.getElementById(`${type}-status`);
-  if (!hasAllRequired) {
-    if (statusEl) statusEl.textContent = `Missing: ${missing.join(', ')}`;
-    return false;
-  }
-
-  mappingState[type] = { ...(mappingState[type] || {}), ...mapping, confirmed: true };
-  if (statusEl) statusEl.textContent = 'Confirmed';
-  return mapping;
 }
-
 
 function downloadSample(type) {
-    const data = sampleData[type];
-    const csvContent = data.csv;
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sample_${type}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+  const data = sampleData[type];
+  const csvContent = data.csv;
+  
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sample_${type}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
 
 function showFullExample(type) {
-    const data = sampleData[type];
-    const popup = document.createElement('div');
-    popup.className = 'popup-overlay';
-    popup.style.display = 'flex';
-    
-    popup.innerHTML = `
-        <div class="popup" style="max-width: 800px; max-height: 80vh; overflow: auto;">
-            <div class="popup-header">
-                <h4>Full ${type.charAt(0).toUpperCase() + type.slice(1)} Example</h4>
-                <button class="close-btn" onclick="this.closest('.popup-overlay').remove()">×</button>
-            </div>
-            <div class="popup-body">
-                <table class="preview-table" id="full-example-table"></table>
-                <div style="margin-top: 15px;">
-                    <button class="btn btn-outline" onclick="downloadSample('${type}')">📥 Download Sample</button>
-                </div>
-            </div>
+  const data = sampleData[type];
+  const popup = document.createElement('div');
+  popup.className = 'popup-overlay';
+  popup.style.display = 'flex';
+  
+  popup.innerHTML = `
+    <div class="popup" style="max-width: 800px; max-height: 80vh; overflow: auto;">
+      <div class="popup-header">
+        <h4>Full ${type.charAt(0).toUpperCase() + type.slice(1)} Example</h4>
+        <button class="close-btn" onclick="this.closest('.popup-overlay').remove()">×</button>
+      </div>
+      <div class="popup-body">
+        <table class="preview-table" id="full-example-table"></table>
+        <div style="margin-top: 15px;">
+          <button class="btn btn-outline" onclick="downloadSample('${type}')">📥 Download Sample</button>
         </div>
-    `;
-    
-    document.body.appendChild(popup);
-    
-    // Render full table
-    setTimeout(() => {
-        const fullHeaders = data.headers;
-        const fullRows = data.csv.split('\n').slice(1).map(line => parseCSVLine(line));
-        renderTable('full-example-table', fullHeaders, fullRows);
-    }, 100);
-    
-    // Close on outside click
-    popup.addEventListener('click', (e) => {
-        if (e.target === popup) {
-            popup.remove();
-        }
-    });
-}
-
-function updateNavigation() {
-    const nextBtn = document.getElementById('nextBtn');
-    
-    // Check validation based on current step
-    let canProceed = false;
-    
-    switch(currentStep) {
-        case 1:
-            // Check if goal amount, timeframe, actions, and risk tolerance are set
-            const goalAmount = document.getElementById('goal_amount').value;
-            const riskTolerance = document.querySelector('input[name="risk"]:checked');
-            canProceed = goalAmount && savedActions.length > 0 && riskTolerance;
-            break;
-            
-        case 2:
-            canProceed = uploadedData.customers.confirmed;
-            break;
-            
-        case 3:
-            canProceed = uploadedData.orders.confirmed;
-            break;
-            
-        case 4:
-            canProceed = uploadedData.marketing.confirmed;
-            break;
-            
-        default:
-            canProceed = true;
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(popup);
+  
+  setTimeout(() => {
+    const fullHeaders = data.headers;
+    const fullRows = data.csv.split('\n').slice(1).map(line => parseCSVLine(line));
+    renderTable('full-example-table', fullHeaders, fullRows);
+  }, 100);
+  
+  popup.addEventListener('click', (e) => {
+    if (e.target === popup) {
+      popup.remove();
     }
-    
-    nextBtn.disabled = !canProceed;
-}
-
-// Additional utility functions
-function updateSummary() {
-    // This would update a summary view in step 5
-    console.log('Updating summary with:', selectedData);
-}
-function safeStorageSet(key, value) {
-  try { localStorage.setItem(key, value); } catch (e) { console.error(`Error setting ${key}:`, e); }
-}
-function suggestModelType() {
-    // This would suggest ML model types based on the data
-    console.log('Suggesting model types based on uploaded data');
-}
-
-// Event listeners for form validation
-document.addEventListener('DOMContentLoaded', function() {
-     try {
-        const token = safeStorageGet('access_token');
-        const userLoggedIn = safeStorageGet('userLoggedIn');
-
-        const isLoggedIn = (userLoggedIn === true || userLoggedIn === 'true');
-        let tokenExpired = false;
-        if (token) {
-        try { tokenExpired = isTokenExpired(token); }
-        catch (e) { console.warn('Token parse error, treating as expired', e); tokenExpired = true; }
-        }
-
-        console.log('Wizard auth check:', {
-        token: token ? 'Present' : 'Missing',
-        isLoggedIn,
-        tokenExpired
-        });
-
-        const hasValidToken = Boolean(token) && !tokenExpired;
-
-        // If we have a valid token but login flag is missing, set it and continue
-        if (hasValidToken && !isLoggedIn) {
-        console.log('Valid token found but login flag missing; setting it.');
-        safeStorageSet('userLoggedIn', 'true');
-        // NOTE: do NOT return; continue to normal init
-        }
-
-        // Redirect if not authenticated
-        if (!hasValidToken || !isLoggedIn) {
-        console.log('Authentication failed, redirecting to login...');
-        // Clear potentially corrupted auth state (use your safe helper if needed)
-        ['access_token','refresh_token','userLoggedIn','userName','userEmail','user_id','user']
-            .forEach(k => localStorage.removeItem(k));
-
-        const next = encodeURIComponent('wizard.html');
-        const reason = encodeURIComponent('Your session has expired.');
-        // Use replace to avoid back-button loop
-        window.location.replace(`login.html?next=${next}&reason=${reason}`);
-        return;
-        }
-
-        // ✅ Auth OK — continue with your normal initialization here
-
-    } catch (err) {
-        console.error('Auth gate error:', err);
-        // Failsafe: go to login
-        const next = encodeURIComponent('wizard.html');
-        const reason = encodeURIComponent('Auth error; please log in again.');
-        window.location.replace(`login.html?next=${next}&reason=${reason}`);
-    }
-    // Goal amount validation
-    const goalAmount = document.getElementById('goal_amount');
-    if (goalAmount) {
-        goalAmount.addEventListener('input', updateNavigation);
-    }
-    
-    // Risk tolerance validation
-    document.querySelectorAll('input[name="risk"]').forEach(radio => {
-        radio.addEventListener('change', updateNavigation);
-    });
-      ['customers','orders','marketing'].forEach(kind => {
-    const input = document.getElementById(`${kind}-file`);     // e.g. "customers-file"
-    const zone  = document.getElementById(`${kind}-upload`);   // e.g. "customers-upload"
-
-    if (input) {
-      input.addEventListener('change', e => {
-        fileStore[kind] = e.target.files?.[0] || null;
-        updateFilename(kind);
-        updateDeriveReadiness();
-      });
-    }
-
-    if (zone && input) {
-      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-      zone.addEventListener('dragleave', e => { e.preventDefault(); zone.classList.remove('drag-over'); });
-      zone.addEventListener('drop', e => {
-        e.preventDefault();
-        zone.classList.remove('drag-over');
-        const f = e.dataTransfer?.files?.[0];
-        if (f) {
-          // Reflect into the hidden input so collectFiles() can see it
-          const dt = new DataTransfer();
-          dt.items.add(f);
-          input.files = dt.files;
-
-          fileStore[kind] = f;
-          updateFilename(kind);
-          updateDeriveReadiness();
-        }
-      });
-    }
-    
   });
-  const form = document.getElementById('actionForm');
-  if (form) {
-    form.addEventListener('submit', (e) => {
+}
+
+// Setup file uploads
+function setupFileUploads() {
+  ['customers', 'orders', 'marketing'].forEach(type => {
+    const fileInput = document.getElementById(`${type}-file`);
+    const uploadLabel = document.getElementById(`${type}-upload`);
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => handleFileUpload(e, type));
+    }
+    
+    if (uploadLabel && fileInput) {
+      uploadLabel.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadLabel.classList.add('drag-active');
+      });
+      
+      uploadLabel.addEventListener('dragleave', () => {
+        uploadLabel.classList.remove('drag-active');
+      });
+      
+      uploadLabel.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadLabel.classList.remove('drag-active');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          const dt = new DataTransfer();
+          dt.items.add(files[0]);
+          fileInput.files = dt.files;
+          handleFileUpload({ target: { files } }, type);
+        }
+      });
+    }
+  });
+}
+
+// Initialize function
+function init() {
+  renderSampleTables();
+  setupFileUploads();
+  updateProgress();
+  updateNavigation();
+  renderActions();
+  updateDeriveReadiness();
+  
+  // Enable autosave after initial setup
+  setTimeout(() => {
+    _autosaveArmed = true;
+  }, 1000);
+}
+
+// Event listeners setup
+function setupEventListeners() {
+  // Action form submission
+  const actionForm = document.getElementById('actionForm');
+  if (actionForm) {
+    actionForm.addEventListener('submit', (e) => {
       e.preventDefault();
 
       const actionData = {
         name: document.getElementById('action_name').value.trim(),
         channel: document.getElementById('action_channel').value,
-        cost: parseFloat(document.getElementById('action_cost').value),
+        cost: parseFloat(document.getElementById('action_cost').value) || 0,
         cooldown: parseInt(document.getElementById('action_cooldown').value, 10),
         dailyCap: parseInt(document.getElementById('action_daily_cap').value, 10),
         provider: document.getElementById('action_provider').value.trim()
       };
-
-      if (!Array.isArray(window.savedActions)) window.savedActions = [];
 
       if (Number.isInteger(editingActionIndex) && editingActionIndex >= 0) {
         window.savedActions[editingActionIndex] = actionData;
@@ -3805,29 +3049,144 @@ document.addEventListener('DOMContentLoaded', function() {
         window.savedActions.push(actionData);
       }
 
-      // persist + refresh UI
-      localStorage.setItem('savedActions', JSON.stringify(window.savedActions));
-      renderActions();
+      persistActions();
+      refreshActionsUI();
       hidePopup();
     });
   }
-  // Initial state
-  updateDeriveReadiness();
-    // Initialize
-    init();
+
+  // Goal amount validation
+  const goalAmount = document.getElementById('goal_amount');
+  if (goalAmount) {
+    goalAmount.addEventListener('input', () => {
+      updateNavigation();
+
+    });
+  }
+  
+  // Risk tolerance validation
+  document.querySelectorAll('input[name="risk"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateNavigation();
+    });
+  });
+
+  // Date field changes
+  ['goal_start', 'goal_end'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        updateNavigation();
+        queueDraftSave();
+      });
+    }
+  });
+
+  // Period change
+  const periodEl = document.getElementById('goal_period');
+  if (periodEl) {
+    periodEl.addEventListener('change', () => {
+      updateNavigation();
+      queueDraftSave();
+    });
+  }
+
+  // Popup close handlers
+  const actionPopup = document.getElementById('actionPopup');
+  if (actionPopup) {
+    actionPopup.addEventListener('click', (e) => {
+      if (e.target === actionPopup) {
+        hidePopup();
+      }
+    });
+  }
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hidePopup();
+    }
+  });
+
+  // Compute button
+  const computeBtn = document.getElementById('btn-compute-derive');
+  if (computeBtn) {
+    computeBtn.addEventListener('click', computeAutoDerivations);
+  }
+
+  const cancelBtn = document.getElementById('btn-cancel-derive');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', cancelDerive);
+  }
+}
+
+// Authentication check
+function checkAuthentication() {
+  try {
+    const token = safeStorageGet('access_token');
+    const userLoggedIn = safeStorageGet('userLoggedIn');
+
+    const isLoggedIn = (userLoggedIn === true || userLoggedIn === 'true');
+    let tokenExpired = false;
+    if (token) {
+      try { 
+        tokenExpired = isTokenExpired(token); 
+      } catch (e) { 
+        console.warn('Token parse error, treating as expired', e); 
+        tokenExpired = true; 
+      }
+    }
+
+    console.log('Wizard auth check:', {
+      token: token ? 'Present' : 'Missing',
+      isLoggedIn,
+      tokenExpired
+    });
+
+    const hasValidToken = Boolean(token) && !tokenExpired;
+
+    if (hasValidToken && !isLoggedIn) {
+      console.log('Valid token found but login flag missing; setting it.');
+      safeStorageSet('userLoggedIn', 'true');
+    }
+
+    if (!hasValidToken || !isLoggedIn) {
+      console.log('Authentication failed, redirecting to login...');
+      ['access_token', 'refresh_token', 'userLoggedIn', 'userName', 'userEmail', 'user_id', 'user']
+        .forEach(k => localStorage.removeItem(k));
+
+      const next = encodeURIComponent('wizard.html');
+      const reason = encodeURIComponent('Your session has expired.');
+      window.location.replace(`login.html?next=${next}&reason=${reason}`);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Auth gate error:', err);
+    const next = encodeURIComponent('wizard.html');
+    const reason = encodeURIComponent('Auth error; please log in again.');
+    window.location.replace(`login.html?next=${next}&reason=${reason}`);
+    return false;
+  }
+}
+
+// DOM Content Loaded
+document.addEventListener('DOMContentLoaded', () => {
+  if (!checkAuthentication()) return;
+  init();
+  setupEventListeners();
+  hydrateStep1Defaults();   // <-- add this
 });
 
 // Make functions globally available
 window.showPopup = showPopup;
 window.hidePopup = hidePopup;
-window.suggestMapping = suggestMapping;
 window.confirmMapping = confirmMapping;
 window.downloadSample = downloadSample;
 window.showFullExample = showFullExample;
 window.goNext = goNext;
 window.goBack = goBack;
-
-
 </script>
 </body>
 </html>
