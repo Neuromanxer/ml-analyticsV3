@@ -146,6 +146,9 @@ class PolicyKnobs(BaseModel):
     max_onehot_cardinality: int = 80
     add_date_parts: bool = True
 
+class DatasetQuery(BaseModel):
+    query: str
+
 class PreprocessRequest(BaseModel):
     # Matches your frontend call: { "clean": true, "save": true }
     clean: bool = True
@@ -160,6 +163,8 @@ class PreprocessRequest(BaseModel):
     # Optional overrides for autodetection + policy knobs
     overrides: Optional[ColumnHints] = None
     policy: Optional[PolicyKnobs] = None
+    target_cls_col: Optional[str] = None
+    positive_label: Optional[Union[str, int]] = None
 # Base configuration
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
@@ -169,13 +174,17 @@ MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "master_ml_insights")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
 # Master database for user management
 MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
-master_engine = create_engine(MASTER_DB_URL)
+master_engine = create_engine(
+    MASTER_DB_URL,                 # your existing URL
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,            # <- tests connections before use; swaps dead ones
+    pool_recycle=300,              # <- recycle before many servers/NATs idle-drop (~5 min)
+    pool_use_lifo=True,            # (2.0+) faster reuse of warm conns
+    # echo="debug",                # optional: useful while diagnosing
+)
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
-# Master database for user management
-MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
-master_engine = create_engine(MASTER_DB_URL)
-MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
-
 # Dictionary to store user-specific engines and sessionmakers
 user_engines = {}
 user_sessionmakers: dict[str, sessionmaker] = {}
@@ -1511,76 +1520,218 @@ def _looks_like_date(series: pd.Series, sample_n: int = 200) -> bool:
     if s.empty: return False
     parsed = pd.to_datetime(s, errors="coerce")
     return parsed.notna().mean() >= 0.5
+def detect_columns(
+    df: pd.DataFrame,
+    *,
+    meta: Optional[Dict] = None,     # intake meta JSON (already sanitized)
+    context: Optional[str] = None,   # e.g., "orders", "customers", ...
+    max_cls_cardinality: int = 10,   # treat <=10 unique as classification-ish
+) -> Dict[str, Any]:
+    cols: List[str] = [c for c in df.columns if isinstance(c, str)]
+    low: Dict[str, str] = {c: c.casefold() for c in cols}
 
-def detect_columns(df: pd.DataFrame) -> dict:
-    cols = list(df.columns)
-    low = {c: str(c).lower() for c in cols}
-    def has_any(c, keys): 
-        name = low[c]
-        return any(k in name for k in keys)
+    def has_any(name: str, keys: List[str]) -> bool:
+        n = low.get(name, "")
+        return any(k in n for k in keys)
 
-    id_cols = [c for c in cols if has_any(c, ["id", "uuid", "guid"])]
-    id_cols = id_cols[:1] or (["ID"] if "ID" in cols else [])
+    canon_by_norm: Dict[str, str] = {}
+    if isinstance(meta, dict):
+        canon_by_norm = meta.get("canonical_by_normalized") or meta.get("canonical_by_normalized".lower(), {}) or {}
 
-    # target_cls: small-unique or obvious names
-    cand_cls = [c for c in cols if has_any(c, ["target","label","class","churn","default","is_","flag"])]
-    target_cls_col = None
-    for c in cand_cls + cols:
-        s = df[c]
-        uniq = s.nunique(dropna=True)
-        if (uniq <= 10) or (s.dropna().dtype == bool):
-            target_cls_col = c; break
+    def _norms_for(*canonicals: str) -> List[str]:
+        return [n for n, c in canon_by_norm.items() if c in canonicals]
 
-    # target_reg: numeric + name hint
+    # ---------- IDs ----------
+    id_cols = _norms_for("order_id") or _norms_for("customer_id")
+    if not id_cols:
+        # heuristics if meta absent
+        id_aliases = ["order_id","order","orderno","oid","customer_id","cust_id","client_id","user_id","uid","shopper_id","id"]
+        id_cols = [c for c in cols if has_any(c, id_aliases)]
+        if not id_cols and "id" in cols:
+            id_cols = ["id"]
+
+    # ---------- Dates ----------
+    date_cols = _norms_for("created_at", "updated_at")
+    if not date_cols:
+        date_aliases = ["date","time","created","updated","timestamp","ordered","processed","processed_at","order_date"]
+        date_cols = [c for c in cols if has_any(c, date_aliases) or _looks_like_date(df[c])]
+
+    # ---------- Classification Target ----------
+    # Context-sensitive name hints
+    base_aliases = [
+        "target","label","class","y","outcome",
+        "churn","is_churn","fraud","is_fraud","refund","refunded","is_refund",
+        "returned","is_returned","subscribed","is_subscribed",
+        "active","is_active","cancelled","is_cancelled",
+        "purchased","conversion","converted","success","won","lost",
+        "is_new_customer","new_customer"
+    ]
+    if (context or (meta or {}).get("context_inferred")) == "orders":
+        # prefer purchase/return/refund outcomes in orders datasets
+        base_aliases = [
+            "purchased","conversion","converted","returned","is_returned",
+            "refund","refunded","is_refund","cancelled","is_cancelled",
+            "success","won","lost","target","label","class","y","outcome","churn","is_churn"
+        ] + base_aliases
+
+    named_hits = [c for c in cols if any(a in low[c] for a in base_aliases)]
+    boolish = []
+    lowcard = []
+    for c in cols:
+        s = df[c].dropna()
+        # skip obvious identifiers as targets
+        if c in id_cols:
+            continue
+        # booleanish
+        uniq_norm = set(s.astype(str).str.strip().str.casefold().unique())
+        if uniq_norm <= {"0","1"} or uniq_norm <= {"true","false"}:
+            boolish.append(c)
+            continue
+        # low-cardinality non-numeric (likely categorical)
+        try:
+            uniq = int(s.nunique(dropna=True))
+        except Exception:
+            uniq = 0
+        if uniq and uniq <= max_cls_cardinality and not pd.api.types.is_float_dtype(s.dtype):
+            lowcard.append(c)
+
+    # candidate ranking with scores
+    cand_ranked: List[Tuple[str, float, str]] = []
+    for c in named_hits:
+        cand_ranked.append((c, 1.0, "name_match"))
+    for c in boolish:
+        if c not in [x[0] for x in cand_ranked]:
+            cand_ranked.append((c, 0.9, "booleanish"))
+    for c in lowcard:
+        if c not in [x[0] for x in cand_ranked]:
+            # score by inverse cardinality
+            card = max(1, int(df[c].nunique(dropna=True)))
+            cand_ranked.append((c, 0.8 - min(0.6, 0.02 * (card - 2)), f"low_cardinality:{card}"))
+
+    cand_ranked.sort(key=lambda t: (-t[1], t[0]))
+    target_cls_col = cand_ranked[0][0] if cand_ranked else None
+
+    # ---------- Regression Target ----------
     num_cols = [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
-    cand_reg = [c for c in num_cols if has_any(c, ["target","amount","price","revenue","score","value"])]
+    reg_aliases = ["target","amount","price","revenue","score","value","aov","ltv","gmv","margin"]
+    cand_reg = [c for c in num_cols if any(a in low[c] for a in reg_aliases)]
     target_reg_col = cand_reg[0] if cand_reg else None
 
-    group_cols = [c for c in cols if has_any(c, ["store","shop","segment","category","group","channel"])][:3]
-    date_cols = [c for c in cols if (_looks_like_date(df[c]) or has_any(c, ["date","time","created","updated","timestamp","ordered","processed"]))]
-    obj_cols = [c for c in cols if df[c].dtype == "O"]
-    # text-ish if high uniqueness ratio
-    text_cols = [c for c in obj_cols if (df[c].nunique(dropna=True) / max(1, len(df))) > 0.2]
-    ignore_cols = []
+    # ---------- Groups / Text ----------
+    group_cols = [c for c in cols if any(k in low[c] for k in ["store","shop","segment","category","group","channel","country","state","region"])][:3]
 
-    # numeric_keep_continuous heuristic
-    keep = []
+    obj_cols = [c for c in cols if df[c].dtype == "object"]
+    text_cols = []
+    for c in obj_cols:
+        s = df[c].dropna()
+        # high uniqueness ratio among strings → treat as text-ish
+        if len(s) == 0:
+            continue
+        uniq_ratio = s.nunique(dropna=True) / max(1, len(s))
+        if uniq_ratio > 0.20:
+            text_cols.append(c)
+
+    # ---------- Ignore ----------
+    ignore_cols: List[str] = []
+    # If intake PII identified columns to ignore, honor them
+    pii = (meta or {}).get("pii") or {}
+    if isinstance(pii, dict):
+        actions = pii.get("actions") or {}
+        ignore_cols.extend([c for c, act in actions.items() if act == "ignore"])
+
+    # ---------- numeric_keep_continuous ----------
+    numeric_keep_continuous = []
     for c in num_cols:
-        uniq = df[c].nunique(dropna=True)
-        uniq_ratio = uniq / max(1, len(df))
-        if (uniq >= 30) or (uniq_ratio >= 0.05) or any(k in low[c] for k in ["age","tenure","amount","price","cost","revenue","qty","quantity","score","margin","days","duration","time","rate"]):
-            keep.append(c)
+        s = df[c].dropna()
+        uniq = int(s.nunique(dropna=True)) if len(s) else 0
+        uniq_ratio = (uniq / max(1, len(s))) if len(s) else 0.0
+        if (
+            uniq >= 30
+            or uniq_ratio >= 0.05
+            or any(k in low[c] for k in ["age","tenure","amount","price","cost","revenue","qty","quantity","score","margin","days","duration","time","rate"])
+        ):
+            numeric_keep_continuous.append(c)
 
     return {
         "id_cols": id_cols,
         "target_cls_col": target_cls_col,
+        "target_cls_candidates": [{"col": c, "score": sc, "reason": r} for c, sc, r in cand_ranked],
         "target_reg_col": target_reg_col,
-        "group_cols": group_cols,
+        "group_cols": group_cols[:3],
         "date_cols": date_cols,
         "text_cols": text_cols,
         "ignore_cols": ignore_cols,
-        "numeric_keep_continuous": keep,
+        "numeric_keep_continuous": numeric_keep_continuous,
+        "why": {
+            "context": context or (meta or {}).get("context_inferred"),
+            "used_meta_canon": bool(canon_by_norm),
+        },
     }
 
-# -----------------------------
-# Positive label inference
-# -----------------------------
-def guess_positive_label(df: pd.DataFrame, target_cls_col: Optional[str]) -> Optional[Any]:
-    if not target_cls_col:
+
+from typing import Optional, Any, Dict, List, Tuple
+import pandas as pd
+import numpy as np
+
+def guess_positive_label(
+    df: pd.DataFrame,
+    target_cls_col: Optional[str],
+) -> Optional[Any]:
+    """
+    Choose a 'positive' label for classification metrics.
+    - Prefer '1' for truly binary 0/1 or booleanish columns.
+    - Else map common truthy/positive strings.
+    - Else pick the minority class (stable tiebreak via sorted order).
+    Returns the label **as it appears in the column** (original dtype if possible).
+    """
+    if not target_cls_col or target_cls_col not in df.columns:
         return None
-    s = df[target_cls_col]
-    # Normalize common truthy strings
-    s_norm = (
-        s.astype(str)
-         .str.strip().str.lower()
-         .replace({"true": "1", "false": "0", "yes": "1", "no": "0"})
-    )
-    # If it's binary 0/1-ish, choose '1' as positive if present
-    vals = set(s_norm.unique())
-    if {"0", "1"} <= vals or "1" in vals:
-        return "1"
-    # Otherwise pick the minority class
+
+    s = df[target_cls_col].dropna()
+    if s.empty:
+        return None
+
+    # normalize strings for detection, but keep original for return
+    s_norm = s.astype(str).str.strip().str.casefold()
+    # common mappings
+    truthy = {"1", "true", "yes", "y", "t", "purchase", "purchased", "won", "success", "churn", "fraud", "refund", "returned"}
+    falsy  = {"0", "false", "no", "n", "f", "lost", "nonchurn", "clean", "no_refund", "not_returned"}
+
+    uniq_norm = set(s_norm.unique())
+
+    # Strict binary (0/1 or bool-ish)
+    if uniq_norm <= {"0","1"} or uniq_norm <= {"false","true"}:
+        # return the original representation of the positive if possible
+        # prefer whatever literal maps to "1"/"true"
+        # try exact "1" match first
+        mask_pos = s_norm == "1"
+        if mask_pos.any():
+            return s.loc[mask_pos].iloc[0]
+        mask_pos = s_norm == "true"
+        if mask_pos.any():
+            return s.loc[mask_pos].iloc[0]
+        # fallback
+        return s.iloc[0]
+
+    # If any known truthy token appears, return that token's original
+    for tok in truthy:
+        mask = s_norm == tok
+        if mask.any():
+            return s.loc[mask].iloc[0]
+
+    # Minority class fallback (keeps original labels)
     return _minority_label(s)
+
+
+def _minority_label(series: pd.Series) -> Optional[Any]:
+    if series.empty:
+        return None
+    counts = series.value_counts(dropna=True)
+    # choose smallest count; stable tiebreak on stringified label
+    min_count = counts.min()
+    cands = sorted(counts[counts == min_count].index, key=lambda x: str(x))
+    return cands[0] if cands else None
+
 # ---------- Helpers for null handling & safety ----------
 
 _STANDARD_NULL_MARKERS = ["", "na", "n/a", "none", "null", "nan", "nil", "-", "--"]
@@ -2276,36 +2427,106 @@ def preprocess_dataset_endpoint(
             preview=None,
             artifacts=None,
         )
-
-    null_rate_before_sample = compute_null_rate(sample_df)
-
-    # Hints & config
+   # Re-map sample_df columns to normalized names using intake meta (if available)
     try:
-        hints = detect_columns(sample_df)
+        header_map = (meta or {}).get("header_map")  # meta from _meta_to_json(intake_res.meta)
+        if header_map:
+            # meta.header_map was original_name -> ColumnMeta, rebuild mapping:
+            norm_map = {orig: info["normalized_name"] for orig, info in header_map.items()}
+            sample_df_norm = sample_df.rename(columns=norm_map)
+        else:
+            sample_df_norm = sample_df
+    except Exception:
+        sample_df_norm = sample_df
+    meta_for_detect = meta if isinstance(meta, dict) else _meta_to_json(meta) if meta is not None else {}
+
+    # Source of truth for classification target:
+    # 1) user override in request
+    # 2) intake suggestions from meta
+    # 3) fallback: detect on sample_df_norm here (only for target resolution)
+    user_tgt = getattr(body, "target_cls_col", None)
+    user_pos = getattr(body, "positive_label", None)
+    suggested = (meta or {}).get("suggested") or {}
+    meta_tgt = suggested.get("target_cls_col")
+    meta_pos = suggested.get("positive_label")
+    target_source = "detect_now"
+    if user_tgt:
+        target_cls_norm = user_tgt
+        positive_label  = user_pos if user_pos is not None else guess_positive_label(sample_df_norm, user_tgt)
+        target_source = "user_override"
+    elif meta_tgt:
+        target_cls_norm = meta_tgt
+        positive_label  = meta_pos if meta_pos is not None else guess_positive_label(sample_df_norm, meta_tgt)
+        target_source = "intake_suggested"
+    else:
+        try:
+            det_now_for_target = detect_columns(
+                sample_df_norm,
+                meta=meta_for_detect,
+                context=(meta_for_detect or {}).get("context_inferred")
+                )
+        except Exception:
+            hints = {}
+        try:
+            det_now_for_target = detect_columns(
+                sample_df_norm,
+                meta=meta_for_detect,
+                context=(meta_for_detect or {}).get("context_inferred")
+            )
+        except Exception:
+            det_now_for_target = {}
+        target_cls_norm = det_now_for_target.get("target_cls_col")
+        positive_label  = guess_positive_label(sample_df_norm, target_cls_norm)
+    def _coerce_label_dtype(df, col, label):
+        if label is None or col not in df.columns:
+            return label
+        try:
+            ser = df[col]
+            # try using the pandas dtype to cast back
+            return ser.dtype.type(label) if hasattr(ser.dtype, "type") else label
+        except Exception:
+            return label
+
+    positive_label = _coerce_label_dtype(sample_df_norm, target_cls_norm, positive_label)
+
+    try:
+        hints = detect_columns(sample_df_norm, meta=meta_for_detect, context=(meta_for_detect or {}).get("context_inferred"))
     except Exception:
         hints = {}
 
-    positive_label = guess_positive_label(sample_df, (hints or {}).get("target_cls_col"))
+    canon_by_norm = (meta_for_detect or {}).get("canonical_by_normalized") or {}
+
+    def _norms_for(*canonicals):
+        return [n for n, c in canon_by_norm.items() if c in canonicals]
+    default_ids = ["id"] if "id" in sample_df_norm.columns else []
+    id_cols_norm = _norms_for("order_id") or _norms_for("customer_id") or (hints.get("id_cols") or default_ids)
+    date_cols_norm     = _norms_for("created_at", "updated_at") or (hints.get("date_cols") or [])
+    target_reg_norm    = hints.get("target_reg_col") or None
+    group_cols_norm    = (hints.get("group_cols") or [])[:3]
+    text_cols_norm     = hints.get("text_cols") or []
+    ignore_cols_norm   = hints.get("ignore_cols") or []
+    keep_continuous    = hints.get("numeric_keep_continuous") or []
 
     cfg = PreprocessConfig(
-        data_dir=data_dir + os.sep,
-        encoder_info_dir=enc_dir + os.sep,
-        data_process_dir=proc_dir + os.sep,
-        id_cols=(hints.get("id_cols") or ["ID"]),
-        target_cls_col=hints.get("target_cls_col"),
+        data_dir=data_dir,
+        encoder_info_dir=enc_dir,
+        data_process_dir=proc_dir,
+        id_cols=id_cols_norm,
+        target_cls_col=target_cls_norm,
         positive_label=positive_label,
-        target_reg_col=hints.get("target_reg_col"),
-        group_cols=_safe_list(hints.get("group_cols", []))[:3],
-        date_cols=_safe_list(hints.get("date_cols", [])),
-        text_cols=_safe_list(hints.get("text_cols", [])),
-        ignore_cols=_safe_list(hints.get("ignore_cols", [])),
+        target_reg_col=target_reg_norm,
+        group_cols=_safe_list(group_cols_norm)[:3],
+        date_cols=_safe_list(date_cols_norm),
+        text_cols=_safe_list(text_cols_norm),
+        ignore_cols=_safe_list(ignore_cols_norm),
         numeric_to_cat=True,
         numeric_bins=10,
-        numeric_keep_continuous=_safe_list(hints.get("numeric_keep_continuous", [])),
+        numeric_keep_continuous=_safe_list(keep_continuous),
         max_onehot_cardinality=80,
         add_date_parts=True,
         verbose=True,
     )
+
 
     # Optional split build (not fatal)
     try:
@@ -2326,6 +2547,7 @@ def preprocess_dataset_endpoint(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preprocess failed: {e}")
+    
 
     # Resolve processed key
     processed_key = (
@@ -2372,7 +2594,19 @@ def preprocess_dataset_endpoint(
 
     if not processed_key:
         raise HTTPException(status_code=500, detail="Pipeline did not return processed data key")
+     # after you compute artifacts & processed_key
+    rows_processed = artifacts.get("rows_processed")
+    cols_processed = artifacts.get("cols_processed")
 
+    is_nonempty_remote = _remote_csv_has_rows(processed_key) if processed_key else False
+
+    produced_empty = (
+        (rows_processed is not None and int(rows_processed) == 0)
+        or (cols_processed is not None and int(cols_processed) == 0)   # ← add this
+        or (not rows_processed and not is_nonempty_remote)
+    )
+
+    null_rate_before_sample = compute_null_rate(sample_df)
     # Persist: store BOTH paths (preserve original)
     with get_user_db(current_user) as db:
         ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
@@ -2425,6 +2659,7 @@ def preprocess_dataset_endpoint(
             "id_cols": cfg.id_cols,
             "target_cls_col": cfg.target_cls_col,
             "positive_label": cfg.positive_label,
+            "target_source": target_source,
             "target_reg_col": cfg.target_reg_col,
             "group_cols": cfg.group_cols,
             "date_cols": cfg.date_cols,
@@ -2460,11 +2695,18 @@ def preprocess_dataset_endpoint(
         "old_file_path": original_key,
         "new_file_path": processed_key,
         "meta": {
-            "data_gaps": (meta or {}).get("data_gaps"),
-            "assumptions": (meta or {}).get("assumptions"),
-            "priors": (meta or {}).get("priors"),
-            "prior_provenance": (meta or {}).get("prior_provenance"),
-        },
+        "data_gaps": (meta or {}).get("data_gaps"),
+        "assumptions": (meta or {}).get("assumptions"),
+        "priors": (meta or {}).get("priors"),
+        "prior_provenance": (meta or {}).get("prior_provenance"),
+        "suggested": (meta or {}).get("suggested"),
+        "hints": {
+        "target_cls_candidates": (hints or {}).get("target_cls_candidates"),
+        "why": (hints or {}).get("why"),
+    },
+
+    },
+
     }
 
     return JSONResponse(content=sanitize_for_json(payload), status_code=200)
@@ -2587,39 +2829,876 @@ def clean_json(obj):
 
     return obj
 import os
+ALLOWED_EXTS = {'.csv', '.tsv', '.xlsx', '.xls', '.parquet', '.json', '.jsonl'}
+
+def _profile_light(path: str, fmt: str) -> Dict[str, Any]:
+    """
+    Lightweight schema + row_count estimate without fully reading huge files.
+    Uses your readers where possible, but prefers sampling.
+    """
+    fmt = fmt.lower()
+
+    # CSV / TSV: sample + cheap line count
+    if fmt in ("csv", "tsv"):
+        sep = "\t" if fmt == "tsv" else None
+        try:
+            df_sample = pd.read_csv(path, nrows=SAMPLE_ROWS, sep=sep, engine="python")
+        except Exception:
+            df_sample = pd.read_csv(path, nrows=SAMPLE_ROWS, sep=sep)
+
+        try:
+            with open(path, "rb") as f:
+                total_lines = sum(1 for _ in f)
+            # header line present if pandas inferred header
+            est_rows = max(total_lines - 1, len(df_sample))
+        except Exception:
+            est_rows = len(df_sample)
+
+        schema = {c: str(df_sample[c].dtype) for c in df_sample.columns}
+        return {"schema": schema, "row_estimate": est_rows, "sample": df_sample}
+
+    # XLSX/XLS: sample first sheet (pandas supports nrows)
+    if fmt in ("xlsx", "xls"):
+        df_sample = pd.read_excel(path, nrows=SAMPLE_ROWS)
+        schema = {c: str(df_sample[c].dtype) for c in df_sample.columns}
+        return {"schema": schema, "row_estimate": None, "sample": df_sample}
+
+    # Parquet: try pyarrow metadata (no full read)
+    if fmt == "parquet":
+        try:
+            import pyarrow.parquet as pq
+            pf = pq.ParquetFile(path)
+            row_count = pf.metadata.num_rows if pf.metadata else None
+            # schema via arrow
+            arrow_schema = pf.schema_arrow if hasattr(pf, "schema_arrow") else None
+            schema = {f.name: str(f.type) for f in (arrow_schema or [])}
+            # sample: read first row group, but bounded
+            sample_df = None
+            if pf.metadata and pf.metadata.num_row_groups > 0:
+                tb = pf.read_row_group(0)
+                # cap to SAMPLE_ROWS if needed
+                if tb.num_rows > SAMPLE_ROWS:
+                    tb = tb.slice(0, SAMPLE_ROWS)
+                sample_df = tb.to_pandas()
+            return {"schema": schema, "row_estimate": row_count, "sample": sample_df}
+        except Exception:
+            # fallback: minimal info
+            return {"schema": {}, "row_estimate": None, "sample": None}
+
+    # JSON/JSONL: sample without loading all
+    if fmt in ("jsonl", "json"):
+        # JSONL: read first N lines
+        if fmt == "jsonl":
+            rows = []
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for i, line in enumerate(f):
+                        if i >= SAMPLE_ROWS: break
+                        line = line.strip()
+                        if not line: continue
+                        try:
+                            rows.append(json.loads(line))
+                        except Exception:
+                            continue
+                df = pd.DataFrame(rows) if rows else pd.DataFrame()
+                schema = {c: str(df[c].dtype) for c in df.columns}
+                # estimate by counting lines
+                try:
+                    with open(path, "rb") as f:
+                        row_estimate = sum(1 for _ in f)
+                except Exception:
+                    row_estimate = len(rows) or None
+                return {"schema": schema, "row_estimate": row_estimate, "sample": df}
+            except Exception:
+                return {"schema": {}, "row_estimate": None, "sample": None}
+        else:
+            # plain JSON: try to read and normalize a small slice
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    part = data[:SAMPLE_ROWS]
+                    df = pd.json_normalize(part) if part else pd.DataFrame()
+                    row_estimate = len(data)
+                else:
+                    df = pd.json_normalize(data)
+                    row_estimate = 1
+                schema = {c: str(df[c].dtype) for c in df.columns}
+                return {"schema": schema, "row_estimate": row_estimate, "sample": df}
+            except Exception:
+                return {"schema": {}, "row_estimate": None, "sample": None}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported format '{fmt}'")
+def _detect_format_from_name(filename: str) -> str:
+    return (PathL(filename).suffix.lower().lstrip('.') or '').strip()
+# Tunables to avoid heavy ingestion inline
+MAX_INLINE_MB   = 25           # if file > this, skip DB ingest
+MAX_INLINE_ROWS = 200_000      # if rows > this, skip DB ingest
+SAMPLE_ROWS     = 5_000        # sample for profiling
+
+def safe_table_name(name: str) -> str:
+    return name.strip().replace(" ", "_").lower()
+def infer_sqlalchemy_column(name, dtype):
+    """Infer SQLAlchemy column type from pandas dtype."""
+    if pd.api.types.is_integer_dtype(dtype):
+        return Column(name, Integer)
+    elif pd.api.types.is_float_dtype(dtype):
+        return Column(name, Float)
+    else:
+        return Column(name, String)
+import logging, re
+from pathlib import Path as PathL
 from fastapi import HTTPException, Depends, Query
+from sqlalchemy import MetaData, Table, text
+async def _process_single_upload(
+    file: UploadFile,
+    name: str,
+    description: Optional[str],
+    delimiter: Optional[str],
+    fmt_hint: Optional[str],
+    current_user,
+):
+    logger.info(f"Upload by user={getattr(current_user,'id',None)}: {file.filename}")
+
+    ext = PathL(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {ext}. Allowed: {', '.join(sorted(ALLOWED_EXTS))}"
+        )
+
+    fmt = (fmt_hint or _detect_format_from_name(file.filename)).lower()  # csv/tsv/xlsx/xls/parquet/json/jsonl
+    if fmt == "":  # no suffix somehow
+        fmt = "csv"
+
+    temp_path = None
+    try:
+        # 1) Persist to disk
+        await file.seek(0)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext or ".bin") as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_path = tmp.name
+
+        file_size_mb = os.path.getsize(temp_path) / (1024 * 1024)
+
+        # 2) Upload to Supabase as-is
+        supabase_path = upload_file_to_supabase(
+            user_id=str(current_user.id),
+            file_path=temp_path,
+            filename=file.filename,
+        )
+
+        # 3) Lightweight profiling (no full read)
+        prof = _profile_light(temp_path, fmt)
+        schema = prof.get("schema") or {}
+        row_estimate = prof.get("row_estimate")
+        sample_df: Optional[pd.DataFrame] = prof.get("sample")
+
+        table_name = safe_table_name(name)
+
+        # 4) Decide whether to inline-ingest
+        do_ingest = (
+            file_size_mb <= MAX_INLINE_MB and
+            (row_estimate is None or row_estimate <= MAX_INLINE_ROWS) and
+            sample_df is not None and not sample_df.empty
+        )
+
+        # 5) Register + optional ingest
+        with get_user_db(current_user) as db:
+            dataset_meta = {}
+
+            if do_ingest:
+                metadata = MetaData()
+                cols = [infer_sqlalchemy_column(col, sample_df[col].dtype) for col in sample_df.columns]
+                dataset_table = Table(table_name, metadata, *cols)
+                dataset_table.create(bind=db.bind, checkfirst=True)
+
+                # For CSV/TSV small files you can attempt a full read; otherwise just insert the sample
+                df_to_insert = sample_df
+                if fmt in ("csv", "tsv") and row_estimate and row_estimate <= MAX_INLINE_ROWS:
+                    try:
+                        # cautious “maybe full read”
+                        df_full = pd.read_csv(temp_path, sep=("\t" if fmt == "tsv" else None), engine="python")
+                        df_to_insert = df_full
+                    except Exception:
+                        pass
+
+                if "id" not in df_to_insert.columns:
+                    df_to_insert.insert(0, "id", range(1, len(df_to_insert) + 1))
+
+                records = df_to_insert.replace({np.nan: None}).to_dict(orient="records")
+                if records:
+                    db.execute(dataset_table.insert(), records)
+
+                dataset_meta.update({
+                    "row_count": len(df_to_insert),
+                    "column_count": df_to_insert.shape[1],
+                    "external_only": False,
+                })
+            else:
+                dataset_meta.update({
+                    "row_count": row_estimate,
+                    "column_count": len(schema) if schema else None,
+                    "external_only": True,
+                })
+
+            dataset = register_dataset(
+                db=db,
+                name=name,
+                description=description,
+                table_name=table_name if not dataset_meta["external_only"] else None,
+                file_path=supabase_path,
+                row_count=dataset_meta["row_count"],
+                column_count=dataset_meta["column_count"],
+                schema=schema,
+                overwrite_existing=True,
+            )
+            db.commit()
+            db.refresh(dataset)
+
+        # 6) Update storage used
+        with master_db_cm() as master_db:
+            master_db.execute(
+                text("""
+                    UPDATE users
+                    SET storage_used = storage_used + :additional
+                    WHERE id = :user_id
+                """),
+                {"additional": file_size_mb, "user_id": current_user.id},
+            )
+
+        return {
+            "message": "Dataset uploaded successfully",
+            "dataset_id": dataset.id,
+            "name": dataset.name,
+            "rows": row_estimate,
+            "columns": len(schema) if schema else None,
+            "external_only": dataset_meta["external_only"],
+            "size_mb": round(file_size_mb, 2),
+            "path": supabase_path,
+            "ingested_inline": not dataset_meta["external_only"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error processing dataset")
+        raise HTTPException(status_code=500, detail=f"Error processing dataset: {e}")
+    finally:
+        try:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    delimiter: Optional[str] = Form(None),
+    fmt_hint: Optional[str] = Form(None),
+    current_user = Depends(get_current_active_user),
+):
+    return await _process_single_upload(file, name, description, delimiter, fmt_hint, current_user)
+
+
+# 3) Optional: multi-file route
+@router.post("/batch", status_code=status.HTTP_201_CREATED)
+async def upload_dataset_batch(
+    files: List[UploadFile] = File(...),
+    meta_json: Optional[str] = Form(None),   # JSON mapping by index or filename
+    current_user = Depends(get_current_active_user),
+):
+    metas = {}
+    if meta_json:
+        try:
+            metas = json.loads(meta_json)
+        except Exception:
+            raise HTTPException(400, "meta_json must be valid JSON")
+
+    results = []
+    for idx, f in enumerate(files):
+        m = metas.get(str(idx)) or metas.get(f.filename) or {}
+        name       = m.get("name") or f.filename
+        desc       = m.get("description")
+        delimiter  = m.get("delimiter")
+        fmt_hint   = m.get("fmt_hint")
+        res = await _process_single_upload(f, name, desc, delimiter, fmt_hint, current_user)
+        results.append(res)
+    return {"items": results}
+
+@router.get("/")
+def list_datasets(current_user = Depends(get_current_active_user)):
+    try:
+        # Using the get_user_db context manager to automatically handle session closure
+        with get_user_db(current_user) as user_db: 
+            # Query the datasets from the database
+            datasets = user_db.query(Dataset).all()
+
+            # Format the datasets into a dictionary
+            return {
+                "datasets": [
+                    {
+                        "id": d.id,
+                        "name": d.name,
+                        "created_at": d.created_at.date().isoformat() if d.created_at else None,
+                        "rows": d.row_count,
+                        "columns": d.column_count,
+                        "description": d.description,
+                    } for d in datasets
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Error listing datasets: {str(e)}")  # Log the error
+        raise HTTPException(status_code=500, detail=f"Error listing datasets: {str(e)}")
+
+@router.get("/{dataset_id}")
+async def get_dataset_metadata(
+    dataset_id: int = Path(..., gt=0),
+    current_user=Depends(get_current_active_user)
+):
+    with get_user_db(current_user) as db:
+        dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        return {
+            "id": dataset.id,
+            "name": dataset.name,
+            "description": dataset.description,
+            "created_at": dataset.created_at,
+            "row_count": dataset.row_count,
+            "column_count": dataset.column_count,
+        }
+from fastapi import Query, HTTPException, Depends
+from sqlalchemy import MetaData, Table, select, inspect
+from sqlalchemy.exc import NoSuchTableError, ProgrammingError, OperationalError
+from sqlalchemy.sql.schema import quoted_name
+# Updated dataset preview endpoint
+def _try_preview_from_keys(keys, limit, *, user_id: int, dataset_id: int):
+    for key in [k for k in keys if k]:
+        tmp = None
+        try:
+            logger.info(f"Attempting to preview key: {key}")
+            tmp = _download_object_to_temp(key, user_id=user_id, dataset_id=dataset_id)
+            
+            # Add file size check
+            if not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
+                logger.warning(f"Preview: downloaded file is empty for key {key}")
+                continue
+                
+            rows = fetch_preview_data(tmp)
+            logger.info(f"Preview: fetch_preview_data returned type {type(rows)} for key {key}")
+            
+            if rows is None:
+                logger.warning(f"Preview: fetch_preview_data returned None for key {key}")
+                continue
+            if not isinstance(rows, list):
+                logger.warning(f"Preview: unexpected rows type {type(rows)} for key {key}")
+                continue
+            if len(rows) == 0:
+                logger.warning(f"Preview: no rows found for key {key}")
+                continue
+                
+            return rows[:limit], key
+        except Exception as e:
+            logger.error(f"Preview: failed reading {key}: {e}", exc_info=True)
+        finally:
+            if tmp and os.path.exists(tmp):
+                try: 
+                    os.remove(tmp)
+                except Exception as cleanup_e: 
+                    logger.warning(f"Failed to cleanup temp file {tmp}: {cleanup_e}")
+    return None, None
+
+def fetch_preview_data(file_path: str, max_rows: int = 100) -> list:
+    """
+    Safely read preview data from a CSV file.
+    Returns a list of dictionaries, or empty list if file cannot be read.
+    """
+    if not file_path or not os.path.exists(file_path):
+        logger.warning(f"Preview file does not exist: {file_path}")
+        return []
+    
+    try:
+        # Check file size first
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            logger.warning(f"Preview file is empty: {file_path}")
+            return []
+        
+        logger.info(f"Reading preview from {file_path} (size: {file_size} bytes)")
+        
+        # Try pandas first (more robust for various CSV formats)
+        try:
+            df = pd.read_csv(file_path, nrows=max_rows, encoding='utf-8')
+            if df.empty:
+                logger.warning(f"CSV file contains no data: {file_path}")
+                return []
+            logger.info(f"Successfully read {len(df)} rows with pandas")
+            return df.fillna('').to_dict('records')
+        except UnicodeDecodeError:
+            # Try different encodings
+            for encoding in ['latin1', 'cp1252', 'iso-8859-1']:
+                try:
+                    df = pd.read_csv(file_path, nrows=max_rows, encoding=encoding)
+                    if df.empty:
+                        continue
+                    logger.info(f"Successfully read {len(df)} rows with pandas using {encoding} encoding")
+                    return df.fillna('').to_dict('records')
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(f"Pandas CSV read failed: {e}")
+        
+        # Fallback to standard csv module
+        rows = []
+        encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+        
+        for encoding in encodings_to_try:
+            try:
+                with open(file_path, 'r', encoding=encoding, newline='') as f:
+                    # Try to detect if file has headers
+                    sample = f.read(1024)
+                    f.seek(0)
+                    
+                    sniffer = csv.Sniffer()
+                    has_header = sniffer.has_header(sample)
+                    
+                    reader = csv.DictReader(f) if has_header else csv.reader(f)
+                    
+                    for i, row in enumerate(reader):
+                        if i >= max_rows:
+                            break
+                            
+                        if isinstance(row, dict):
+                            # DictReader case
+                            rows.append(row)
+                        else:
+                            # Regular reader case - convert to dict
+                            if i == 0 and not has_header:
+                                # Create generic column names
+                                headers = [f'col_{j}' for j in range(len(row))]
+                                rows.append(dict(zip(headers, row)))
+                            else:
+                                # This shouldn't happen with proper logic above
+                                continue
+                
+                if rows:
+                    logger.info(f"Successfully read {len(rows)} rows with csv module using {encoding} encoding")
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"CSV read failed with {encoding}: {e}")
+                continue
+        
+        return rows[:max_rows]
+        
+    except Exception as e:
+        logger.error(f"Failed to read CSV preview from {file_path}: {e}", exc_info=True)
+        return []
+
+@router.get("/{dataset_id}/preview")
+def get_dataset_preview(
+    dataset_id: int,
+    limit: int = Query(20, gt=1, le=200),
+    current_user = Depends(get_current_active_user),
+):
+    try:
+        # Who am I (for storage keys)
+        uid = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthenticated")
+
+        # Open the tenant DB and load the dataset row
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+
+            created_at_str = ds.created_at.strftime("%Y-%m-%d") if ds.created_at else "Unknown date"
+            engine = db.bind  # keep a handle for reflection as a last resort
+
+        # 1) PROCESSED FIRST (use either explicit processed path or current pointer)
+        processed_keys = []
+        if getattr(ds, "processed_file_path", None):
+            processed_keys.append(ds.processed_file_path)
+        if getattr(ds, "file_path", None):
+            processed_keys.append(ds.file_path)
+        # de-dup while preserving order
+        seen = set()
+        processed_keys = [k for k in processed_keys if k and not (k in seen or seen.add(k))]
+
+        rows, _used_key = _try_preview_from_keys(processed_keys, limit, user_id=uid, dataset_id=dataset_id)
+        if rows:
+            return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
+
+        # 2) ORIGINAL FALLBACK
+        original_keys = []
+        if getattr(ds, "original_file_path", None):
+            original_keys.append(ds.original_file_path)
+        original_keys = [k for k in original_keys if k and k not in processed_keys]
+
+        rows, _used_key = _try_preview_from_keys(original_keys, limit, user_id=uid, dataset_id=dataset_id)
+        if rows:
+            return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
+
+        # 3) DB REFLECTION (last resort)
+        table_name = getattr(ds, "table_name", None)
+        table_schema = getattr(ds, "table_schema", None) or getattr(ds, "schema", None)
+        if table_name and engine is not None:
+            md = MetaData()
+            t = None
+            try:
+                t = Table(
+                    quoted_name(table_name, True),
+                    md,
+                    schema=quoted_name(table_schema, True) if table_schema else None,
+                    autoload_with=engine,
+                )
+            except (NoSuchTableError, ProgrammingError, OperationalError):
+                t = None
+            except Exception:
+                t = None
+
+            if t is None:
+                # Probe other schemas if needed
+                try:
+                    insp = inspect(engine)
+                    for sch in insp.get_schema_names():
+                        if sch in ("pg_catalog", "information_schema"):
+                            continue
+                        if table_name in set(insp.get_table_names(schema=sch)):
+                            t = Table(
+                                quoted_name(table_name, True), md,
+                                schema=quoted_name(sch, True),
+                                autoload_with=engine,
+                            )
+                            break
+                except Exception as e:
+                    logger.warning(f"Schema probe failed in preview: {e}")
+
+            if t is not None:
+                with engine.connect() as conn:
+                    result = conn.execute(select(t).limit(limit))
+                    rows = [dict(r._mapping) for r in result]
+                return {"name": ds.name, "created_at": created_at_str, "preview_data": rows}
+
+        # Nothing available
+        raise HTTPException(status_code=404, detail="File not available for preview")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting dataset preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting dataset preview: {e}")
+@router.get("/{dataset_id}/data")
+async def fetch_dataset_data(
+    dataset_id: int, 
+    limit: int = 100,
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Get data from a dataset with pagination.
+    """
+    try:
+        result = get_dataset_data(current_user.email, dataset_id, limit=limit)
+        if not result:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        
+        # Format the created_at date
+        formatted_created_at = result["dataset"].created_at.strftime('%Y-%m-%d') if result["dataset"].created_at else 'Unknown date'
+
+        return {
+            "dataset": {
+                "id": result["dataset"].id,
+                "name": result["dataset"].name,
+                "created_at": formatted_created_at  # Add created_at here
+            },
+            "columns": list(result["columns"]),
+            "data": result["data"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving dataset data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving dataset data: {str(e)}")
+
+@router.post("/{dataset_id}/query")
+async def query_dataset(
+    dataset_id: int,
+    query_data: DatasetQuery,
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Run a custom SQL query against a dataset.
+    Only SELECT statements are allowed for security.
+    """
+    try:
+        result = query_dataset(current_user.email, dataset_id, query_data.query)
+        if not result:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        
+        formatted_created_at = result["dataset"].created_at.strftime('%Y-%m-%d') if result["dataset"].created_at else 'Unknown date'
+
+        return {
+            "dataset": {
+                "id": result["dataset"].id,
+                "name": result["dataset"].name,
+                "created_at": formatted_created_at
+            },
+            "columns": list(result["columns"]),
+            "data": result["data"],
+            "row_count": result["row_count"]
+        }
+    except ValueError as e:
+        logger.warning(f"Invalid query for dataset {dataset_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error executing query on dataset {dataset_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error executing query: {str(e)}")
+
+@router.get(
+    "/{dataset_id}//download",
+    response_class=FileResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def download_dataset(
+    dataset_id: int,
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Return the raw CSV file for a dataset.
+    """
+    try:
+        # 1) Open the user's DB and load the Dataset record
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+
+        # 2) Ensure the file exists on disk
+        if not ds.file_path or not os.path.exists(ds.file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        # 3) Stream it back
+        return FileResponse(
+            path=ds.file_path,
+            filename=f"{ds.name}.csv",
+            media_type="text/csv"
+        )
+
+    except HTTPException:
+        # Re-raise 404s and auth errors
+        raise
+    except Exception as e:
+        # Any other error
+        logger.error(f"Error in download_dataset: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error downloading dataset: {e}"
+        )
+
+@router.post("/profile")
+async def dataset_profile(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        df = pd.read_csv(StringIO(contents.decode("utf-8")))
+        profile = profile_dataset(df)
+        return JSONResponse(content=profile)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to profile dataset: {str(e)}")
+        import pandas as pd
+
+def profile_dataset(df: pd.DataFrame) -> dict:
+    profile = {
+        "row_count": len(df),
+        "column_count": len(df.columns),
+        "missing_values": (df.isnull().sum() / len(df) * 100).round(2).to_dict(),
+        "data_types": df.dtypes.apply(lambda dt: str(dt)).to_dict(),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "outliers": {},
+    }
+
+    for col in df.select_dtypes(include="number").columns:
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
+        iqr = q3 - q1
+        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        profile["outliers"][col] = int(((df[col] < lower) | (df[col] > upper)).sum())
+
+    return profile
+from typing import Literal, Dict, Any, List
+import hashlib, json, os, shutil, tempfile, time
+from uuid import uuid4
+from fastapi import Query, HTTPException, Depends
+def _grade_mapping(alias_hits, required_hits, ts_mean, num_mean, gaps_dict):
+    score = 0
+    score += 40 * min(alias_hits / max(1, required_hits), 1.0)
+    score += 20 * float(ts_mean or 0.0)
+    score += 20 * float(num_mean or 0.0)
+    penalty = 0
+    for r in (gaps_dict or {}).values():
+        st = (r.get("status") or "").lower()
+        crit = (r.get("criticality") or "").lower()
+        if st == "missing" and crit == "high":
+            penalty += 20
+        elif st in ("missing","partial") and crit == "high":
+            penalty += 10
+    score = max(0, min(100, score - penalty))
+    return ("A" if score>=93 else "A-" if score>=90 else "B+" if score>=87 else
+            "B" if score>=83 else "B-" if score>=80 else "C+" if score>=77 else
+            "C" if score>=73 else "C-" if score>=70 else "D")
+
+def _build_intake_proof(result, base_currency: str) -> dict:
+    meta = result.meta
+    df_raw = result.df_raw
+    df_norm = result.df_normalized
+
+    # header metrics
+    alias_hits = sum(1 for m in meta.header_map.values() if getattr(m, "canonical_hint", None))
+    unit_tags = sorted({t for m in meta.header_map.values() for t in getattr(m, "tags", [])})
+    # duplicates resolved
+    uniq_norm_names = {m.normalized_name for m in meta.header_map.values()}
+    duplicates_resolved = max(0, len(meta.header_map) - len(uniq_norm_names))
+
+    # parse success means by semantic
+    ts_rates, num_rates, bool_rates = [], [], []
+    id_like_cols = []
+    for col, ti in (meta.inferred_types or {}).items():
+        vr = float(getattr(ti, "valid_rate", 0.0) or 0.0)
+        sem = getattr(ti, "semantic", "")
+        if sem == "timestamp": ts_rates.append(vr)
+        if sem in ("numeric","money","percent"): num_rates.append(vr)
+        if sem == "boolean": bool_rates.append(vr)
+        if sem == "id": id_like_cols.append(col)
+
+    ts_mean  = round(sum(ts_rates)/len(ts_rates), 4) if ts_rates else 0.0
+    num_mean = round(sum(num_rates)/len(num_rates), 4) if num_rates else 0.0
+    bool_mean= round(sum(bool_rates)/len(bool_rates),4) if bool_rates else 0.0
+
+    # json expansion (your meta.json_columns is a dict of {col:[...]} or a list)
+    if isinstance(meta.json_columns, dict):
+        json_cols = list(meta.json_columns.keys())
+    else:
+        json_cols = list(meta.json_columns or [])
+    new_cols_added = max(0, int(df_norm.shape[1]) - int(df_raw.shape[1]))
+
+    # winsorization impact
+    capped_counts = {}
+    for c in df_norm.columns:
+        if not c.endswith("_capped"): 
+            continue
+        base = c[:-7]  # remove "_capped"
+        if base in df_norm.columns:
+            try:
+                lhs = pd.to_numeric(df_norm[c], errors="coerce")
+                rhs = pd.to_numeric(df_norm[base], errors="coerce")
+                capped_counts[c] = int((lhs.notna() & rhs.notna() & (lhs != rhs)).sum())
+            except Exception:
+                capped_counts[c] = None
+
+    # derived numeric cols
+    base_ccy = (base_currency or "USD").lower()
+    derived_numeric = [c for c in df_norm.columns if c.endswith(("_num","_rate", f"_{base_ccy}"))]
+
+    # gaps & assumptions (already computed in meta)
+    gaps = meta.data_gaps or {}
+    gap_summary = {
+        "missing_high":   [k for k,v in gaps.items() if (v.get("status")=="missing" and v.get("criticality")=="high")],
+        "missing_medium": [k for k,v in gaps.items() if (v.get("status")=="missing" and v.get("criticality")=="medium")],
+        "present_but_sparse": [k for k,v in gaps.items() if v.get("status")=="partial"],
+    }
+    from harvester import EXPECTED_SIGNALS
+    # grade
+    required_hits = len(EXPECTED_SIGNALS)
+    letter = _grade_mapping(alias_hits, required_hits, ts_mean, num_mean, gaps)
+
+    return {
+        "dialect": {
+            "delimiter": meta.dialect.delimiter,
+            "encoding": meta.dialect.encoding,
+            "has_header": bool(meta.dialect.has_header),
+            "number_format": {"decimal": meta.dialect.decimal, "thousands": meta.dialect.thousands},
+            "delimiter_confidence": float(meta.dialect.confidence or 0.0),
+        },
+        "parsing": {
+            "timestamp_parse_mean": ts_mean,
+            "numeric_parse_mean":   num_mean,
+            "boolean_parse_mean":   bool_mean,
+        },
+        "headers": {
+            "alias_hits": int(alias_hits),
+            "duplicates_resolved": int(duplicates_resolved),
+            "unit_tags_detected": unit_tags,
+        },
+        "json_expansion": {
+            "json_expanded_columns": json_cols,
+            "new_columns_added": int(new_cols_added),
+        },
+        "standardization": {
+            "base_currency": base_currency,
+            "derived_numeric_columns": derived_numeric,
+        },
+        "winsorization": {
+            "capped_columns": list(capped_counts.keys()),
+            "rows_capped_per_column": capped_counts,
+            "quantiles": {"lower_q": 0.01, "upper_q": 0.99},
+        },
+        "coverage": {
+            "row_coverage": round(float(df_norm.shape[0])/max(1.0, float(df_raw.shape[0])), 4),
+            "col_coverage": round(float(df_norm.shape[1])/max(1.0, float(df_raw.shape[1])), 4),
+            "id_like_columns": id_like_cols,
+        },
+        "currency_markers": meta.currency_symbols or {},
+        "gap_summary": gap_summary,
+        "assumptions_applied": meta.assumptions or {},
+        "anomaly_count": len(meta.anomalies or []),
+        "anomalies": meta.anomalies or [],
+        "mapping_quality": letter,
+    }
 
 @router.post("/{dataset_id}/intake")
 def run_intake_and_normalization(
     dataset_id: int,
     base_currency: str = Query("USD"),
     country_hint: str = Query("US"),
-    preview_rows: int = Query(50, ge=1, le=500),
+    # ⬇️ new controls (defaults keep responses small)
+    include_preview: bool = Query(False, description="Include tiny table samples"),
+    preview_rows: int = Query(10, ge=1, le=100, description="If include_preview=true"),
+    schema_cols: int = Query(12, ge=1, le=200, description="How many columns to sample in schema"),
+    meta_level: Literal["none","summary","full"] = Query("summary"),
     current_user = Depends(get_current_active_user),
 ):
     """
-    Reads the dataset CSV for `dataset_id`, runs Intake & Normalization,
-    stores artifacts, and returns a JSON-friendly summary + table previews.
+    Runs Intake & Normalization and returns a concise receipt.
+    No table data is returned unless include_preview=true.
     """
+    t0 = time.perf_counter()
+    corr_id = f"corr-{uuid4().hex[:8]}"
+
     user_id = getattr(current_user, "id", getattr(current_user, "user_id", None))
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
-    # 1) Resolve local CSV (DEV OVERRIDE supported)
+    # 1) Resolve CSV
     try:
-        hardcoded = os.getenv("HARDCODE_CSV")  # e.g. /Users/me/dev/sample.csv
+        hardcoded = os.getenv("HARDCODE_CSV")
         if hardcoded:
             src_csv_path = os.path.abspath(hardcoded)
         else:
             with get_user_db(current_user) as db:
-                src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
+                src_csv_path = resolve_and_cache_dataset_csv(
+                    db=db, dataset_id=dataset_id, user_id=user_id
+                )
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Failed to resolve dataset CSV: {e}")
 
     if not src_csv_path or not os.path.exists(src_csv_path):
         raise HTTPException(status_code=404, detail=f"Local CSV for dataset not found: {src_csv_path}")
 
-    # 2) Run intake
+    # 2) Intake
     try:
         result = intake_and_normalize(
             src_csv_path,
@@ -2630,52 +3709,56 @@ def run_intake_and_normalization(
         logger.exception("Intake failed for dataset %s", dataset_id)
         raise HTTPException(status_code=500, detail=f"Intake & normalization failed: {type(e).__name__}: {e}")
 
-    # 3) Persist normalized CSV + meta to Supabase
+    # 3) Persist canonical artifacts
     temp_dir = tempfile.mkdtemp(prefix=f"d{dataset_id}_intake_")
     meta_dict: Dict[str, Any] = {}
     artifacts: Dict[str, Any] = {}
     try:
-        # Write temp files
+        # normalized CSV
         norm_csv = os.path.join(temp_dir, f"dataset_{dataset_id}_normalized.csv")
         result.df_normalized.to_csv(norm_csv, index=False)
+        norm_bytes = open(norm_csv, "rb").read()
+        norm_sha256 = hashlib.sha256(norm_bytes).hexdigest()
+        norm_size = len(norm_bytes)
 
+        # meta json (full)
         meta_json_path = os.path.join(temp_dir, f"dataset_{dataset_id}_intake_meta.json")
         meta_dict = _meta_to_json(result.meta)
-        with open(meta_json_path, "w", encoding="utf-8") as f:
-            json.dump(meta_dict, f, ensure_ascii=False, indent=2)
+        meta_bytes = json.dumps(meta_dict, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        with open(meta_json_path, "wb") as f:
+            f.write(meta_bytes)
+        meta_sha256 = hashlib.sha256(meta_bytes).hexdigest()
+        meta_size = len(meta_bytes)
 
-        # Canonical keys (dataset-scoped)
         canon_norm_key = f"{dataset_id}/intake/normalized.csv"
         canon_meta_key = f"{dataset_id}/intake/intake_meta.json"
-        legacy_dataset_meta_key = f"{dataset_id}/meta.json"  # optional legacy
+        legacy_dataset_meta_key = f"{dataset_id}/meta.json"
 
-        # Upload canonical
         supa_norm = upload_file_to_supabase(user_id=str(user_id), file_path=norm_csv,      filename=canon_norm_key)
         supa_meta = upload_file_to_supabase(user_id=str(user_id), file_path=meta_json_path, filename=canon_meta_key)
-
-        # Optional legacy copy at dataset scope (same bytes)
         try:
             upload_file_to_supabase(user_id=str(user_id), file_path=meta_json_path, filename=legacy_dataset_meta_key)
         except Exception:
             logger.exception("Legacy dataset meta.json copy failed for dataset %s", dataset_id)
 
         artifacts.update({
-            "normalized_csv": supa_norm,
-            "intake_meta_json": supa_meta,
             "normalized_csv_key": f"{user_id}/{canon_norm_key}",
-            "intake_meta_key":    f"{user_id}/{canon_meta_key}",
-            "legacy_meta_key":    f"{user_id}/{legacy_dataset_meta_key}",
+            "normalized_csv_sha256": norm_sha256,
+            "normalized_csv_bytes": norm_size,
+            "intake_meta_key": f"{user_id}/{canon_meta_key}",
+            "intake_meta_sha256": meta_sha256,
+            "intake_meta_bytes": meta_size,
+            "legacy_meta_key": f"{user_id}/{legacy_dataset_meta_key}",
         })
 
-        # Persist pointers on Dataset row
+        # Persist pointers on dataset row
         try:
             with get_user_db(current_user) as db:
                 ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
                 if ds:
                     ds.intake_meta_path = f"{user_id}/{canon_meta_key}"
                     ds.meta_path = ds.meta_path or f"{user_id}/{legacy_dataset_meta_key}"
-                    db.add(ds)
-                    db.commit()
+                    db.add(ds); db.commit()
         except Exception:
             logger.exception("Failed to persist intake_meta_path for dataset %s", dataset_id)
 
@@ -2685,45 +3768,69 @@ def run_intake_and_normalization(
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    # 4) Previews (guard JSON-ability)
-    try:
-        preview_raw  = clean_json(_preview_table(result.df_raw, n=preview_rows))
-        preview_norm = clean_json(_preview_table(result.df_normalized, n=preview_rows))
-        stats_dict = clean_json({
-            "raw_rows": int(result.df_raw.shape[0]),
-            "raw_cols": int(result.df_raw.shape[1]),
-            "normalized_rows": int(result.df_normalized.shape[0]),
-            "normalized_cols": int(result.df_normalized.shape[1]),
-        })
-        meta_dict = clean_json(meta_dict)
-        artifacts = clean_json(artifacts)
-    except Exception as e:
-        logger.exception("Preview/clean_json failed for dataset %s", dataset_id)
-        raise HTTPException(status_code=500, detail=f"Preview serialization failed: {type(e).__name__}: {e}")
+    # 4) Build compact receipt payload
+    stats_dict = {
+        "raw_rows": int(result.df_raw.shape[0]),
+        "raw_cols": int(result.df_raw.shape[1]),
+        "normalized_rows": int(result.df_normalized.shape[0]),
+        "normalized_cols": int(result.df_normalized.shape[1]),
+    }
+    proof = _build_intake_proof(result, base_currency=base_currency)
+    # tiny schema sample (names + dtypes only)
+    cols: List[str] = list(result.df_normalized.columns)[:schema_cols]
+    schema_sample = [{"name": c, "dtype": str(result.df_normalized[c].dtype)} for c in cols]
+    # type distribution
+    type_dist: Dict[str, int] = {}
+    for dtype, count in result.df_normalized.dtypes.value_counts().items():
+        type_dist[str(dtype)] = int(count)
 
-    # 5) Persist intake artifacts summary
-    try:
-        save_intake_artifacts(
-            dataset_id=dataset_id,
-            meta=meta_dict,
-            user_id=user_id,
-            stats=stats_dict,
-            preview={"raw": preview_raw, "normalized": preview_norm},
-            artifacts=artifacts,
-        )
-    except Exception as e:
-        logger.exception("save_intake_artifacts failed for dataset %s", dataset_id)
-        raise HTTPException(status_code=500, detail=f"save_intake_artifacts failed: {type(e).__name__}: {e}")
+    # optional minimal preview (first few rows) — OFF by default
+    preview_payload: Dict[str, Any] | None = None
+    if include_preview:
+        preview_payload = {
+            "normalized": clean_json(_preview_table(result.df_normalized, n=preview_rows)),
+            "raw": clean_json(_preview_table(result.df_raw, n=min(preview_rows, 10))),  # keep raw very small
+        }
 
-    # 6) Response
+    # optional meta levels
+    if meta_level == "none":
+        meta_payload = None
+    elif meta_level == "full":
+        meta_payload = clean_json(meta_dict)
+    else:  # "summary"
+        meta_payload = {
+            "number_format": meta_dict.get("number_format"),
+            "timezone_inference": meta_dict.get("timezone_inference"),
+            "anomaly_count": len(meta_dict.get("anomalies") or []),
+            "json_columns": {k: len(v or []) for k, v in (meta_dict.get("json_columns") or {}).items()},
+        }
+
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+
     return {
         "ok": True,
+        "message": "Intake & normalization succeeded",
+        "correlation_id": corr_id,
         "dataset_id": dataset_id,
-        "artifacts": artifacts,
-        "meta": meta_dict,
-        "preview": {"raw": preview_raw, "normalized": preview_norm},
+        "duration_ms": duration_ms,
         "stats": stats_dict,
+        "schema": {
+            "total_columns": stats_dict["normalized_cols"],
+            "sample": schema_sample,
+            "type_distribution": type_dist,
+        },
+        "artifacts": artifacts,
+        "meta": meta_payload,            # unchanged
+        "preview": preview_payload,      # unchanged
+        "proof": (
+            {k:v for k,v in proof.items() if k in [
+                "dialect","parsing","headers","gap_summary","anomaly_count","mapping_quality"
+            ]}
+            if meta_level == "summary" else
+            ({} if meta_level == "none" else proof)
+        ),
     }
+
 
 if __name__ == "__main__":
     init_db()

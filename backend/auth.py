@@ -460,6 +460,7 @@ def verify_password_reset_token(token: str) -> str:
 
 @contextmanager
 def get_user_db(current_user: User):
+    import re
     """
     Context manager to get the session for the current user's database.
     """

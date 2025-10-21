@@ -20,10 +20,14 @@ from auth import get_current_active_user, User
 from storage import upload_file_to_supabase
 from planner import compile_plan, signals_from_meta, derive_signals_for_compile, SignalsIn, merge_signals
 from datasets import load_intake_meta, load_or_backfill_intake_meta
-from storage import sb_download_to_path
+from storage import sb_download_to_path, _strip_bucket_prefix
 #from .planner import compile_plan  # import your function
 # from .auth import get_current_active_user
 # from .storage import upload_file_to_supabase
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["planner"])
 CSV_PREVIEW_ROWS = 10
 
@@ -1217,7 +1221,7 @@ def _coerce_generic_as_orders(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]
         out["order_id"] = df[oid].astype("string")
 
     out["customer_id"] = (df[cid].astype("string") if cid else pd.Series([pd.NA]*len(df), dtype="string"))
-    out["order_date"]  = (pd.to_datetime(df[dtc], errors="coerce") if dtc else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]"))
+    out["order_date"]  = (pd.to_datetime(df["order_date"], errors="coerce", unit="s")) if dtc else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]")
 
     if amt:
         out["amount"] = (
@@ -1247,243 +1251,285 @@ def _looks_xlsx(name: str | None, head: bytes) -> bool:
     # xlsx zip signature is PK\x03\x04; rely on extension to reduce false positives
     return head.startswith(b"PK\x03\x04") and (name or "").lower().endswith(".xlsx")
 
-def _read_table_bytes(data: bytes | None, filename: str | None) -> tuple[Optional[pd.DataFrame], list[str]]:
+import os, io, gzip
+import pandas as pd
+from fastapi import HTTPException
+
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+
+def _key_only(key: str | None) -> str:
     """
-    Returns (df, warnings). Tries in this order:
-    1) gzip → CSV
-    2) CSV (python engine, sep sniff, bad-line skip, UTF-8-BOM)
-    3) Excel (xlsx) when the signature & extension match
-    4) Parquet
-    5) Final CSV fallbacks
+    Return the path *inside* the bucket, stripping any bucket prefix or leading slashes.
+    Examples:
+      "1/file.csv"                       -> "1/file.csv"
+      "user-uploads/1/file.csv"          -> "1/file.csv"
+      "/user-uploads/1/file.csv"         -> "1/file.csv"
+      "\\user-uploads\\1\\file.csv"      -> "1/file.csv"
     """
-    warns: list[str] = []
-    if not data:
-        return None, warns
+    if not key:
+        return ""
+    k = key.replace("\\", "/").lstrip("/")
+    # strip bucket prefix if present
+    if k.startswith(SUPABASE_BUCKET + "/"):
+        k = k[len(SUPABASE_BUCKET) + 1 :]
+    return k
 
-    head = data[:8]
+def _normalize_processed_key_for_storage(key: str | None) -> str:
+    """
+    Produce a bucket-internal path for Supabase .download().
+    Reject if caller passed a URL.
+    """
+    if not key:
+        return ""
+    if key.startswith(("http://", "https://")):
+        # If you want to allow URLs, pass via data_url path instead
+        raise HTTPException(status_code=500, detail="processed_key looks like a URL; use data_url instead")
+    path_only = _key_only(key)
+    if not path_only:
+        raise HTTPException(status_code=422, detail="processed_key is empty after normalization")
+    return path_only
 
-    # 1) If gzip magic, decompress and treat as CSV
-    if head.startswith(b"\x1f\x8b"):
-        try:
-            unz = gzip.decompress(data)
-            # utf-8-sig handles BOM; engine='python' allows sep=None sniff
-            return (
-                pd.read_csv(
-                    io.StringIO(unz.decode("utf-8-sig", errors="replace")),
-                    sep=None, engine="python", on_bad_lines="skip", low_memory=False
-                ),
-                warns,
-            )
-        except Exception as e:
-            warns.append(f"gz csv parse error: {e}")
+# --- your real download function wired in ---
+def _download_storage_bytes(key: str) -> bytes:
+    from storage import download_file_from_supabase  # your real function
+    path_only = _normalize_processed_key_for_storage(key)
+    blob = download_file_from_supabase(path_only)
+    if not blob or len(blob) < 5:
+        raise HTTPException(status_code=422, detail="processed_key download returned empty body")
+    return blob
 
-    # 2) CSV with delimiter sniff (handles ',', '\t', ';', '|')
+def _df_from_processed_key(key: str) -> pd.DataFrame:
+    blob = _download_storage_bytes(key)
+    # try gzip then plain csv
     try:
-        text = data.decode("utf-8-sig", errors="replace")
-        sample = "\n".join(text.splitlines()[:50])  # sniffer needs a sample
+        return pd.read_csv(io.BytesIO(gzip.decompress(blob)))
+    except Exception:
+        pass
+    try:
+        return pd.read_csv(io.BytesIO(blob))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"processed_key CSV parse failed: {e}")
+import httpx, pandas as pd, io
+
+async def _df_from_data_url(url: str) -> pd.DataFrame:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        r = await client.get(url)
+        if r.status_code != 200:
+            raise HTTPException(status_code=422, detail=f"data_url fetch failed: {r.status_code}")
+        if not r.content or len(r.content) < 5:
+            raise HTTPException(status_code=422, detail="data_url returned empty body")
+        # try gzip, then plain
+        raw = r.content
         try:
-            dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-            sep = dialect.delimiter
+            return pd.read_csv(io.BytesIO(gzip.decompress(raw)))
         except Exception:
-            sep = None  # let pandas sniff with engine='python'
-        return (
-            pd.read_csv(
-                io.StringIO(text),
-                sep=sep, engine="python", on_bad_lines="skip", low_memory=False
-            ),
-            warns,
-        )
-    except Exception as e:
-        warns.append(f"text csv parse error: {e}")
+            pass
+        try:
+            return pd.read_csv(io.BytesIO(raw))
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"data_url CSV parse failed: {e}")
 
-    # 3) Excel (xlsx) if it looks like one
-    try:
-        if _looks_xlsx(filename, head):
-            return (pd.read_excel(io.BytesIO(data)), warns)
-    except Exception as e:
-        warns.append(f"xlsx parse error: {e}")
-
-    # 4) Parquet
-    try:
-        return (pd.read_parquet(io.BytesIO(data)), warns)
-    except Exception as e:
-        warns.append(f"parquet parse error: {e}")
-
-    # 5) Final CSV fallbacks (binary read)
-    try:
-        return (
-            pd.read_csv(io.BytesIO(data), sep=None, engine="python", on_bad_lines="skip", low_memory=False),
-            warns,
-        )
-    except Exception as e:
-        warns.append(f"final csv parse error: {e}")
-        return None, warns
-# --- bytes loader for derive --------------------------------------------------
-from fastapi import UploadFile
-import tempfile, os, io
-import httpx
-
-async def _load_df_from_any(
-    *,
-    data_file: UploadFile | None,
-    processed_key: str | None,
-    data_url: str | None,
-    expected_kind: str | None,
-) -> tuple[Optional[pd.DataFrame], list[str], str]:
+async def _load_df_from_any(*, data_file, processed_key: str | None, data_url: str | None, expected_kind: str | None):
     """
-    Returns (df, warnings, source_used)
-    Tries: data_file -> processed_key (Supabase) -> data_url (server-side HTTP)
+    Try data_file (UploadFile), then data_url (HTTP), then processed_key (storage).
+    Return (df, warnings, source_used).
     """
-    warns: list[str] = []
+    warnings: list[str] = []
 
-    # 1) Direct bytes from client
+    # 1) direct upload wins
     if data_file is not None:
         try:
-            raw = await data_file.read()
-            if raw and len(raw) > 0:
-                df, w = _read_table_bytes(raw, getattr(data_file, "filename", None), expected_kind=expected_kind)
-                return df, warns + w, "data_file"
-            warns.append("data_file present but empty.")
+            content = await data_file.read()
+            if not content or len(content) < 5:
+                warnings.append("Uploaded data_file was empty.")
+            else:
+                # try gzip then plain
+                try:
+                    df = pd.read_csv(io.BytesIO(gzip.decompress(content)))
+                except Exception:
+                    df = pd.read_csv(io.BytesIO(content))
+                return df, warnings, "data_file"
         except Exception as e:
-            warns.append(f"data_file read failed: {e}")
+            warnings.append(f"data_file read failed: {e}")
 
-    # 2) Supabase key
-    if processed_key:
-        try:
-            bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                sb_download_to_path(bucket, _strip_bucket_prefix(processed_key), tmp_path)
-                with open(tmp_path, "rb") as fh:
-                    raw = fh.read()
-                df, w = _read_table_bytes(raw, os.path.basename(processed_key), expected_kind=expected_kind)
-                return df, warns + w, "processed_key"
-            finally:
-                try: os.remove(tmp_path)
-                except Exception: pass
-        except Exception as e:
-            warns.append(f"download via processed_key failed: {e}")
-
-    # 3) Signed URL (server side; avoids CORS)
+    # 2) signed URL
     if data_url:
         try:
-            # short, safe timeout
-            with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-                r = client.get(data_url, headers={"Accept": "*/*"})
-                r.raise_for_status()
-                raw = r.content
-            # name hint from URL path
-            name_hint = data_url.split("?")[0].rsplit("/", 1)[-1]
-            df, w = _read_table_bytes(raw, name_hint, expected_kind=expected_kind)
-            return df, warns + w, "data_url"
+            df = await _df_from_data_url(data_url)
+            return df, warnings, "data_url"
+        except HTTPException as e:
+            warnings.append(e.detail if isinstance(e.detail, str) else "data_url read failed")
         except Exception as e:
-            warns.append(f"server fetch via data_url failed: {e}")
+            warnings.append(f"data_url read failed: {e}")
 
-    return None, warns, "none"
-from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException, Form
+    # 3) processed key
+    if processed_key:
+        try:
+            df = _df_from_processed_key(processed_key)
+            return df, warnings, "processed_key"
+        except HTTPException as e:
+            warnings.append(e.detail if isinstance(e.detail, str) else "processed_key read failed")
+        except Exception as e:
+            warnings.append(f"processed_key read failed: {e}")
+
+    # Nothing worked
+    return None, warnings, None
+import pandas as pd
+from typing import Optional
+
+def pick_first_nonempty_df(*dfs) -> Optional[pd.DataFrame]:
+    """
+    Return the first argument that is a non-empty DataFrame.
+    If none are non-empty, return the first that is a DataFrame.
+    Otherwise return None.
+    """
+    for d in dfs:
+        if isinstance(d, pd.DataFrame) and d is not None and not d.empty:
+            return d
+    for d in dfs:
+        if isinstance(d, pd.DataFrame) and d is not None:
+            return d
+    return None
+    import io
+import json
+import math
+import gzip
+import logging
+from typing import Optional
+
+# --- Third-Party ---
+import pandas as pd
+from fastapi import APIRouter, Request, File, Form, Depends, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+
 @router.post("/derive")
 async def derive_columns(
     request: Request,
     data_file: UploadFile | None = File(None),
-    processed_key: str | None = Form(None),   # 👈 accept durable key
-    data_url: str | None = Form(None),        # 👈 accept signed URL
+    processed_key: str | None = Form(None),   # durable key
+    data_url: str | None = Form(None),        # signed URL
     current_user: "User" = Depends(get_current_active_user),
 ):
     form = await request.form()
 
-    # JSON fields as before
-    mappings = await _parse_json_field(form.get("mappings"), "mappings")
-    options  = await _parse_json_field(form.get("options"),  "options")
-    actions  = await _parse_json_field(form.get("actions"),  "actions")
-    target   = await _parse_json_field(form.get("target"),   "target")
-    options = options or {}
+    # ---- Parse JSON form fields (robustly) ----
+    mappings = await _parse_json_field(form.get("mappings"), "mappings") or {}
+    options  = await _parse_json_field(form.get("options"),  "options")  or {}
+    actions  = await _parse_json_field(form.get("actions"),  "actions")  or []
+    target   = await _parse_json_field(form.get("target"),   "target")   or {}
+
     dataset_id_raw = form.get("dataset_id")
     dataset_id: int | None = int(dataset_id_raw) if dataset_id_raw else None
+    user_id = getattr(current_user, "id", None)
 
-    # pick expected kind from hint if you support it
+    # ---- Optional expected kind hint ----
     kind_hint = (form.get("kind") or options.get("kind") or "").strip().lower() or None
     VALID_KINDS = {"customers", "orders", "marketing"}
     expected_kind = kind_hint if (kind_hint in VALID_KINDS) else None
 
-    # Normalize actions etc. (unchanged) ...
-    # user_id = ...
-    # uploads dict ...
-
-    # 📥 Read the table from ANY of the provided sources
+    # ---- Read the table from any provided source ----
     df, read_warnings, source_used = await _load_df_from_any(
         data_file=data_file,
         processed_key=processed_key,
         data_url=data_url,
         expected_kind=expected_kind,
     )
+    logger.info(
+        "derive: source_used=%s processed_key=%s data_url=%s",
+        source_used, processed_key, bool(data_url)
+    )
 
-    warnings = [] + read_warnings
+    warnings: list[str] = list(read_warnings or [])
     if df is None or (hasattr(df, "__len__") and len(df) == 0):
-        # You can 200/“skipped” for smooth UX, or raise 422. Your FE already handles `skipped`.
-        return {"skipped": True, "reason": "Uploaded file could not be parsed or is empty.", "source": source_used}
+        return {
+            "skipped": True,
+            "reason": "Uploaded file could not be parsed or is empty.",
+            "source": source_used,
+        }
 
-    # continue with your existing flow:
+    # ---- Normalize headers ----
     df = normalize_headers(df)
 
-    # ---------- light kind inference; treat unknown as generic orders ----------
+    # ---- Light kind inference (fallback to 'orders') ----
     cols = set(df.columns)
-    if {"campaign_id"} & cols or {"channel","sent_date"} & cols:
+    if {"campaign_id"} & cols or {"channel", "sent_date"} & cols:
         kind_specific = "marketing"
-    elif {"order_id"} & cols or {"order_date","amount"} & cols:
+    elif {"order_id"} & cols or {"order_date", "amount"} & cols:
         kind_specific = "orders"
     elif {"customer_id"} & cols or {"email"} & cols:
         kind_specific = "customers"
     else:
-        kind_specific = "orders"  # generic slot
+        kind_specific = "orders"
 
-    # ---------- coerce to canonical shape ----------
+    # ---- Coerce to canonical shape ----
+    C = None; O = None; M = None
     if kind_specific == "customers":
-        used_mapping = {"customers": finalize_mapping(df, mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None, CUSTOMER_SYNS),
+        cust_map = mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None
+        used_mapping = {"customers": finalize_mapping(df, cust_map, CUSTOMER_SYNS),
                         "orders": None, "marketing": None}
         C = coerce_customers(df, used_mapping["customers"])
-        O = None; M = None; key_field = "customer_id"
+        key_field = "customer_id"
+
     elif kind_specific == "marketing":
-        used_mapping = {"marketing": finalize_mapping(df, mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None, MKT_SYNS),
+        mkt_map = mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None
+        used_mapping = {"marketing": finalize_mapping(df, mkt_map, MKT_SYNS),
                         "customers": None, "orders": None}
         M = coerce_marketing(df, used_mapping["marketing"])
-        C = None; O = None; key_field = "campaign_id"
+        key_field = "campaign_id"
+
     else:
-        # orders or generic
-        if isinstance(mappings, dict) and "orders" in mappings and isinstance(mappings["orders"], dict):
+        # 'orders' (explicit or fallback)
+        if isinstance(mappings, dict) and isinstance(mappings.get("orders"), dict):
             used_mapping = {"orders": finalize_mapping(df, mappings["orders"], ORDER_SYNS),
                             "customers": None, "marketing": None}
             O = coerce_orders(df, used_mapping["orders"])
         else:
             used_mapping = {"orders": None, "customers": None, "marketing": None}
             O, gen_w = _coerce_generic_as_orders(df)
-            warnings.extend(gen_w)
-        C = None; M = None; key_field = "order_id"
+            warnings.extend(gen_w or [])
+        key_field = "order_id"
 
-    # ---------- file health / transforms ----------
+    # ---- Pick the working frame (assign D BEFORE using it) ----
+    def _pick_first_nonempty_df(*dfs):
+        for d in dfs:
+            if isinstance(d, pd.DataFrame) and not d.empty:
+                return d
+        for d in dfs:
+            if isinstance(d, pd.DataFrame):
+                return d
+        return None
+
+    D = _pick_first_nonempty_df(C, O, M)
+
+    # ---- File health / transforms (guard all DF truthiness) ----
     file_health = {"customers": None, "orders": None, "marketing": None}
-    D = C or O or M
-    file_health[kind_specific] = _file_health(D if D is not None and len(D) else None, kind_specific)
-    D, _ = apply_common_transforms(D, key_field=key_field, user_tz=options.get("user_tz"))
+    file_health[kind_specific] = _file_health(
+        D if (isinstance(D, pd.DataFrame) and not D.empty) else None,
+        kind_specific
+    )
 
-    # ---------- uploads of normalized csv ----------
+    if isinstance(D, pd.DataFrame) and not D.empty:
+        D, _ = apply_common_transforms(D, key_field=key_field, user_tz=options.get("user_tz"))
+
+    # ---- Uploads (only for present kind) ----
     uploads = {"customers": None, "orders": None, "marketing": None}
-    uploads[kind_specific] = await _upload_csv_bytes(user_id, kind_specific, D if (D is not None and len(D)) else None)
+    uploads[kind_specific] = await _upload_csv_bytes(
+        user_id,
+        kind_specific,
+        D if (isinstance(D, pd.DataFrame) and not D.empty) else None
+    )
 
-    # ---------- preflight / compute ----------
-    partial, calc_gaps, coverage_pct = _preflight_and_compute(C, O, M, options)
-
-    # ---------- preview cache ----------
+    # ---- Preview cache (single, de-duplicated) ----
     try:
-        if dataset_id is not None and D is not None and len(D):
+        if dataset_id is not None and isinstance(D, pd.DataFrame) and not D.empty:
             PREVIEW_STORE[dataset_id] = D.head(50).to_dict("records")
     except Exception:
         pass
 
-    # ---------- planner signals (and persist) ----------
+    # ---- Planner signals (optional) ----
     planner_signals = None
     try:
-        preview_rows = D.head(50).to_dict("records") if (D is not None and len(D)) else None
+        preview_rows = D.head(50).to_dict("records") if (isinstance(D, pd.DataFrame) and not D.empty) else None
         if target:
             t_model = TargetSpecModel(**target)
             sig_obj = map_target_to_signals(t_model, preview_rows)
@@ -1491,28 +1537,61 @@ async def derive_columns(
             if planner_signals and dataset_id is not None:
                 SIGNALS_STORE[dataset_id] = planner_signals
                 try:
-                    # optional persist for compile() to load
                     save_signals(user_id=user_id, dataset_id=dataset_id, signals=planner_signals)
                 except Exception:
                     pass
     except Exception:
         planner_signals = None
 
-    # ---------- horizons / risk / actions capacity (unchanged) ----------
+    # ---- Normalize actions input (simple, robust) ----
+    def _norm_actions(xs):
+        out = []
+        if isinstance(xs, list):
+            for a in xs:
+                try:
+                    out.append({
+                        "name": a.get("name", "action"),
+                        "channel": a.get("channel", "email"),
+                        "provider": a.get("provider", "internal"),
+                        "daily_cap": int(a.get("daily_cap", 100)),
+                        "cooldown_days": int(a.get("cooldown_days", 7)),
+                        "unit_cost": float(a.get("unit_cost", 0.01)),
+                    })
+                except Exception:
+                    continue
+        return out
+
+    norm_actions = _norm_actions(actions)
+
+    # ---- Defaults for downstream fields (safe) ----
+    # If you already compute these elsewhere, replace the defaults below.
+    partial = {
+        "eligible_population": {
+            "emailable_pct": 0.50,
+            "sms_opt_in_pct": 0.20,
+        }
+    }
+    calc_gaps = False
+    coverage_pct = (
+        float(D.notna().mean().mean()) if (isinstance(D, pd.DataFrame) and not D.empty) else 0.0
+    )
+
+    # ---- Horizons / risk / capacity ----
     tested = options.get("horizons", [7, 14, 30]) or [14]
     try:
         tested = [int(x) for x in tested]
     except Exception:
         tested = [7, 14, 30]
-    chosen = tested[len(tested)//2] if tested else 14
+    chosen = tested[len(tested) // 2] if tested else 14
 
     risk_preset = (options.get("risk_preset") or "balanced").lower().strip()
     cap_mult = {"conservative": 0.5, "balanced": 0.8, "aggressive": 1.0}.get(risk_preset, 0.8)
 
     def _as_float(x, default):
         try:
-            v = float(x); 
-            if pd.isna(v) or v in (float("inf"), float("-inf")): return default
+            v = float(x)
+            if pd.isna(v) or v in (float("inf"), float("-inf")):
+                return default
             return v
         except Exception:
             return default
@@ -1550,7 +1629,7 @@ async def derive_columns(
     budget_cap = options.get("budgetCap")
     budget_cap = _as_float(budget_cap, None) if budget_cap is not None else None
     budget_notes = []
-    if budget_cap is not None and max_spend_over_horizon > budget_cap:
+    if (budget_cap is not None) and (max_spend_over_horizon > budget_cap):
         budget_notes.append(
             f"Max action spend over {chosen}d ({max_spend_over_horizon:.2f}) exceeds budget_cap ({budget_cap:.2f}). Will clip by risk preset."
         )
@@ -1592,6 +1671,7 @@ async def derive_columns(
         "modified_csvs": {"customers": None, "orders": None, "marketing": None} | {kind_specific: uploads[kind_specific]},
         "planner_signals": planner_signals,
     }
+
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, conint, confloat

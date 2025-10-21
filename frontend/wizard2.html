@@ -1538,7 +1538,7 @@
                         <select id="map-customer-id"></select>
                     </div>
                     <div class="mapping-field">
-                        <label class="required-field">Email</label>
+                        <label>Email</label>
                         <select id="map-email"></select>
                     </div>
                     <div class="mapping-field">
@@ -1781,7 +1781,41 @@ const totalSteps = 5;
 let selectedData = {};
 const token = localStorage.getItem('access_token');
 const API_BASE_URL = 'http://127.0.0.1:8000';
+// --- Regexes
+const RX = {
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/,
+  e164: /^\+[1-9]\d{7,14}$/, // allow 8-15 digits with leading '+'
+  uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  isoDate: /^\d{4}-\d{2}-\d{2}([ tT]\d{2}:\d{2}(:\d{2})?([.,]\d+)?([zZ]|[+\-]\d{2}:\d{2})?)?$/,
+  boolWord: /^(true|false|yes|no|y|n|0|1)$/i,
+  moneyish: /^[\s$€£¥]?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*$/ // very lenient
+};
+// Extend your existing mappingConfig with hints (safe to merge)
+const FIELD_HINTS = {
+  // customers
+  customer_id: { expect: ['id'],         patterns: ['uuid','idlike'], unique: true },
+  email:       { expect: ['email'],      patterns: ['email'],          unique: true },
+  phone:       { expect: ['phone'],      patterns: ['e164','phone'],   unique: false },
+  created_date:{ expect: ['created','date','signup','joined'], patterns: ['date'] },
 
+  // orders
+  order_id:    { expect: ['order','id'], patterns: ['uuid','idlike'], unique: true },
+  order_date:  { expect: ['order','date'], patterns: ['date'] },
+  order_total: { expect: ['total','amount','revenue','price'], patterns: ['amount','numeric'] },
+  order_status:{ expect: ['status','state'], patterns: ['status','category'] },
+  product_category:{ expect: ['category','product','segment'], patterns: ['category'] },
+
+  // marketing
+  campaign_id: { expect: ['campaign','id'], patterns: ['uuid','idlike'], unique: true },
+  channel:     { expect: ['channel','medium'], patterns: ['channel','category'] },
+  sent_date:   { expect: ['sent','date','send'], patterns: ['date'] },
+  opened:      { expect: ['open'],     patterns: ['bool'] },
+  clicked:     { expect: ['click'],    patterns: ['bool'] },
+  converted:   { expect: ['convert'],  patterns: ['bool'] },
+  cost:        { expect: ['cost','spend','cpc','cpm'], patterns: ['amount','numeric'] },
+};
+// --- Safely coerce to string
+const s = v => (v === null || v === undefined) ? '' : String(v).trim();
 let editingActionIndex = -1;
 let currentPlanId = null;
 let savingStep1 = false;
@@ -2227,6 +2261,16 @@ function updateButtons() {
   if (backBtn) backBtn.style.display = currentStep === 1 ? 'none' : 'inline-flex';
   if (nextBtn) nextBtn.textContent = currentStep === totalSteps ? '🚀 Launch ML Dashboard' : 'Next Step →';
 }
+// --- helpers ---
+function hasUploaded(kind) {
+  return !!uploadedData?.[kind]?.headers?.length;
+}
+
+function hasAnyCoreUpload() {
+  return hasUploaded('customers') || hasUploaded('orders');
+}
+
+
 function updateNavigation() {
   // silent gating: disable next if obviously missing, but DO NOT show errors
   const nextBtn = document.getElementById('nextBtn');
@@ -2242,9 +2286,14 @@ function updateNavigation() {
       canProceed = goalAmount > 0 && riskChosen && hasActions && start && end;
       break;
     }
-    case 2: canProceed = !!uploadedData?.customers?.confirmed; break;
-    case 3: canProceed = !!uploadedData?.orders?.confirmed; break;
-    case 4: canProceed = !!uploadedData?.marketing?.confirmed; break;
+    case 2: canProceed = !!uploadedData?.customers?.headers?.length; break;
+    case 3: canProceed = !!uploadedData?.orders?.headers?.length; break;
+     case 4:
+      // ✅ Allow user to click Next even without marketing upload
+      // as long as they have *either* customers or orders.
+      canProceed = hasUploaded('marketing') || hasAnyCoreUpload();
+      break;
+
     default: canProceed = true;
   }
   if (nextBtn) nextBtn.disabled = !canProceed;
@@ -2258,30 +2307,39 @@ function setNextDisabled(disabled) {
 window.goNext = async function goNext() {
   if (savingStep1) return;
 
+  // Step 1: validate & save, then advance exactly once
   if (currentStep === 1) {
     const payload = collectStep1FromDOM();
     const errs = validateStep1Payload(payload);
-    if (errs.length) {
-      showStep1Errors(errs);
-      return;
-    }
+    if (errs.length) { showStep1Errors(errs); return; }
 
     clearStep1Errors();
     setNextDisabled(true);
     savingStep1 = true;
     try {
-      const ok = await upsertPlanToBackend({ skipValidate: true }); // already validated
+      const ok = await upsertPlanToBackend({ skipValidate: true });
       if (!ok) return;
-      stepAdvance();
+      stepAdvance();            // advance once
+      return;                   // ⬅️ prevent fall-through
     } finally {
       savingStep1 = false;
       setNextDisabled(false);
     }
-  } else {
-    stepAdvance();
+  } 
+  // Step 4: optional UX note, then advance once
+  else if (currentStep === 4) {
+    const status = document.getElementById('marketing-status');
+    if (status && !hasUploaded('marketing') && hasAnyCoreUpload()) {
+      status.textContent = 'No marketing file — you can still continue.';
+      status.style.color = '#6b7280';
+    }
+    stepAdvance();              // advance once
+    return;                     // ⬅️ prevent fall-through
   }
-};
 
+  // All other steps: advance once
+  stepAdvance();
+};
 
 function stepAdvance() {
   if (typeof currentStep !== 'number' || typeof totalSteps !== 'number') return;
@@ -2291,8 +2349,6 @@ function stepAdvance() {
   document.getElementById(`step${currentStep}`)?.classList.add('active');
   updateProgress?.(); updateButtons?.(); updateNavigation?.();
 }
-
-document.getElementById('nextBtn')?.addEventListener('click', () => window.goNext(), { passive: true });
 
 function escapeHtml(s) {
   return String(s)
@@ -2388,26 +2444,174 @@ function handleFileUpload(event, type) {
   parseFile(file, type);
   updateDeriveReadiness();
 }
-
 function parseFile(file, type) {
   const reader = new FileReader();
   reader.onload = function(e) {
-    const content = e.target.result;
-    const lines = content.split('\n').filter(line => line.trim());
-    
-    if (lines.length === 0) return;
+    let text = e.target.result || "";
+    // strip UTF-8 BOM if present (Excel often adds this)
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-    const headers = parseCSVLine(lines[0]);
-    const rows = lines.slice(1, Math.min(11, lines.length))
-      .map(line => parseCSVLine(line));
+    const allLines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (allLines.length === 0) return;
 
-    uploadedData[type].headers = headers;
-    uploadedData[type].rows = rows;
+    // Detect delimiter from first 1–2 lines
+    const delim = sniffDelimiter(allLines.slice(0, 2));
 
-    showFilePreview(type, file, headers, rows, lines.length - 1);
-    setupMapping(type, headers);
+    // Parse header and a small sample of rows
+    const rawHeaders = parseDSVLine(allLines[0], delim);
+    const rawRows = allLines.slice(1, Math.min(1 + MAX_PREVIEW_ROWS, allLines.length))
+      .map(l => parseDSVLine(l, delim));
+
+    // Normalize widths / types (your existing utility)
+    const norm = normalizePreview(rawHeaders, rawRows);
+
+    // Persist for later steps
+    uploadedData[type].file    = file;
+    uploadedData[type].headers = norm.headers;
+    uploadedData[type].rows    = norm.rows;
+
+    // Render and wire mapping with the **normalized** headers
+    showFilePreview(type, file, norm.headers, norm.rows, allLines.length - 1);
+    setupMapping(type, norm.headers);
   };
   reader.readAsText(file);
+}
+
+// ---------- Small utilities ----------
+const MAX_PREVIEW_ROWS = 200;          // don’t blow up the DOM
+const MAX_CELL_CHARS   = 180;          // keep cells readable
+
+function toStr(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  return s.length > MAX_CELL_CHARS ? s.slice(0, MAX_CELL_CHARS) + "…" : s;
+}
+
+function padOrTrimRow(row, targetLen) {
+  const out = Array.isArray(row) ? row.slice(0, targetLen) : [];
+  while (out.length < targetLen) out.push("");
+  return out;
+}
+const clip  = s => {
+  s = toStr(s);
+  return s.length > MAX_CELL_CHARS ? s.slice(0, MAX_CELL_CHARS) + "…" : s;
+};
+function padOrTrimRow(row, nCols) {
+  const out = Array.isArray(row) ? row.slice(0, nCols) : [];
+  while (out.length < nCols) out.push("");
+  return out;
+}
+
+function ensureStickyHeaderCSS() {
+  const id = "__table_sticky_header_css__";
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = `
+    .table-wrap { overflow:auto; max-height: 420px; border-radius: 8px; }
+    .table-wrap table { border-collapse: collapse; width: 100%; font-family: system-ui, sans-serif; }
+    .table-wrap th, .table-wrap td { padding: 6px 10px; border-bottom: 1px solid #eee; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .table-wrap thead th { position: sticky; top: 0; background: #0b74de; color: #fff; z-index: 1; }
+    .muted { color: #6b7280; }
+    .pill   { display:inline-block; padding:2px 6px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-left:6px; }
+  `;
+  document.head.appendChild(style);
+}
+
+function clearNode(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function padOrTrimRow(row, n) { const out = Array.isArray(row) ? row.slice(0, n) : []; while (out.length < n) out.push(""); return out; }
+
+// Detect the likely delimiter from a few sample lines
+function sniffDelimiter(lines) {
+  const cand = [",", "\t", ";", "|"];
+  // If commas/tabs/etc not found, fall back to multi-space
+  const scores = {};
+  cand.forEach(d => scores[d] = 0);
+  lines.slice(0, 5).forEach(l => cand.forEach(d => { scores[d] += (l.split(d).length - 1); }));
+  const best = cand.sort((a,b) => scores[b]-scores[a])[0];
+  return scores[best] > 0 ? best : "space";
+}
+
+// CSV/DSV line parse with quotes for a given delimiter
+function parseDSVLine(line, delim) {
+  if (delim === "space") return line.trim().split(/\s+/);
+  // quoted parser
+  const out = [];
+  let cur = "", inQ = false;
+  for (let i=0;i<line.length;i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ;
+    } else if (ch === delim && !inQ) {
+      out.push(cur); cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map(s => s.trim());
+}
+
+// If data comes as strings, split into arrays; ensure row length matches headers
+function normalizePreview(headers, rows) {
+  let hdr = headers, rws = rows;
+
+  // If headers is a single string, split it
+  if (!Array.isArray(hdr)) hdr = [toStr(hdr)];
+  if (hdr.length === 1 && /[,;\t| ]/.test(toStr(hdr[0]))) {
+    const sample = toStr(hdr[0]);
+    const delim = sniffDelimiter([sample]);
+    hdr = parseDSVLine(sample, delim);
+    // also use same delimiter for rows
+    const raw = rows.map(x => toStr(Array.isArray(x) ? x.join(delim) : x));
+    rws = raw.map(l => parseDSVLine(l, delim));
+  } else {
+    // headers already array; still check if rows are strings
+    const sampleRow = toStr(rows?.[0] ?? "");
+    const needSplit = typeof rows?.[0] === "string";
+    let delim = ",";
+    if (needSplit) {
+      const probeLines = [sampleRow, toStr(rows?.[1] ?? "")].filter(Boolean);
+      delim = sniffDelimiter(probeLines);
+    }
+    rws = rows.map(r => {
+      if (Array.isArray(r)) return r;
+      return parseDSVLine(toStr(r), delim);
+    });
+  }
+
+  // If header count is 0, infer from widest row
+  const nCols = hdr.length || Math.max(0, ...rws.map(r => Array.isArray(r) ? r.length : 0));
+  if (hdr.length === 0) hdr = Array.from({length: nCols}, (_,i) => `col_${i+1}`);
+
+  rws = rws.map(r => padOrTrimRow(r, nCols));
+  return { headers: hdr, rows: rws };
+}
+
+// ===== Your existing builder (kept) =====
+function buildPreviewTable(tableEl, headers = [], rows = []) {
+  if (!tableEl) return;
+  tableEl.classList.add("preview-table");
+  while (tableEl.firstChild) tableEl.removeChild(tableEl.firstChild);
+
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  headers.forEach(h => { const th = document.createElement("th"); th.textContent = toStr(h); htr.appendChild(th); });
+  thead.appendChild(htr);
+
+  const tbody = document.createElement("tbody");
+  const limit = Math.min(rows.length, MAX_PREVIEW_ROWS);
+  for (let i = 0; i < limit; i++) {
+    const tr = document.createElement("tr");
+    for (let j = 0; j < headers.length; j++) {
+      const td = document.createElement("td");
+      td.textContent = clip(rows[i][j]);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  tableEl.appendChild(thead);
+  tableEl.appendChild(tbody);
 }
 
 function parseCSVLine(line) {
@@ -2429,47 +2633,26 @@ function parseCSVLine(line) {
   result.push(current.trim());
   return result;
 }
-
 function showFilePreview(type, file, headers, rows, totalRows) {
-  const fileInfo = document.getElementById(`${type}-info`);
-  fileInfo.innerHTML = `
-    <span><strong>${file.name}</strong></span>
-    <span>${totalRows} rows, ${headers.length} columns</span>
-  `;
-  
-  renderTable(`${type}-table`, headers, rows);
-  
-  document.getElementById(`${type}-preview`).style.display = 'block';
-  document.getElementById(`${type}-mapping`).style.display = 'block';
-}
+  const norm = normalizePreview(headers || [], rows || []);
 
-function renderTable(tableId, headers, rows) {
-  const table = document.getElementById(tableId);
-  if (!table) return;
-  
-  const thead = document.createElement('thead');
-  const headerRow = document.createElement('tr');
-  headers.forEach(header => {
-    const th = document.createElement('th');
-    th.textContent = header;
-    headerRow.appendChild(th);
-  });
-  thead.appendChild(headerRow);
+  const info = document.getElementById(`${type}-info`);
+  if (info) {
+    info.innerHTML = `
+      <div class="info-item"><span class="info-label">File:</span> <span class="info-value">${toStr(file?.name ?? "uploaded file")}</span></div>
+      <div class="info-item"><span class="info-label">Rows:</span> <span class="info-value">${Number(totalRows ?? norm.rows.length ?? 0)}</span></div>
+      <div class="info-item"><span class="info-label">Columns:</span> <span class="info-value">${norm.headers.length}</span></div>
+    `;
+  }
 
-  const tbody = document.createElement('tbody');
-  rows.forEach(row => {
-    const tr = document.createElement('tr');
-    headers.forEach((_, index) => {
-      const td = document.createElement('td');
-      td.textContent = row[index] || '';
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
+  renderTable(`${type}-table`, norm.headers, norm.rows);
 
-  table.innerHTML = '';
-  table.appendChild(thead);
-  table.appendChild(tbody);
+  // ✅ crucial: populate selects with parsed header array
+  setupMapping(type, norm.headers);
+
+  document.getElementById(`${type}-preview`)?.classList.add("show");
+  const mappingEl = document.getElementById(`${type}-mapping`);
+  if (mappingEl) mappingEl.style.display = "block";
 }
 
 // Mapping functions
@@ -2480,14 +2663,18 @@ function getSelectId(type, field) {
 function fieldsFor(type) {
   return Object.keys(FIELD_IDS?.[type] || {});
 }
-
 function setupMapping(type, headers) {
+  if (!Array.isArray(headers)) {
+    headers = normalizePreview(headers || [], []).headers;
+  }
+  headers = headers.map(h => String(h).trim()).filter(Boolean);
+
   const config = mappingConfig[type];
   if (!config) return;
 
   mappingState[type] = mappingState[type] || {};
   const allFields = fieldsFor(type);
-  
+
   allFields.forEach(field => {
     const selectId = getSelectId(type, field);
     const select = document.getElementById(selectId);
@@ -2498,6 +2685,7 @@ function setupMapping(type, headers) {
 
     const prev = select.value;
     select.innerHTML = '<option value="">-- Select Column --</option>';
+
     headers.forEach(h => {
       const opt = document.createElement('option');
       opt.value = h;
@@ -2506,56 +2694,209 @@ function setupMapping(type, headers) {
     });
 
     const chosen = mappingState[type][field] ?? (prev || "");
-    if (chosen && headers.includes(chosen)) {
-      select.value = chosen;
-    }
+    if (chosen && headers.includes(chosen)) select.value = chosen;
 
     select.onchange = () => {
       mappingState[type][field] = select.value || null;
       select.dataset.manual = select.value ? '1' : '0';
-
       const badge = select.parentElement?.querySelector('.conf-badge');
-      if (badge) badge.textContent = '✅ set';
+      if (badge) badge.textContent = select.value ? '✅ set' : '';
       select.title = select.value ? `Manually set to "${select.value}"` : 'Not selected';
     };
   });
 }
+async function hydrateMappingFromMeta(type, meta) {
+  const inferred = meta?.auto_mapping || {};
+  const headers  = uploadedData[type]?.headers || [];
+  setupMapping(type, headers);  // builds the option list
 
+  // preselect
+  for (const [target, col] of Object.entries(inferred)) {
+    const selectId = getSelectId(type, target);
+    const sel = document.getElementById(selectId);
+    if (sel && headers.includes(col)) sel.value = col;
+  }
+
+  // show capability badges
+  const caps = meta?.capabilities || {};
+  renderCaps(type, caps); // small UI pills like "✅ Basic Orders" / "⚠️ No Attribution"
+}
+// --- Sample extraction (works with rows as arrays OR objects OR a prebuilt column map)
+function getColumnValues(type, header, limit=200) {
+  const src = uploadedData?.[type];
+  if (!src) return [];
+  // If precomputed columns exist
+  if (src.columns && Array.isArray(src.columns[header])) {
+    return src.columns[header].slice(0, limit);
+  }
+  const rows = src.rows || src.preview || [];
+  if (!Array.isArray(rows)) return [];
+  const idx = src.headers?.findIndex(h => h === header) ?? -1;
+
+  const out = [];
+  for (let i = 0; i < rows.length && out.length < limit; i++) {
+    const row = rows[i];
+    if (row && typeof row === 'object' && !Array.isArray(row)) {
+      out.push(row[header]);
+    } else if (Array.isArray(row) && idx >= 0) {
+      out.push(row[idx]);
+    }
+  }
+  return out;
+}
+
+// --- Column profiling
+function profileColumn(type, header) {
+  const vals = getColumnValues(type, header, 400);
+  const n = vals.length || 0;
+  const sv = vals.map(s);
+
+  const notNull = sv.filter(v => v !== '').length;
+  const pctNotNull = n ? notNull / n : 0;
+
+  const uniqueSet = new Set(sv.filter(v => v !== ''));
+  const uniqRatio = n ? uniqueSet.size / n : 0;
+
+  // pattern scores: fraction matching
+  const score = (rx) => (n ? sv.filter(v => rx.test(v)).length / n : 0);
+
+  const emailScore = score(RX.email);
+  const e164Score  = score(RX.e164);
+  const uuidScore  = score(RX.uuid);
+  const boolScore  = score(RX.boolWord);
+  const isoScore   = score(RX.isoDate);
+
+  // numeric / amount-ish
+  const numScore = n ? sv.filter(v => v !== '' && !Number.isNaN(Number(v.replace(/[, ]/g,'')))).length / n : 0;
+  const moneyScore = score(RX.moneyish);
+
+  // small-cardinality category-ish (ignore empties)
+  const nonEmpty = sv.filter(v => v !== '');
+  const cardinality = new Set(nonEmpty).size;
+  const categoryScore = (nonEmpty.length > 0 && cardinality <= Math.max(10, Math.floor(nonEmpty.length * 0.1))) ? 1 : 0;
+
+  // status-ish words
+  const STATUS_WORDS = ['pending','completed','shipped','cancelled','failed','open','closed','processing','refunded','paid','unpaid'];
+  const statusScore = n ? sv.filter(v => STATUS_WORDS.includes(v.toLowerCase())).length / n : 0;
+
+  // id-like (alnum strings with good uniqueness and length 6-64)
+  const idlikeScore = n ? sv.filter(v => /^[A-Za-z0-9\-_]{6,64}$/.test(v)).length / n : 0;
+
+  return {
+    n, pctNotNull, uniqRatio,
+    emailScore, e164Score, uuidScore, boolScore, isoScore,
+    numScore, moneyScore, categoryScore, statusScore, idlikeScore
+  };
+}
+function normalizeHeader(h) {
+  return s(h).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function tokenSim(a, b) {
+  const A = new Set(normalizeHeader(a).split(' ').filter(Boolean));
+  const B = new Set(normalizeHeader(b).split(' ').filter(Boolean));
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / Math.max(A.size, B.size); // 0..1
+}
+function scoreColumnForField(field, header, profile, config) {
+  const fh = FIELD_HINTS[field] || { expect: [], patterns: [] };
+  const aliases = (config.aliases?.[field] || []).concat(fh.expect || []);
+
+  // Header score: max token similarity to any alias (0..1), weight 0.6
+  const headerScore = aliases.reduce((m, a) => Math.max(m, tokenSim(header, a)), 0);
+
+  // Pattern score depends on field
+  let patternScore = 0;
+  const P = profile;
+  const pats = fh.patterns || [];
+
+  const pick = (name) => ({
+    email:    P.emailScore,
+    e164:     P.e164Score,
+    uuid:     P.uuidScore,
+    idlike:   P.idlikeScore,
+    date:     P.isoScore,
+    bool:     Math.max(P.boolScore, (P.categoryScore && P.uniqRatio <= 0.2 ? 0.4 : 0)), // weak fallback
+    amount:   Math.max(P.moneyScore, P.numScore * 0.8),
+    numeric:  P.numScore,
+    status:   Math.max(P.statusScore, P.categoryScore * 0.6),
+    category: P.categoryScore,
+    channel:  P.categoryScore // crude; could boost common channels later
+  }[name] || 0);
+
+  if (pats.length) {
+    patternScore = Math.max(...pats.map(pick));
+  } else {
+    // generic fallback: rely on header more
+    patternScore = 0;
+  }
+
+  // Uniqueness/coverage boosters
+  let boost = 0;
+  if (fh.unique) boost += Math.max(0, Math.min(0.2, (P.uniqRatio - 0.5))); // up to +0.2 if >50% unique
+  boost += Math.max(0, Math.min(0.1, (P.pctNotNull - 0.5))); // up to +0.1 if >50% not-null
+
+  // Weighted blend
+  const score = (0.6 * headerScore) + (0.4 * patternScore) + boost;
+
+  // Reasons for tooltip
+  const reasons = [];
+  if (headerScore > 0.5) reasons.push(`header≈alias (${(headerScore*100).toFixed(0)}%)`);
+  if (patternScore > 0.5) reasons.push(`values≈${pats.join('+')} (${(patternScore*100).toFixed(0)}%)`);
+  if (fh.unique && P.uniqRatio >= 0.6) reasons.push(`unique ${(P.uniqRatio*100).toFixed(0)}%`);
+  if (P.pctNotNull >= 0.8) reasons.push(`non-null ${(P.pctNotNull*100).toFixed(0)}%`);
+
+  return { score: Math.max(0, Math.min(1, score)), reasons };
+}
+
+function applyConfidenceBadge(selectEl, score, reasons) {
+  const pct = Math.round(score * 100);
+  const tier = (score >= 0.75) ? 'high' : (score >= 0.5) ? 'med' : 'low';
+
+  let badge = selectEl.parentElement?.querySelector('.conf-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'conf-badge';
+    selectEl.parentElement?.appendChild(badge);
+  }
+  badge.textContent = (tier === 'high' ? '✅' : tier === 'med' ? '◇' : '⚠️') + ` ${pct}%`;
+  badge.dataset.tier = tier;
+
+  // *** Important: never intercept clicks ***
+  badge.style.pointerEvents = 'none';
+  badge.style.zIndex = '0';
+  // Ensure the select is clickable
+  selectEl.style.pointerEvents = 'auto';
+  selectEl.style.zIndex = '1';
+
+  selectEl.setAttribute('data-confidence', String(score));
+  selectEl.title = `Confidence ${pct}%. ${reasons.join('; ')}`;
+}
 function confirmMapping(type) {
   const config = mappingConfig[type] || { required: [], optional: [] };
   const required = config.required || [];
-  const optional = config.optional || [];
 
   const mapping = {};
-  let hasAllRequired = true;
   const missing = [];
 
-  document.querySelectorAll(`#${type}-mapping select.missing-required`)
-    .forEach(el => el.classList.remove('missing-required'));
-
-  [...required, ...optional].forEach(field => {
+  [...required].forEach(field => {
     const selectId = getSelectId(type, field);
-    const select = document.getElementById(selectId);
-    const value = select ? select.value : '';
-
-    if (!value && required.includes(field)) {
-      hasAllRequired = false;
-      missing.push(field);
-      if (select) select.classList.add('missing-required');
-    } else if (value) {
-      mapping[field] = value;
-    }
+    const value = document.getElementById(selectId)?.value || null;
+    if (value) mapping[field] = value;
+    else missing.push(field);
   });
 
-  const statusEl = document.getElementById(`${type}-status`);
-  if (!hasAllRequired) {
-    if (statusEl) statusEl.textContent = `Missing: ${missing.join(', ')}`;
-    return false;
+  if (missing.length) {
+    // Don't block. Save what we have; show a gentle warning
+    document.getElementById(`${type}-status`).textContent =
+      `Partial: missing ${missing.join(', ')} (we'll proceed with limited features).`;
+  } else {
+    document.getElementById(`${type}-status`).textContent = 'Confirmed';
   }
 
-  mappingState[type] = { ...(mappingState[type] || {}), ...mapping, confirmed: true };
+  mappingState[type] = { ...(mappingState[type]||{}), ...mapping, confirmed: true };
   uploadedData[type].confirmed = true;
-  if (statusEl) statusEl.textContent = 'Confirmed';
   updateNavigation();
   return mapping;
 }
@@ -2750,7 +3091,6 @@ async function computeAutoDerivations() {
     ['customers', 'orders', 'marketing'].forEach(t => {
       const h = json.file_health?.[t];
       if (h) {
-        renderInlinePreview(t, h);
         renderFileHealth(t, h);
       }
     });
@@ -2827,19 +3167,22 @@ function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 function fmtCur(n) { return n == null ? '—' : `${Number(n).toFixed(2)}`; }
 function fmtPct(p) { return p == null ? '—' : `${(Number(p) * 100).toFixed(1)}%`; }
 
-function renderInlinePreview(type, health) {
-  const container = document.getElementById(`${type}-table`);
-  if (!container || !health?.preview?.length) return;
-
-  const [headers, ...rows] = health.preview;
-  const html = `
-    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>
-      ${rows.map(r => `<tr>${r.map(c => `<td>${c ?? ''}</td>`).join('')}</tr>`).join('')}
-    </tbody>
-  `;
-  container.innerHTML = html;
+function renderTable(tableId, headers, rows) {
+  const table = document.getElementById(tableId);
+  const norm  = normalizePreview(headers || [], rows || []);
+  buildPreviewTable(table, norm.headers, norm.rows);
 }
+
+function renderInlinePreview(type, health) {
+  const table = document.getElementById(`${type}-table`);
+  const preview = Array.isArray(health?.preview) ? health.preview : [];
+  if (!table || preview.length === 0) return;
+  const [hdrs, ...rws] = preview;
+  const norm = normalizePreview(hdrs || [], rws || []);
+  buildPreviewTable(table, norm.headers, norm.rows);
+  document.getElementById(`${type}-preview`)?.classList.add("show");
+}
+
 
 function renderFileHealth(type, health) {
   const infoEl = document.getElementById(`${type}-info`);
@@ -2912,10 +3255,127 @@ function b64ToBlob(b64, mime = 'text/csv') {
     return null; 
   }
 }
+// --- suggestMapping: respect manual choices
+function suggestMapping(type, opts = { force: false }) {
+  const config  = mappingConfig[type];
+  const headers = uploadedData?.[type]?.headers || [];
+  if (!config || !headers.length) return;
+
+  mappingState[type] = mappingState[type] || {};
+
+  // cache profiles
+  uploadedData[type].__profiles = uploadedData[type].__profiles || {};
+  const prof = uploadedData[type].__profiles;
+  headers.forEach(h => { if (!prof[h]) prof[h] = profileColumn(type, h); });
+
+  const allFields = fieldsFor(type); 
+
+  allFields.forEach(field => {
+    const selectId = getSelectId(type, field);
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    // NEW: do not touch if user set it (unless force)
+    const manual = select.dataset.manual === '1';
+    if (manual && !opts.force) {
+      applyConfidenceBadge(select, 1, ['manual mapping']);
+      return;
+    }
+
+    // Score headers
+    const scored = headers.map(h => {
+      const res = scoreColumnForField(field, h, prof[h], config);
+      return { header: h, ...res };
+    }).sort((a,b) => b.score - a.score);
+
+    if (!scored.length) return;
+
+    const best = scored[0];
+    const runnerUp = scored[1];
+    const exactHeaderHit = (config.aliases?.[field] || []).some(a => normalizeHeader(a) === normalizeHeader(best.header));
+    const nearTie = runnerUp && (best.score - runnerUp.score) < 0.06;
+
+    if (best.score >= 0.55 || exactHeaderHit || opts.force) {
+      // Only set if still not manual
+      if (!manual || opts.force) {
+        select.value = best.header;
+        mappingState[type][field] = best.header;
+      }
+      applyConfidenceBadge(select, best.score, best.reasons);
+      if (nearTie) {
+        select.title += ' (near-tie; please review)';
+        const badge = select.parentElement?.querySelector('.conf-badge');
+        if (badge) badge.textContent = '◇ review';
+      }
+    } else {
+      applyConfidenceBadge(select, best.score, ['low confidence suggestion', ...best.reasons]);
+      select.title += ` | Suggestion: ${best.header}`;
+      ensureSuggestionOption(select, best.header);
+    }
+  });
+}
+
+// Helper: add a non-intrusive suggestion option the user can pick
+function ensureSuggestionOption(select, header) {
+  const existing = Array.from(select.options).some(o => o.value === header);
+  if (existing) return;
+  const opt = document.createElement('option');
+  opt.value = header;
+  opt.textContent = `${header} (suggested)`;
+  opt.dataset.suggested = '1';
+  select.appendChild(opt);
+}
+function markFieldLevel(type, field, schemaContract) {
+  const levels = schemaContract?.[type];
+  if (!levels) return;
+
+  const selectId = getSelectId(type, field);
+  if (!selectId) return;
+
+  // Find the select first (safe)
+  const selectEl = document.getElementById(selectId);
+  if (!selectEl) return;
+
+  // Prefer explicit for= binding; fallback to closest container->label
+  const direct = document.querySelector(`#${type}-mapping label[for="${selectId}"]`);
+  const container = selectEl.closest('.mapping-field');
+  const fallback = container ? container.querySelector('label') : null;
+
+  const labelEl = direct || fallback;
+  if (!labelEl) return;
+
+  labelEl.classList.remove('required-field','recommended-field','optional-field');
+
+  if (levels.required?.includes(field)) {
+    labelEl.classList.add('required-field');
+    labelEl.dataset.level = 'required';
+  } else if (levels.recommended?.includes(field)) {
+    labelEl.classList.add('recommended-field');
+    labelEl.dataset.level = 'recommended';
+  } else {
+    labelEl.classList.add('optional-field');
+    labelEl.dataset.level = 'optional';
+  }
+}
 
 function applyFieldBadges(schemaContract) {
-  // Placeholder for field badge application
-  console.log('Applying field badges:', schemaContract);
+  ['customers','orders','marketing'].forEach(type => {
+    const spec = schemaContract?.[type];
+    if (!spec) return;
+
+    const known = new Set(fieldsFor(type)); // from FIELD_IDS
+    const fields = [...(spec.required||[]), ...(spec.recommended||[]), ...(spec.optional||[])];
+
+    fields.forEach(f => {
+      if (known.has(f)) markFieldLevel(type, f, {
+        [type]: {
+          required: spec.required || [],
+          recommended: spec.recommended || [],
+          optional: spec.optional || []
+        }
+      });
+    });
+  });
 }
 
 // Sample data functions
@@ -3176,7 +3636,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!checkAuthentication()) return;
   init();
   setupEventListeners();
-  hydrateStep1Defaults();   // <-- add this
+  if (typeof hydrateStep1Defaults === 'function') hydrateStep1Defaults();
 });
 
 // Make functions globally available
