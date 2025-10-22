@@ -331,7 +331,7 @@ def _infer_types(df: pd.DataFrame, cfg: PreprocessConfig) -> Dict[str, str]:
             if n == 0:
                 return False
             idx = rng.choice(sample.index.to_numpy(), size=n, replace=False)
-            parsed = pd.to_datetime(sample.loc[idx], errors="coerce", infer_datetime_format=True)
+            parsed = pd.to_datetime(sample.loc[idx], errors="coerce", utc=True)
             ratio = float(parsed.notna().mean())
             thresh = cfg.date_detect_success_ratio - (0.15 if name_hint else 0.0)
             return ratio >= max(0.2, thresh)
@@ -505,7 +505,7 @@ def _text_hash_block(series: pd.Series, buckets: int, key: Optional[str] = None,
     return pd.DataFrame(mat, index=idx, columns=cols)
 
 def _build_type_lists(df: pd.DataFrame, cfg: PreprocessConfig
-    ) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str], List[str]]:
+) -> Tuple[List[str], List[str], List[str], List[str], List[str], List[str], List[str]]:
     """
     Returns: (cat_cols, num_cols, date_cols, text_cols, id_cols, ignore_cols, group_cols)
     """
@@ -515,37 +515,27 @@ def _build_type_lists(df: pd.DataFrame, cfg: PreprocessConfig
     num_cols  = [c for c,t in types.items() if t == "Numerical"]
     date_cols = [c for c,t in types.items() if t == "Date"]
     text_cols = [c for c,t in types.items() if t == "Text"]
-    text_blocks = []
-    text_cols_use = [c for c in (text_cols or []) if df[c].astype(str).str.len().mean() >= getattr(cfg, "text_min_len", 5)]
-    if getattr(cfg, "text_hash_features", True) and text_cols_use:
-        tb = int(getattr(cfg, "text_hash_buckets", 1024))
-        for c in text_cols_use:
-            block = _text_hash_block(df[c], buckets=tb, key=getattr(cfg, "hash_key", None), prefix=f"{c}__h")
-            text_blocks.append(block)
-    text_df = pd.concat(text_blocks, axis=1) if text_blocks else pd.DataFrame(index=df.index)
-
     id_cols   = [c for c,t in types.items() if t == "ID"]
     ignore    = [c for c,t in types.items() if t == "Ignore"]
     groups    = [c for c,t in types.items() if t == "Group"]
 
-    # Remove targets from feature lists (GUARDED)
+    # Remove targets from feature lists
     t_cls = _first_valid_colname(cfg.target_cls_col, df.columns)
     t_reg = _first_valid_colname(cfg.target_reg_col, df.columns)
     for target in [t_cls, t_reg]:
-        if target is None:
-            continue
-        for L in (cat_cols, num_cols, date_cols, text_cols):
-            # safe remove
-            if target in L:
-                L.remove(target)
-
+        if target:
+            for L in (cat_cols, num_cols, date_cols, text_cols):
+                if target in L:
+                    L.remove(target)
 
     # Ensure id/ignore/group don’t leak into features
     for col in id_cols + ignore + groups:
         for L in (cat_cols, num_cols, date_cols, text_cols):
-            if col in L: L.remove(col)
+            if col in L:
+                L.remove(col)
 
-    return cat_cols, num_cols, date_cols, text_cols, id_cols, ignore, groups, text_df
+    return cat_cols, num_cols, date_cols, text_cols, id_cols, ignore, groups
+
 
 def _add_date_flags(df: pd.DataFrame, date_cols: List[str]) -> Tuple[pd.DataFrame, List[str], List[str]]:
     added_cat, added_num = [], []
@@ -584,7 +574,7 @@ def _add_date_parts(df: pd.DataFrame, date_cols: List[str]) -> Tuple[pd.DataFram
     added_cat, added_num = [], []
     for col in date_cols:
         # Robust parse
-        parsed = pd.to_datetime(df[col], errors="coerce", infer_datetime_format=True)
+        parsed = pd.to_datetime(df[col], errors="coerce", utc=True)
         y = f"{col}_year"
         m = f"{col}_month"
         dow = f"{col}_dow"
@@ -1095,67 +1085,91 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 def feature_engineering_general_df(df: pd.DataFrame, cfg: PreprocessConfig, train: bool):
-    """
-    DataFrame version of feature_engineering_general (no CSV read).
-    Fits encoders if train=True; otherwise loads encoders and only transforms.
-    """
     _ensure_dirs(cfg.encoder_info_dir, cfg.data_process_dir)
 
+    # ---- normalize cfg to plain Python types (prevents Series truthiness) ----
+    cfg.add_date_parts = bool(getattr(cfg, "add_date_parts", True))
+    cfg.max_onehot_cardinality = int(getattr(cfg, "max_onehot_cardinality", 50))
+    cfg.fillna_categorical = getattr(cfg, "fillna_categorical", "__NA__")
+    cfg.id_cols = list(getattr(cfg, "id_cols", []) or [])
+    cfg.group_cols = list(getattr(cfg, "group_cols", []) or [])
+    cfg.target_cls_col = getattr(cfg, "target_cls_col", None)
+    cfg.target_reg_col = getattr(cfg, "target_reg_col", None)
+    cfg.positive_label = getattr(cfg, "positive_label", None)
+
+    # ---- build type lists (must return exactly lists) ----
     cat_cols, num_cols, date_cols, text_cols, id_cols, ignore_cols, group_cols = _build_type_lists(df, cfg)
-    # Dates
+    cat_cols, num_cols, date_cols, text_cols = map(lambda x: list(x or []), (cat_cols, num_cols, date_cols, text_cols))
+    id_cols, ignore_cols, group_cols = map(lambda x: list(x or []), (id_cols, ignore_cols, group_cols))
+
+    # ---- dates → parts
     added_cat_from_dates, added_num_from_dates = [], []
     if cfg.add_date_parts and len(date_cols) > 0:
         df, added_cat_from_dates, added_num_from_dates = _add_date_parts(df.copy(), date_cols)
+        added_cat_from_dates = list(added_cat_from_dates or [])
+        added_num_from_dates = list(added_num_from_dates or [])
 
-    # Numeric -> categorical bins
+    # ---- numeric → categorical bins
     df, added_cat_from_bins = _add_numeric_bins(df, num_cols, cfg)
+    added_cat_from_bins = list(added_cat_from_bins or [])
 
-    feature_cat = cat_cols + added_cat_from_dates + added_cat_from_bins
-    feature_value = num_cols + added_num_from_dates
+    feature_cat = list(cat_cols + added_cat_from_dates + added_cat_from_bins)
+    feature_value = list(num_cols + added_num_from_dates)
 
+    # ---- cat/value blocks
     cats_df = df[feature_cat].copy() if feature_cat else pd.DataFrame(index=df.index)
-    for c in cats_df.columns:
-        cats_df[c] = cats_df[c].astype(str).fillna(cfg.fillna_categorical)
+    if not cats_df.empty:
+        for c in cats_df.columns:
+            cats_df[c] = cats_df[c].astype(str).fillna(cfg.fillna_categorical)
     nums_df = df[feature_value].copy() if feature_value else pd.DataFrame(index=df.index)
 
-    # cardinality filter for OHE
+    # ---- OHE selection
     card = {c: cats_df[c].nunique(dropna=False) for c in cats_df.columns}
     ohe_features = [c for c in cats_df.columns if card[c] <= cfg.max_onehot_cardinality]
 
-    encoder_info = _fit_or_load_onehot(pd.concat([cats_df, nums_df], axis=1), cfg, ohe_features, fit=train)
-    onehot_df, onehot_cols = _transform_onehot(pd.concat([cats_df, nums_df], axis=1), encoder_info)
-    # After computing onehot_df / onehot_cols and building `features`
-    features = pd.concat([cats_df, nums_df, onehot_df], axis=1)
-    feature_onehot = onehot_cols
-    features = features.reindex(sorted(features.columns), axis=1)
-    onehot_df = onehot_df.reindex(sorted(onehot_df.columns), axis=1) if not onehot_df.empty else onehot_df
+    # ---- fit/transform consistently on the same base matrix
+    base_df = pd.concat([cats_df, nums_df], axis=1) if (not cats_df.empty or not nums_df.empty) \
+              else pd.DataFrame(index=df.index)
+
+    encoder_info = _fit_or_load_onehot(base_df, cfg, ohe_features, fit=train)
+    onehot_df, onehot_cols = _transform_onehot(base_df, encoder_info) or (pd.DataFrame(index=df.index), [])
+    onehot_cols = list(onehot_cols or [])
+    if not onehot_df.empty:
+        onehot_df = onehot_df.reindex(sorted(onehot_df.columns), axis=1)
+
+    # ---- final features
+    features = pd.concat([cats_df, nums_df, onehot_df], axis=1) if (not cats_df.empty or not nums_df.empty or not onehot_df.empty) \
+               else pd.DataFrame(index=df.index)
+    if not features.empty:
+        features = features.reindex(sorted(features.columns), axis=1)
 
     bundle: Dict[str, pd.Series | pd.DataFrame | List[str]] = {
         "X": features,
         "feature_cat": feature_cat,
         "feature_value": feature_value,
-        "feature_onehot": feature_onehot,
-        # expose the raw one-hot block + its column names
+        "feature_onehot": onehot_cols,
         "X_onehot": onehot_df,
         "onehot_out_names": onehot_cols,
     }
 
-    # IDs & groups
+    # ---- IDs & groups (defensive)
     if cfg.id_cols and cfg.id_cols[0] in df.columns:
         bundle["ID"] = df[cfg.id_cols[0]]
     if cfg.group_cols:
-        bundle["group_cols"] = cfg.group_cols
-        bundle["group_primary"] = df[cfg.group_cols[0]]
-        for gc in cfg.group_cols:
-            bundle[f"group__{gc}"] = df[gc]
+        present_groups = [g for g in cfg.group_cols if g in df.columns]
+        if present_groups:
+            bundle["group_cols"] = present_groups
+            bundle["group_primary"] = df[present_groups[0]]
+            for gc in present_groups:
+                bundle[f"group__{gc}"] = df[gc]
 
-    # Targets (optional)
+    # ---- targets (optional, defensive)
     if cfg.target_cls_col and cfg.target_cls_col in df.columns:
         y = df[cfg.target_cls_col]
-        if y.dtype == "O" and cfg.positive_label is not None:
-            bundle["y_cls"] = (y == cfg.positive_label).astype(int)
-        elif pd.api.types.is_bool_dtype(y):
+        if pd.api.types.is_bool_dtype(y):
             bundle["y_cls"] = y.astype(int)
+        elif y.dtype == "O" and cfg.positive_label is not None:
+            bundle["y_cls"] = (y == cfg.positive_label).astype(int)
         else:
             bundle["y_cls"] = (pd.to_numeric(y, errors="coerce").fillna(0) > 0).astype(int)
         bundle["target_cls_col"] = cfg.target_cls_col
@@ -1165,6 +1179,7 @@ def feature_engineering_general_df(df: pd.DataFrame, cfg: PreprocessConfig, trai
         bundle["target_reg_col"] = cfg.target_reg_col
 
     return bundle
+
 
 
 def build_and_save_from_dfs(cfg: PreprocessConfig, df_train: pd.DataFrame, df_test: pd.DataFrame,

@@ -52,18 +52,39 @@ POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "printing")
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Example: Refresh token expires after 7 days
 MASTER_DB_NAME = os.environ.get("MASTER_DB_NAME", "ml_insights_db")
 
+DB_COMMON_ARGS = {
+    "pool_pre_ping": True,        # check connection before using
+    "pool_recycle": 300,          # recycle every 5 minutes
+    "pool_size": 5,               # base pool (tune for load)
+    "max_overflow": 10,           # extra bursts
+    "connect_args": {
+        "sslmode": "require",     # Supabase requires SSL
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    },
+}
+
 # Master database for user management
 MASTER_DB_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
 
-master_engine = create_engine(MASTER_DB_URL)
+master_engine = create_engine(
+    MASTER_DB_URL,
+    **DB_COMMON_ARGS,
+)
+
 
 SUPERUSER_DB_URL = (
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{MASTER_DB_NAME}"
     "?sslmode=require"
 )
 
-superuser_engine = create_engine(SUPERUSER_DB_URL, isolation_level="AUTOCOMMIT")
-
+superuser_engine = create_engine(
+    SUPERUSER_DB_URL,
+    isolation_level="AUTOCOMMIT",
+    **DB_COMMON_ARGS,
+)
 MasterSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=master_engine)
 
 # Dictionary to store user-specific engines and sessionmakers

@@ -48,21 +48,25 @@ class TypeInfo:
     valid_rate: float        # share of non-nulls that validate the semantic
     notes: Optional[str] = None
 
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
 @dataclass
 class IntakeMeta:
     dialect: DialectInfo
     header_map: Dict[str, ColumnMeta]
     inferred_types: Dict[str, TypeInfo]
     timezone_inference: Optional[str]
-    number_format: Dict[str, Optional[str]]    # {'decimal':'.', 'thousands':','}
-    currency_symbols: Dict[str, int]           # counts per symbol
-    json_columns: Dict[str, List[str]]         # original json col -> expanded subcolumns (if parsed)
-    nested_csv_columns: List[str]
-    anomalies: List[str]
+    number_format: Dict[str, Optional[str]]      # {'decimal':'.', 'thousands':','}
+    currency_symbols: Dict[str, int]             # counts per symbol
+    json_columns: Dict[str, List[str]]           # original json col -> expanded subcolumns
+    nested_csv_columns: List[str] = field(default_factory=list)
+    anomalies: Dict[str, Any] = field(default_factory=dict)   # <-- was List[str]
     data_gaps: Dict[str, Any] = field(default_factory=dict)
     assumptions: Dict[str, Any] = field(default_factory=dict)
     priors: Dict[str, Any] = field(default_factory=dict)
     prior_provenance: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class IntakeResult:
@@ -253,8 +257,6 @@ _EMAIL_RX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _DATE_HINTS = ("created_at","order_date","purchase_date","date","timestamp","datetime","time")
 _MONEY_HINTS = ("amount","total","subtotal","grand_total","total_price","price","spend","cost")
 
-def _has_any(haystack: set, needles: List[str]) -> bool:
-    return any(n in haystack for n in needles)
 
 def _fraction_true(seq) -> float:
     n = len(seq)
@@ -814,10 +816,26 @@ _KINDS = {
     },
 }
 
-def _has_any(canon_by_norm: Dict[str, str], names: list[str]) -> bool:
-    # names are canonical hints (e.g., "order_id", "email")
-    have = set(canon_by_norm.values())
-    return any(n in have for n in names)
+def _has_any(names_like, tokens) -> bool:
+    """
+    Accepts:
+      - dict[str, str]  (e.g., normalized -> canonical_hint)
+      - Iterable[str]   (list/set/Index of column names)
+    Returns True if any token is present (after slugify) in the names_like universe.
+    """
+    def _norm_all(xs):
+        return { _slugify(x) for x in xs }
+
+    if isinstance(names_like, dict):
+        # consider both keys (normalized headers) AND values (canonical hints)
+        have = _norm_all(list(names_like.keys())) | _norm_all([v for v in names_like.values() if v])
+    else:
+        # assume iterable of strings (e.g., set/list of header names)
+        have = _norm_all(list(names_like))
+
+    want = _norm_all(tokens)
+    return len(have & want) > 0
+
 
 def _infer_present_kinds(canon_by_norm: Dict[str, str]) -> list[str]:
     present = []
@@ -1114,7 +1132,7 @@ def _schema_for_kind(kind: str) -> ReqSchema:
             min_cover=1.0,
         )
     return ReqSchema()
-
+#5
 def validate_kind_schema(
     kind: str,
     header_map: Dict[str,"ColumnMeta"],
@@ -1411,10 +1429,10 @@ def intake_and_normalize(
     canon_by_norm = canonical_by_normalized(header_map)  # normalized -> canonical_hint
 
     # 5) Auto-requirements (synonym-aware, graded, with content checks)
-    schema_reports = []
+    schema_reports_buffer = []      # <-- buffer instead of setattr(meta,...)
     for kind in present_kinds:
         report = validate_kind_schema(kind, header_map, df, canon_by_norm)
-        schema_reports.append(report)
+        schema_reports_buffer.append(report)
         if report["severity"] in ("warn", "error"):
             anomalies.setdefault("schema", []).append({
                 "kind": kind,
@@ -1425,17 +1443,58 @@ def intake_and_normalize(
                 "quality": report["quality"],
                 "suggestions": report["suggestions"],
             })
-
-    # (optional) expose for your debug drawer
-    setattr(meta, "schema_reports", schema_reports)
-
-    # 6) JSON expansion (returns a dict mapping)
     json_expansions: Dict[str, List[str]] = {}
-    nested_csv_cols: List[str] = []
     if parse_json_cells:
         df, json_expansions = _expand_json_columns(df, min_json_frac=0.2, sample_rows=100)
 
-    # 7) 🛡️ PII guardrails (INTAKE-SIDE)
+        new_cols = [c for c in df.columns if c not in canon_by_norm]
+        if new_cols:
+            hmap_new, rindex_new = normalize_headers(
+                new_cols,
+                alias_lexicon=_ALIAS_LEXICON,
+                unit_suffixes=_UNIT_SUFFIXES,
+                symbol_tags=_SYMBOL_TAGS,
+                context=primary_context,
+                keep_percent_in_slug=False,
+            )
+
+            # --- collision-safe renaming ---
+            existing = set(map(str, df.columns))  # ensure strings
+            rename_map: Dict[str, str] = {}
+            base_by_col: Dict[str, str] = {}
+
+            for c in new_cols:
+                base = hmap_new[c].normalized_name
+                base_by_col[c] = base
+                target = base
+                i = 2
+                while target in existing or target in rename_map.values():
+                    target = f"{base}_{i}"
+                    i += 1
+                rename_map[c] = target
+                hmap_new[c].normalized_name = target  # keep ColumnMeta aligned
+                existing.add(target)
+
+            # apply renames
+            df.columns = list(map(str, df.columns))
+            df = df.rename(columns=rename_map)
+
+            # --- re-key rindex_new to FINAL normalized names ---
+            rindex_new_final: Dict[str, set] = {}
+            for c in new_cols:
+                old_key = base_by_col[c]        # pre-suffix normalized
+                new_key = rename_map[c]         # final normalized
+                originals = rindex_new.get(old_key, {c})
+                rindex_new_final[new_key] = set(originals)
+
+            # merge into global maps
+            header_map.update(hmap_new)
+            for k, v in rindex_new_final.items():
+                reverse_index.setdefault(k, set()).update(v)
+            canon_by_norm.update(canonical_by_normalized(hmap_new))
+
+
+    # 7) PII guardrails (unchanged)
     df, pii_actions, hashed_mapping, pii_metrics = apply_pii_guardrails(
         df,
         primary_context=primary_context,
@@ -1449,35 +1508,34 @@ def intake_and_normalize(
     for k, v in (inferred_anomalies or {}).items():
         anomalies.setdefault(k, []).extend(v)
 
-    # 9) standardize values
-    df_norm = df.copy(deep=True)
+    # --- 9) standardize values (dialect safety defaults) ---
+    decimal_char = getattr(dialect, "decimal", ".")
+    thousands_char = getattr(dialect, "thousands", ",")
     df_norm = _standardize_values(
-        df_norm,
+        df.copy(deep=True),
         inferred_types=inferred,
         header_map=header_map,
         base_currency=base_currency,
-        decimal=dialect.decimal,
-        thousands=dialect.thousands,
+        decimal=decimal_char,
+        thousands=thousands_char,
         country_hint=country_hint,
         anomalies=anomalies,
     )
-
     # 10) winsorize guard rails
     df_norm = _winsorize_numeric(df_norm, inferred, lower_q=0.01, upper_q=0.99)
 
-    # 11) build meta
     meta = IntakeMeta(
         dialect=dialect,
         header_map=header_map,
         inferred_types=inferred,
         timezone_inference=tz_guess,
-        number_format={"decimal": dialect.decimal, "thousands": dialect.thousands},
+        number_format={"decimal": decimal_char, "thousands": thousands_char},
         currency_symbols=currency_counts,
         json_columns=json_expansions,
-        nested_csv_columns=nested_csv_cols,
         anomalies=anomalies,
     )
-
+    setattr(meta, "schema_reports", schema_reports_buffer)
+    setattr(meta, "json_expansion_counts", {k: len(v) for k, v in json_expansions.items()})
     # Telemetry
     setattr(meta, "canonical_by_normalized", canon_by_norm)
     setattr(meta, "normalized_to_originals", reverse_index)
@@ -1490,9 +1548,12 @@ def intake_and_normalize(
             k: _KINDS[k].get("join_keys", []) for k in present_kinds if k in _KINDS
         }
     })
-    setattr(meta, "pii", {"actions": pii_actions, "hashed_mapping": hashed_mapping})
-
-    # Confidence buckets — compute FIRST, set ONCE
+    setattr(meta, "pii", {
+        "actions": pii_actions,
+        "hashed_mapping": hashed_mapping,
+        "metrics": pii_metrics,                                       # <-- now exposed
+    })
+        # Confidence buckets — compute FIRST, set ONCE
     low, med, high = [], [], []
     for orig, cm in header_map.items():
         c = cm.hint_confidence or 0.0
@@ -1506,6 +1567,26 @@ def intake_and_normalize(
         "context_inferred": primary_context,
         "high": high, "medium": med, "low": low,
     })
+    # --- Unknown headers telemetry (after confidence calc) ---
+    unknown = [
+    {"original": orig, "normalized": cm.normalized_name,
+     "confidence": round((cm.hint_confidence or 0.0), 3)}
+    for orig, cm in header_map.items()
+    if not cm.canonical_hint
+    ]
+    if unknown:
+        anomalies.setdefault("unknown_headers", []).extend(unknown)
+
+
+    # --- Context fallback note ---
+    if primary_context and primary_context not in present_kinds:
+        anomalies.setdefault("context", []).append({
+            "note": "Used low-confidence primary_context fallback",
+            "primary_context": primary_context,
+            "score": kind_scores.get(primary_context, None),
+            "threshold": PRESENT_THRESH,
+            "scores": kind_scores,
+        })
 
     # Target detection (best-effort)
     try:
