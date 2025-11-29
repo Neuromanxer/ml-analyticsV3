@@ -190,29 +190,61 @@ def _slug(s: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "_", s)
     return re.sub(r"_+", "_", s).strip("_")
 
-def _case_or_slug_lookup(name: str, columns: List[str]) -> Optional[str]:
-    """Find a column by exact, case-insensitive, or slug-equal match."""
-    if name in columns:
-        return name
-    lower_map = {c.lower(): c for c in columns}
-    slug_map  = {_slug(c): c for c in columns}
-    if name.lower() in lower_map:
-        return lower_map[name.lower()]
-    if _slug(name) in slug_map:
-        return slug_map[_slug(name)]
+def _case_or_slug_lookup(name, columns: List[str]) -> Optional[str]:
+    """
+    Find a column by exact, case-insensitive, or slug-equal match.
+    Gracefully handle None / non-string names.
+    """
+    if name is None:
+        return None
+
+    # Always work with a string representation
+    name_str = str(name)
+
+    # Fast exact match first
+    if name_str in columns:
+        return name_str
+
+    # Case-insensitive map
+    lower_map = {str(c).lower(): c for c in columns}
+    name_low = name_str.lower()
+    if name_low in lower_map:
+        return lower_map[name_low]
+
+    # Slug-based match
+    slug_map = {_slug(str(c)): c for c in columns}
+    name_slug = _slug(name_str)
+    if name_slug in slug_map:
+        return slug_map[name_slug]
+
     return None
+
+
 def _first_valid_colname(x, columns):
-    """Return a single valid column name or None (case/slug tolerant)."""
+    """
+    Return a single valid column name or None (case/slug tolerant).
+
+    Accepts:
+      - a single value (str/None/etc.)
+      - or a list/tuple/Series/ndarray of candidates.
+    """
+    cols = list(columns)
+
+    if x is None:
+        return None
+
     if isinstance(x, (list, tuple, pd.Series, np.ndarray)):
         for v in x:
-            # try exact/CI/slug match
-            cand = _case_or_slug_lookup(v, list(columns))
+            if v is None:
+                continue
+            cand = _case_or_slug_lookup(v, cols)
             if cand is not None:
                 return cand
         return None
+
     # single value
-    cand = _case_or_slug_lookup(x, list(columns))
-    return cand
+    return _case_or_slug_lookup(x, cols)
+
 def _infer_types(df: pd.DataFrame, cfg: PreprocessConfig) -> Dict[str, str]:
     """
     Return {col: type_str} among:
@@ -331,7 +363,12 @@ def _infer_types(df: pd.DataFrame, cfg: PreprocessConfig) -> Dict[str, str]:
             if n == 0:
                 return False
             idx = rng.choice(sample.index.to_numpy(), size=n, replace=False)
-            parsed = pd.to_datetime(sample.loc[idx], errors="coerce", utc=True)
+            parsed = pd.to_datetime(
+                sample.loc[idx],
+                errors="coerce",
+                utc=True,
+                format="mixed",   # <- this is the key
+            )
             ratio = float(parsed.notna().mean())
             thresh = cfg.date_detect_success_ratio - (0.15 if name_hint else 0.0)
             return ratio >= max(0.2, thresh)
@@ -536,37 +573,58 @@ def _build_type_lists(df: pd.DataFrame, cfg: PreprocessConfig
 
     return cat_cols, num_cols, date_cols, text_cols, id_cols, ignore, groups
 
-
 def _add_date_flags(df: pd.DataFrame, date_cols: List[str]) -> Tuple[pd.DataFrame, List[str], List[str]]:
-    added_cat, added_num = [], []
+    added_cat: List[str] = []
+    added_num: List[str] = []
+
+    # 1. Choose a primary reference date (max) for recency
     ref = None
-    # choose a primary date as reference for recency (max)
     for dc in date_cols:
         if dc in df.columns:
             try:
-                s = pd.to_datetime(df[dc], errors="coerce")
+                s = pd.to_datetime(df[dc], errors="coerce", utc=True, format="mixed")
                 if s.notna().any():
                     ref = s.max()
                     break
             except Exception:
                 continue
+
+    # 2. Build all new columns in a dict to avoid fragmentation
+    new_cols: Dict[str, pd.Series] = {}
+
     for dc in date_cols:
         if dc not in df.columns:
             continue
+
         try:
-            s = pd.to_datetime(df[dc], errors="coerce")
-            wkend = s.dt.dayofweek.isin([5,6]).astype("int8")
-            ms = s.dt.is_month_start.astype("int8")
-            me = s.dt.is_month_end.astype("int8")
-            df[f"{dc}__is_weekend"] = wkend; added_cat.append(f"{dc}__is_weekend")
-            df[f"{dc}__is_month_start"] = ms; added_cat.append(f"{dc}__is_month_start")
-            df[f"{dc}__is_month_end"] = me; added_cat.append(f"{dc}__is_month_end")
+            s = pd.to_datetime(df[dc], errors="coerce", utc=True, format="mixed")
+
+            # Weekend flag
+            wkend_name = f"{dc}__is_weekend"
+            new_cols[wkend_name] = s.dt.dayofweek.isin([5, 6]).astype("int8")
+            added_cat.append(wkend_name)
+
+            # Month start/end
+            ms_name = f"{dc}__is_month_start"
+            me_name = f"{dc}__is_month_end"
+            new_cols[ms_name] = s.dt.is_month_start.astype("int8")
+            new_cols[me_name] = s.dt.is_month_end.astype("int8")
+            added_cat.extend([ms_name, me_name])
+
+            # Recency only if we got a reference
             if ref is not None:
-                rec = (ref - s).dt.days.astype("float32")
-                df[f"{dc}__recency_days"] = rec
-                added_num.append(f"{dc}__recency_days")
+                rec_name = f"{dc}__recency_days"
+                new_cols[rec_name] = (ref - s).dt.days.astype("float32")
+                added_num.append(rec_name)
+
         except Exception:
+            # If a particular column blows up, skip it and move on
             continue
+
+    # 3. Attach the new columns in one go — avoids fragmentation
+    if new_cols:
+        df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
+
     return df, added_cat, added_num
 
 def _add_date_parts(df: pd.DataFrame, date_cols: List[str]) -> Tuple[pd.DataFrame, List[str], List[str]]:
@@ -587,24 +645,29 @@ def _add_date_parts(df: pd.DataFrame, date_cols: List[str]) -> Tuple[pd.DataFram
     return df, added_cat, added_num
 from pandas.api.types import is_numeric_dtype
 
+from pandas.api.types import is_numeric_dtype
+
 def _add_numeric_bins(df: pd.DataFrame, num_cols: list[str], cfg) -> tuple[pd.DataFrame, list[str]]:
-    """
-    Return (df_with_bins, added_cat_cols). Avoids column-by-column insert to prevent fragmentation.
-    """
     added = {}
     added_names: list[str] = []
+
+    # coerce once here too (belt & suspenders)
+    try:
+        q = int(cfg.numeric_bins)
+    except Exception:
+        q = 5  # sane default
+
     for c in (num_cols or []):
-        # guard: only bin numeric with enough distinct values
         s = pd.to_numeric(df[c], errors="coerce") if is_numeric_dtype(df[c]) else pd.to_numeric(df[c], errors="coerce")
         uniq = s.dropna().unique()
         if uniq.size < 2:
             continue
         try:
-            binned = pd.qcut(s, q=cfg.numeric_bins, duplicates="drop").astype(str)
+            binned = pd.qcut(s, q=q, duplicates="drop").astype(str)
         except Exception:
-            # fall back to pd.cut with auto bins if qcut fails on skew
             try:
-                binned = pd.cut(s, bins=min(cfg.numeric_bins, max(2, len(uniq))), include_lowest=True).astype(str)
+                nbins = max(2, min(q, int(len(uniq))))
+                binned = pd.cut(s, bins=nbins, include_lowest=True).astype(str)
             except Exception:
                 continue
         newc = f"{c}__bin"
@@ -612,12 +675,10 @@ def _add_numeric_bins(df: pd.DataFrame, num_cols: list[str], cfg) -> tuple[pd.Da
         added_names.append(newc)
 
     if added:
-        # single, defragmenting concat
-        df = pd.concat([df, pd.DataFrame(added, index=df.index)], axis=1)
-        # optional: defragment copy to silence any residual warnings
-        df = df.copy()
+        df = pd.concat([df, pd.DataFrame(added, index=df.index)], axis=1).copy()
 
     return df, added_names
+
 
 from sklearn.preprocessing import OneHotEncoder
 
@@ -713,7 +774,8 @@ def feature_engineering_general(data_file: str, cfg: PreprocessConfig, train: bo
     except NameError:
         # if you didn’t add _add_date_flags yet, just skip
         pass
-
+    if not isinstance(cfg.numeric_bins, int):
+        logger.warning("numeric_bins is %r (type=%s); coercing to int", cfg.numeric_bins, type(cfg.numeric_bins).__name__)
     # 2) Numeric → categorical bins (if enabled)
     df, added_cat_from_bins = _add_numeric_bins(df, num_cols, cfg)
 
@@ -727,8 +789,9 @@ def feature_engineering_general(data_file: str, cfg: PreprocessConfig, train: bo
 
     # ----- Categoricals: hygiene + rare bucketing -----
     cats_df = df[feature_cat].copy() if feature_cat else pd.DataFrame(index=df.index)
-    for c in cats_df.columns:
-        cats_df[c] = cats_df[c].astype(str).fillna(cfg.fillna_categorical)
+    if not cats_df.empty:
+        cats_df = cats_df.astype("string").fillna(cfg.fillna_categorical)
+
 
     try:
         cats_df, rare_map = _apply_rare_bucket(
@@ -743,12 +806,11 @@ def feature_engineering_general(data_file: str, cfg: PreprocessConfig, train: bo
     # ----- Numerics: add missingness indicators -----
     nums_df = df[feature_value].copy() if feature_value else pd.DataFrame(index=df.index)
     miss_ind_cols = []
-    if not nums_df.empty:
-        for c in list(nums_df.columns):
-            mname = f"{c}__is_missing"
-            miss = nums_df[c].isna().astype("int8").rename(mname)
-            miss_ind_cols.append(mname)
-            nums_df[mname] = miss
+    base_num_cols = list(nums_df.columns)  # before adding new cols
+    miss_df = nums_df[base_num_cols].isna().astype("int8")
+    miss_df.columns = [f"{c}__is_missing" for c in base_num_cols]
+    nums_df = pd.concat([nums_df, miss_df], axis=1, copy=False)
+    miss_ind_cols = list(miss_df.columns)
 
     # ---------- High-cardinality plan ----------
     def _plan_categorical_encodings(cats: pd.DataFrame) -> Dict[str, str]:
@@ -790,9 +852,8 @@ def feature_engineering_general(data_file: str, cfg: PreprocessConfig, train: bo
     )
     onehot_df, onehot_cols = _transform_onehot(encoder_input, encoder_info)
     if not onehot_df.empty:
-        for c in onehot_df.columns:
-            if not pd.api.types.is_sparse(onehot_df[c].dtype):
-                onehot_df[c] = onehot_df[c].astype(pd.SparseDtype("int8", fill_value=0))
+        onehot_df = onehot_df.astype(pd.SparseDtype("int8", 0))
+        onehot_df.columns = [f"__oh__{c}" for c in onehot_df.columns]
 
     # 3b) Hashing for high-card cats (keyed BLAKE2b, configurable buckets)
     import hashlib
@@ -841,7 +902,7 @@ def feature_engineering_general(data_file: str, cfg: PreprocessConfig, train: bo
                 text_df = pd.DataFrame(index=df.index)
 
     # Build feature matrix
-    features = pd.concat([cats_df, nums_df, onehot_df, hashed_df, text_df], axis=1)
+    features = pd.concat([cats_df, nums_df, onehot_df, hashed_df, text_df], axis=1, copy=False)
 
     # Fallback if nothing survived
     if features.shape[1] == 0:
@@ -936,13 +997,44 @@ def standardize_missing_markers(df: pd.DataFrame) -> pd.DataFrame:
     df[obj_cols] = df[obj_cols].replace(_std_null_marker_list(), np.nan)
     return df
 
-def compute_null_rate(df: pd.DataFrame) -> float:
-    if df.empty:
+def compute_null_rate(
+    df: pd.DataFrame,
+    *,
+    approx_threshold: int = 5_000_000,   # cells = rows * cols
+    sample_rows: int = 10_000,
+) -> float:
+    """
+    Compute (approximate) null rate.
+
+    - For "small" tables (<= approx_threshold cells): exact null rate.
+    - For big tables: sample up to `sample_rows` rows and estimate.
+    """
+    if df is None or df.empty:
         return 0.0
-    total = df.shape[0] * df.shape[1]
-    if total == 0:
+
+    n_rows, n_cols = df.shape
+    if n_cols == 0:
         return 0.0
-    return float(df.isna().sum().sum()) / float(total)
+
+    total_cells = n_rows * n_cols
+
+    # Small enough: do exact scan
+    if total_cells <= approx_threshold:
+        # using .values.sum() is a bit faster than chained sum()
+        nulls = df.isna().values.sum()
+        return float(nulls) / float(total_cells)
+
+    # Large table: sample to avoid multi-minute full scan
+    sample_n = min(sample_rows, n_rows)
+    # fixed random_state so it's deterministic-ish
+    sample = df.sample(n=sample_n, random_state=0)
+
+    sample_total = sample_n * n_cols
+    sample_nulls = sample.isna().values.sum()
+    rate = float(sample_nulls) / float(sample_total)
+
+    return float(rate)
+
 
 def _safe_list(x, default=None):
     if x is None: return (default or [])
@@ -1119,8 +1211,8 @@ def feature_engineering_general_df(df: pd.DataFrame, cfg: PreprocessConfig, trai
     # ---- cat/value blocks
     cats_df = df[feature_cat].copy() if feature_cat else pd.DataFrame(index=df.index)
     if not cats_df.empty:
-        for c in cats_df.columns:
-            cats_df[c] = cats_df[c].astype(str).fillna(cfg.fillna_categorical)
+        cats_df = cats_df.astype("string").fillna(cfg.fillna_categorical)
+
     nums_df = df[feature_value].copy() if feature_value else pd.DataFrame(index=df.index)
 
     # ---- OHE selection
@@ -1140,8 +1232,11 @@ def feature_engineering_general_df(df: pd.DataFrame, cfg: PreprocessConfig, trai
     # ---- final features
     features = pd.concat([cats_df, nums_df, onehot_df], axis=1) if (not cats_df.empty or not nums_df.empty or not onehot_df.empty) \
                else pd.DataFrame(index=df.index)
-    if not features.empty:
-        features = features.reindex(sorted(features.columns), axis=1)
+    # drop duplicate labels, keep first
+    features = features.loc[:, ~features.columns.duplicated()]
+    # then sort without reindex (reindex triggers error on dups)
+    features = features.sort_index(axis=1)
+
 
     bundle: Dict[str, pd.Series | pd.DataFrame | List[str]] = {
         "X": features,
@@ -1310,72 +1405,105 @@ def _count_csv_columns_on_disk(csv_path: str) -> int:
         reader = csv.reader(f)
         header = next(reader, [])
         return len(header or [])
-
-def preprocess_full_dataset(cfg: PreprocessConfig,
-                            csv_path: str,
-                            *, user_id: str,
-                            filename: str = "data.csv",
-                            fit_encoders: bool = True):
+def preprocess_full_dataset(
+    cfg: PreprocessConfig,
+    csv_path: str,
+    *,
+    user_id: str,
+    dataset_id: int,                # 👈 NEW: pass dataset_id explicitly
+    filename: str = "data.csv",
+    fit_encoders: bool = True,
+):
     """
-    Preprocess entire dataset, write a single CSV under a temp user_outputs/, upload to Supabase.
+    Preprocess entire dataset, write a single CSV under a temp user_outputs/,
+    then either upload to Supabase or persist locally, depending on size.
+
     Fallback order:
       1) feature_engineering_general (CSV path)
       2) feature_engineering_general_df (DF path)
-      3) _super_safe_minimal_bundle (truth-value-proof)
-    Returns remote paths + simple quality metrics.
+      3) safe_minimal_bundle (truth-value-proof)
+
+    Returns remote/local paths + simple quality metrics.
     """
     import tempfile
+    import shutil
     from pathlib import Path as PathL
     from dataclasses import replace
 
     with tempfile.TemporaryDirectory() as temp_dir:
         user_dir = PathL(temp_dir) / "user_outputs"
-        enc_dir  = user_dir / "encoders"
+        enc_dir = user_dir / "encoders"
         proc_dir = user_dir / "processed"
         enc_dir.mkdir(parents=True, exist_ok=True)
         proc_dir.mkdir(parents=True, exist_ok=True)
 
-        cfg_tmp = replace(cfg, encoder_info_dir=str(enc_dir), data_process_dir=str(proc_dir))
+        cfg_tmp = replace(
+            cfg,
+            encoder_info_dir=str(enc_dir),
+            data_process_dir=str(proc_dir),
+        )
 
-        # -------- Try normal CSV FE --------
+        df_raw: Optional[pd.DataFrame] = None
+
+        # -------- Try normal CSV FE (preferred path) --------
         bundle = None
         try:
             bundle = feature_engineering_general(csv_path, cfg_tmp, train=fit_encoders)
         except Exception as e1:
             msg1 = str(e1).lower()
-            logger.warning(f"feature_engineering_general failed ({msg1}); trying DF path")
+            logger.warning(
+                "feature_engineering_general failed (%s); trying DF path", msg1
+            )
 
-            # -------- Try DF FE --------
+            # -------- Try DF FE (single read of CSV) --------
             try:
-                df = pd.read_csv(csv_path, low_memory=False)
+                if df_raw is None:
+                    df_raw = pd.read_csv(csv_path, low_memory=False)
+
+                df = df_raw.copy()
                 try:
                     df = standardize_missing_markers(df)
                 except Exception:
                     pass
+
                 bundle = feature_engineering_general_df(df, cfg_tmp, train=fit_encoders)
             except Exception as e2:
                 msg2 = str(e2).lower()
-                logger.warning(f"feature_engineering_general_df failed ({msg2}); using super-safe minimal path")
+                logger.warning(
+                    "feature_engineering_general_df failed (%s); using super-safe minimal path",
+                    msg2,
+                    exc_info=True,
+                )
 
                 # -------- Final fallback: minimal, truth-value-free --------
-                if 'df' not in locals():
-                    df = pd.read_csv(csv_path, low_memory=False)
-                bundle = safe_minimal_bundle(df, cfg_tmp)
+                if df_raw is None:
+                    df_raw = pd.read_csv(csv_path, low_memory=False)
+
+                bundle = safe_minimal_bundle(df_raw, cfg_tmp)
                 # Note: no encoder pickle in this path
 
-                # Materialize final output
+        # ---------- Materialize final output ----------
+
         df_out = bundle["X"].copy()
-        if "y_cls" in bundle:         df_out["__target_cls"] = bundle["y_cls"]
-        if "y_reg" in bundle:         df_out["__target_reg"] = bundle["y_reg"]
-        if "ID" in bundle:            df_out["__ID"] = bundle["ID"]
-        if "group_primary" in bundle: df_out["__group_primary"] = bundle["group_primary"]
+        if "y_cls" in bundle:
+            df_out["__target_cls"] = bundle["y_cls"]
+        if "y_reg" in bundle:
+            df_out["__target_reg"] = bundle["y_reg"]
+        if "ID" in bundle:
+            df_out["__ID"] = bundle["ID"]
+        if "group_primary" in bundle:
+            df_out["__group_primary"] = bundle["group_primary"]
 
         rows_processed = int(df_out.shape[0])
-        cols_processed = int(df_out.shape[1])  # ← used by endpoint check
+        cols_processed = int(df_out.shape[1])
+
         # Last-ditch guard – never allow 0 columns
         if df_out.shape[1] == 0:
             try:
-                raw = pd.read_csv(csv_path, low_memory=False)
+                if df_raw is None:
+                    df_raw = pd.read_csv(csv_path, low_memory=False)
+
+                raw = df_raw.copy()
                 num_cols = list(raw.select_dtypes(include=["number"]).columns)[:20]
                 other_cols = [c for c in raw.columns if c not in num_cols][:10]
                 keep = num_cols + other_cols
@@ -1392,33 +1520,119 @@ def preprocess_full_dataset(cfg: PreprocessConfig,
         # Recompute after the guard
         rows_processed = int(df_out.shape[0])
         cols_processed = int(df_out.shape[1])
-        null_rate_after_full = compute_null_rate(df_out)
+
+        # ---- SAFER, FASTER null-rate computation ----
+        try:
+            null_rate_after_full = compute_null_rate(df_out)
+        except Exception as e:
+            logger.warning("compute_null_rate(df_out) failed: %s", e, exc_info=True)
+            null_rate_after_full = None
+
+        # ---------- SIZE / TIER LOGIC (before writing/uploading) ----------
+
+        try:
+            approx_bytes = df_out.memory_usage(deep=True).sum()
+            approx_mb = approx_bytes / (1024 * 1024)
+        except Exception as e:
+            logger.warning("Failed to estimate df_out size: %s", e, exc_info=True)
+            approx_mb = None
+
+        MAX_UPLOAD_MB = 40.0           # Supabase-ish free-tier limit
+        MAX_ROWS_FOR_SUPABASE = 50_000
+        MAX_COLS_FOR_SUPABASE = 300
+        MAX_LOCAL_MB = 1_000.0         # hard cap for even local persistence (~1GB)
+
+        if approx_mb is not None and approx_mb > MAX_LOCAL_MB:
+            storage_mode = "none"
+            storage_reason = f"approx_mb={approx_mb:.2f} exceeds MAX_LOCAL_MB={MAX_LOCAL_MB:.2f}"
+        elif (
+            rows_processed > MAX_ROWS_FOR_SUPABASE
+            or cols_processed > MAX_COLS_FOR_SUPABASE
+            or (approx_mb is not None and approx_mb > MAX_UPLOAD_MB)
+        ):
+            storage_mode = "local"
+            storage_reason = (
+                f"rows={rows_processed}, cols={cols_processed}, approx_mb={approx_mb} "
+                f"exceed Supabase thresholds (rows<={MAX_ROWS_FOR_SUPABASE}, "
+                f"cols<={MAX_COLS_FOR_SUPABASE}, mb<={MAX_UPLOAD_MB})"
+            )
+        else:
+            storage_mode = "supabase"
+            storage_reason = "OK"
+
+        logger.info(
+            "Preprocess result: rows=%d cols=%d approx_mb=%s storage_mode=%s reason=%s",
+            rows_processed,
+            cols_processed,
+            f"{approx_mb:.2f}" if approx_mb is not None else "unknown",
+            storage_mode,
+            storage_reason,
+        )
+
+        # ---------- Materialize to disk (temp) ----------
 
         data_path = user_dir / filename
         data_path.parent.mkdir(parents=True, exist_ok=True)
+
         df_out.to_csv(data_path, index=False)
-        # authoritative counts from the file we uploaded
-        cols_on_disk = _count_csv_columns_on_disk(str(data_path))
-        rows_on_disk = rows_processed  # rows are already accurate for our df_out
 
-        # If there is a discrepancy, trust the file we just wrote
-        cols_processed = int(cols_on_disk)
-        rows_processed = int(rows_on_disk)
-
-        # Optional: if somehow only 0–1 columns survived, treat as failure to force fallback
         if cols_processed <= 1:
-            raise RuntimeError(f"Post-write sanity: only {cols_processed} column(s) in processed CSV")
-        # Upload processed dataset
-        data_remote = upload_file_to_supabase(user_id, str(data_path), data_path.name)
+            raise RuntimeError(
+                f"Post-write sanity: only {cols_processed} column(s) in processed CSV"
+            )
+
+        # ---------- Upload / persistence logic ----------
+
+        data_remote: str | None = None
+        processed_key: str | None = None
+
+        if storage_mode == "supabase":
+            # upload to Supabase
+            data_remote = upload_file_to_supabase(
+                user_id, str(data_path), data_path.name
+            )
+            processed_key = data_remote  # for backward-compat
+
+        elif storage_mode == "local":
+            # keep durable copy on local filesystem as fs: key
+            from storage import user_dataset_root  # adjust import path
+
+            root = user_dataset_root(user_id=user_id, dataset_id=dataset_id)
+            local_proc_dir = PathL(root) / "processed"
+            local_proc_dir.mkdir(parents=True, exist_ok=True)
+
+            local_path = local_proc_dir / filename
+            shutil.copy2(data_path, local_path)
+
+            processed_key = f"fs:{user_id}/{dataset_id}/{filename}"
+            data_remote = None
+
+        else:
+            logger.warning(
+                "Skipping persistence for %s due to storage_mode=%s (%s)",
+                data_path.name,
+                storage_mode,
+                storage_reason,
+            )
+            data_remote = None
+            processed_key = None
 
         # Upload encoder only if it exists (skip in minimal path)
         enc_pkl = enc_dir / "one_hot_encoder.pkl"
-        enc_remote = upload_file_to_supabase(user_id, str(enc_pkl), enc_pkl.name) if (fit_encoders and enc_pkl.exists()) else None
+        if fit_encoders and enc_pkl.exists() and storage_mode == "supabase":
+            enc_remote = upload_file_to_supabase(
+                user_id, str(enc_pkl), enc_pkl.name
+            )
+        else:
+            enc_remote = None
 
         return {
-            "data_csv": data_remote,
+            "data_csv": data_remote,             # Supabase key (if any)
+            "processed_key": processed_key,      # 👈 fs:... or Supabase key
             "encoder_pkl": enc_remote,
             "rows_processed": rows_processed,
             "cols_processed": cols_processed,
             "null_rate_after_full": null_rate_after_full,
+            "storage_mode": storage_mode,
+            "storage_reason": storage_reason,
         }

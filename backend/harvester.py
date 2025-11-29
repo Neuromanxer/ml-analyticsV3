@@ -2728,26 +2728,55 @@ def _canonicalize_units_from_headers(df: pd.DataFrame) -> None:
                 new_col = re.sub(pat, f"_{canon}", col, flags=re.IGNORECASE)
                 df[new_col] = s.map(lambda v: fn(v) if pd.notna(v) else v)
                 break
+def _winsorize_numeric(
+    df: pd.DataFrame,
+    inferred: Dict[str, TypeInfo],
+    lower_q: float = 0.01,
+    upper_q: float = 0.99,
+) -> pd.DataFrame:
+    """
+    Winsorize numeric-like columns by adding `<col>_capped` versions.
 
-# -----------------------------
-# 6) Winsorize guard (non-destructive)
-# -----------------------------
-def _winsorize_numeric(df: pd.DataFrame, inferred: Dict[str, TypeInfo], lower_q=0.01, upper_q=0.99) -> pd.DataFrame:
-    out = df.copy()
+    This version avoids DataFrame fragmentation by building all new columns
+    in a separate dict and concatenating once at the end.
+    """
+    # We don't mutate df; we build new columns separately
+    new_cols: Dict[str, pd.Series] = {}
+
     for col, ti in inferred.items():
-        if ti.semantic in ("numeric","money","percent"):
-            # include base + derived numeric columns
-            candidates = [col] + [c for c in out.columns if c.startswith(col + "_")]
-            targets = [c for c in candidates if out[c].dtype != object]
-            for t in targets:
-                series = pd.to_numeric(out[t], errors="coerce")
-                if series.notna().sum() < 50:
-                    continue
-                lo = series.quantile(lower_q)
-                hi = series.quantile(upper_q)
-                out[t + "_capped"] = series.clip(lower=lo, upper=hi)
-    return out
+        if ti.semantic not in ("numeric", "money", "percent"):
+            continue
 
+        # include base + derived numeric columns
+        candidates = [col] + [c for c in df.columns if c.startswith(col + "_")]
+        targets = [c for c in candidates if df[c].dtype != object]
+
+        for t in targets:
+            series = pd.to_numeric(df[t], errors="coerce")
+
+            # skip tiny columns (not enough data to estimate quantiles)
+            if series.notna().sum() < 50:
+                continue
+
+            lo = series.quantile(lower_q)
+            hi = series.quantile(upper_q)
+            capped = series.clip(lower=lo, upper=hi)
+
+            new_cols[t + "_capped"] = capped
+
+    if not new_cols:
+        # nothing to add
+        return df.copy()
+
+    new_df = pd.DataFrame(new_cols, index=df.index)
+
+    # concat once → avoids fragmentation
+    out = pd.concat([df, new_df], axis=1)
+
+    # optional: defragment explicitly (usually not needed after concat)
+    out = out.copy()
+
+    return out
 
 # -----------------------------
 # Helpers for preview & meta json

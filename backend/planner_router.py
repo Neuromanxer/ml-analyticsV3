@@ -10,10 +10,9 @@ import time
 # --- Mapping helpers ----------------------------------------------------------
 import re
 from typing import Dict, List, Optional
-import pandas as pd
 import io, os, re, mimetypes, tempfile
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path as PathL
 from typing import Any, Dict, Optional, Tuple
 import uuid
 from auth import get_current_active_user, User
@@ -377,6 +376,8 @@ def coerce_orders(df: Optional[pd.DataFrame], m: Dict[str, object]) -> pd.DataFr
 
     out = out.dropna(subset=["order_id"]).drop_duplicates("order_id", keep="last")
     out = out[out["amount"].fillna(0) > 0]
+    out["order_id"] = out["order_id"].astype(str) + "-" + df.index.astype(str)
+
     return out
 
 def coerce_marketing(df: Optional[pd.DataFrame], m: Dict[str, object]) -> pd.DataFrame:
@@ -544,8 +545,8 @@ def _now_tag() -> str:
     return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
 def _slug_filename(name: str) -> str:
-    base = Path(name).stem
-    ext  = Path(name).suffix or ".csv"
+    base = PathL(name).stem
+    ext  = PathL(name).suffix or ".csv"
     base = re.sub(r"[^a-zA-Z0-9._-]+", "-", base).strip("-._")
     return f"{base}{ext}"
 
@@ -671,8 +672,6 @@ def _present_from_bytes(cust: Optional[bytes], ords: Optional[bytes], mkt: Optio
     if mkt:  kinds.append("marketing")
     return kinds
 import base64, hashlib
-
-INLINE_B64_MAX = 1_500_000  # ~1.5 MB; skip inline for larger files
 CSV_PREVIEW_ROWS = 10
 
 def _df_to_csv_bytes(df: Optional[pd.DataFrame]) -> Optional[bytes]:
@@ -700,8 +699,6 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
         "path": "",
         "public_url": "",      # left blank; your uploader returns only the path
         "size_bytes": 0,
-        "columns": [],
-        "inline_b64": None,
         "preview": [],
     }
     if df is None:
@@ -717,7 +714,7 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
     stamped_name = f"derive/{_now_tag()}-{kind}-{safe_original}"
 
     # Write bytes to a temp file and hand off to the uploader
-    suffix = Path(stamped_name).suffix or ".csv"
+    suffix = PathL(stamped_name).suffix or ".csv"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         if csv_bytes:
             tmp.write(csv_bytes)
@@ -728,10 +725,6 @@ async def _upload_csv_bytes(user_id: str, kind: str, df: Optional[pd.DataFrame])
         out["filename"] = stamped_name
         out["path"] = storage_path
         # NOTE: out["public_url"] intentionally left "" (uploader returns only the path)
-
-        # Inline b64 only for small files
-        if csv_bytes and len(csv_bytes) <= INLINE_B64_MAX:
-            out["inline_b64"] = base64.b64encode(csv_bytes).decode("ascii")
 
         # Preview rows
         try:
@@ -765,56 +758,139 @@ def _gap(gaps: List[Dict[str, Any]], calc_key: str, table: str, missing: List[st
         "message": note,                  # user-friendly explanation
         "severity": "warn"                # could be "info" | "warn"
     })
-def apply_common_transforms(df: pd.DataFrame, key_field: Optional[str]=None, user_tz: Optional[str]=None) -> Tuple[pd.DataFrame, List[str]]:
-    transforms = []
+from typing import Optional, List, Tuple
+import pandas as pd
+
+def apply_common_transforms(
+    df: pd.DataFrame,
+    key_field: Optional[str] = None,
+    user_tz: Optional[str] = None,
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Common, conservative cleanup for canonical frames.
+
+    - Strips/normalizes object columns.
+    - Normalizes email/phone when present.
+    - Parses *likely* date columns, with sampling guard.
+    - Drops exact duplicates + optional key-based dedupe.
+    """
+    transforms: List[str] = []
+
     if df is None or df.empty:
         return df, transforms
 
-    # Trim whitespace and collapse multiple spaces for all string columns
-    for col in df.select_dtypes(include="object").columns:
-        df[col] = df[col].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
-        transforms.append(f"trim_whitespace:{col}")
-        transforms.append(f"collapse_spaces:{col}")
+    df = df.copy()
 
-    # Lowercase emails
-    if "email" in df.columns:
-        df["email"] = df["email"].astype(str).str.lower()
-        transforms.append("lowercase_email")
-
-    # E.164 phone normalization (already done in clean_phone)
-    if "phone" in df.columns:
-        df["phone"] = clean_phone(df["phone"])
-        transforms.append("normalize_phone")
-
-    # Parse dates with timezone and unify to ISO-8601
-    date_cols = [c for c in df.columns if "date" in c or "created_at" in c]
-    for col in date_cols:
+    # ---- Generic string cleanup ----
+    obj_cols = df.select_dtypes(include="object").columns
+    for col in obj_cols:
         try:
-            dt = pd.to_datetime(df[col], errors="coerce")
-            if user_tz:
-                dt = dt.dt.tz_convert(user_tz)  # user tz view, NO 'Z' suffix
-                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%S%z")  # e.g. 2025-03-01T10:00:00-0800
-            else:
-                # canonical UTC with Z
-                df[col] = dt.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-            transforms.append(f"parse_date:{col}")
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.strip()
+                .str.replace(r"\s+", " ", regex=True)
+            )
+            transforms.append(f"trim_whitespace:{col}")
+            transforms.append(f"collapse_spaces:{col}")
+        except Exception:
+            # Don't let a single bad column kill the whole transform
+            continue
+
+    # ---- Email normalization ----
+    if "email" in df.columns:
+        try:
+            df["email"] = df["email"].astype(str).str.lower()
+            transforms.append("lowercase_email")
         except Exception:
             pass
 
-    # Drop exact duplicate rows
-    before = len(df)
-    df = df.drop_duplicates()
-    if len(df) < before:
-        transforms.append("drop_exact_duplicates")
+    # ---- Phone normalization ----
+    if "phone" in df.columns:
+        try:
+            df["phone"] = clean_phone(df["phone"])
+            transforms.append("normalize_phone")
+        except Exception:
+            pass
 
-    # Dedupe on key field
-    if key_field and key_field in df.columns:
+    # ---- Date / timestamp handling (with sampling guard) ----
+    # Only touch columns that *look* like dates by name
+    date_cols = [
+        c for c in df.columns
+        if isinstance(c, str) and (("date" in c.lower()) or ("created_at" in c.lower()))
+    ]
+
+    for col in date_cols:
+        s = df[col]
+
+        # Skip if it's essentially empty
+        non_null = s.dropna()
+        if non_null.empty:
+            continue
+
+        try:
+            # Sample to see if it behaves like a date
+            sample_size = min(200, len(non_null))
+            sample = non_null.astype(str).sample(
+                n=sample_size,
+                random_state=0,
+                replace=False,
+            )
+
+            # Use a strict parse on the sample; if too few parse, bail out
+            sample_parsed = pd.to_datetime(
+                sample,
+                errors="coerce",
+                utc=True,   # we just need a consistent basis
+            )
+            frac_ok = float(sample_parsed.notna().mean())
+
+            # If < 40% of non-null values parse, treat this as non-date noise
+            if frac_ok < 0.40:
+                continue
+
+            # Now parse the full column
+            full_parsed = pd.to_datetime(
+                s.astype(str),
+                errors="coerce",
+                utc=True,
+            )
+
+            # If user_tz specified, convert; else keep as UTC 'Z'
+            if user_tz:
+                full_parsed = full_parsed.dt.tz_convert(user_tz)
+                df[col] = full_parsed.dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+            else:
+                # Already UTC; format with explicit Z suffix
+                df[col] = full_parsed.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            transforms.append(f"parse_date:{col}")
+
+        except Exception:
+            # If anything weird happens, just leave the column as-is
+            continue
+
+    # ---- Drop exact duplicate rows ----
+    try:
         before = len(df)
-        df = df.drop_duplicates(key_field, keep="last")
+        df = df.drop_duplicates()
         if len(df) < before:
-            transforms.append(f"dedupe_on_key:{key_field}")
+            transforms.append("drop_exact_duplicates")
+    except Exception:
+        pass
+
+    # ---- Optional key-based dedupe ----
+    if key_field and key_field in df.columns:
+        try:
+            before = len(df)
+            df = df.drop_duplicates(subset=[key_field], keep="last")
+            if len(df) < before:
+                transforms.append(f"dedupe_on_key:{key_field}")
+        except Exception:
+            pass
 
     return df, transforms
+
 def _preflight_and_compute(C, O, M, options) -> Tuple[Dict[str, Any], List[Dict[str, Any]], float]:
     """
     Returns (derived_partial, calc_gaps, coverage_pct). We only fill the parts this block owns.
@@ -1088,7 +1164,7 @@ def _auto_pick(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
 from planner import map_target_to_signals
 # ----------------- endpoint (single-file, works for ANY file) -----------------
 from fastapi import APIRouter, Depends, File, UploadFile, Request, HTTPException
-from pathlib import Path
+from pathlib import Path as PathL
 from typing import Dict, List, Optional, Any, Tuple
 import tempfile, uuid, os
 import pandas as pd
@@ -1200,45 +1276,75 @@ def coerce_generic(df: pd.DataFrame, ui_map: Optional[Dict[str, str]] = None) ->
         df["target"] = df["target"].map(_to01)
 
     return df, warnings
-def _coerce_generic_as_orders(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+def _coerce_generic_as_orders(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     """
-    Minimal generic normalization into orders-like table:
-      order_id, customer_id, order_date, amount
+    Try to coerce an arbitrary ecommerce-like table into a canonical 'orders' frame.
+    Never raises on missing columns; instead returns warnings.
     """
-    warns: List[str] = []
+    warnings: list[str] = []
+    df = df.copy()
     out = pd.DataFrame(index=df.index)
 
-    oid = _auto_pick(df, ["order_id","oid","transaction_id","id"])
-    cid = _auto_pick(df, ["customer_id","cust_id","user_id","uid","email"])
-    dtc = _auto_pick(df, ["order_date","timestamp","date","created_at","processed_at"])
-    amt = _auto_pick(df, ["amount","order_total","revenue","price","total","subtotal_price","total_price"])
-
-    if not oid:
-        # fabricate an index-based id if missing
-        out["order_id"] = (df.reset_index().index.astype(str)).astype("string")
-        warns.append("order_id missing; synthesized sequential ids.")
+    # ---- order_id ----
+    if "order_id" in df.columns:
+        out["order_id"] = df["order_id"].astype(str)
+    elif "id" in df.columns:
+        out["order_id"] = df["id"].astype(str)
+        warnings.append("Using 'id' as order_id (order_id column missing).")
     else:
-        out["order_id"] = df[oid].astype("string")
+        out["order_id"] = df.index.astype(str)
+        warnings.append("Synthetic order_id from index (no id/order_id column found).")
 
-    out["customer_id"] = (df[cid].astype("string") if cid else pd.Series([pd.NA]*len(df), dtype="string"))
-    out["order_date"]  = (pd.to_datetime(df["order_date"], errors="coerce", unit="s")) if dtc else pd.Series([pd.NaT]*len(df), dtype="datetime64[ns]")
-
-    if amt:
-        out["amount"] = (
-            pd.to_numeric(df[amt].astype(str).str.replace(r"[\$,]", "", regex=True), errors="coerce")
-            .astype("Float64")
-        )
+    # ---- amount / revenue ----
+    amount_candidates = ["amount", "total", "revenue", "price", "order_amount"]
+    amount_col = next((c for c in amount_candidates if c in df.columns), None)
+    if amount_col:
+        try:
+            out["amount"] = pd.to_numeric(df[amount_col], errors="coerce")
+        except Exception:
+            out["amount"] = pd.Series([0.0] * len(df), dtype="float64")
+            warnings.append(
+                f"Failed to parse '{amount_col}' as numeric; setting amount=0.0 for all rows."
+            )
+        else:
+            if amount_col != "amount":
+                warnings.append(f"Using '{amount_col}' as amount.")
     else:
-        out["amount"] = pd.Series([pd.NA]*len(df), dtype="Float64")
-        warns.append("amount missing; set to NA.")
+        out["amount"] = pd.Series([0.0] * len(df), dtype="float64")
+        warnings.append("No amount-like column found; setting amount=0.0 for all rows.")
 
-    # keep only positive/valid amounts if any exist
-    if out["amount"].notna().any():
-        out = out[out["amount"].fillna(0) >= 0]
+    # ---- order_date (ROBUST, NO KEYERROR) ----
+    date_candidates = ["order_date", "date", "created_at", "created", "timestamp"]
+    date_col = next((c for c in date_candidates if c in df.columns), None)
 
-    # dedupe on order_id
-    out = out.dropna(subset=["order_id"]).drop_duplicates("order_id", keep="last")
-    return out, warns
+    if date_col:
+        try:
+            ser = df[date_col]
+
+            # If it's numeric-ish, treat as epoch seconds; else let pandas infer.
+            if pd.api.types.is_integer_dtype(ser) or pd.api.types.is_float_dtype(ser):
+                parsed = pd.to_datetime(ser, errors="coerce", unit="s")
+            else:
+                parsed = pd.to_datetime(ser, errors="coerce")
+
+            out["order_date"] = parsed
+        except Exception as e:
+            warnings.append(
+                f"Failed to parse '{date_col}' as order_date: {e}. "
+                "Falling back to NaT."
+            )
+            out["order_date"] = pd.Series([pd.NaT] * len(df), dtype="datetime64[ns]")
+        else:
+            if date_col != "order_date":
+                warnings.append(f"Using '{date_col}' as order_date.")
+    else:
+        out["order_date"] = pd.Series([pd.NaT] * len(df), dtype="datetime64[ns]")
+        warnings.append("No date-like column found; order_date set to NaT.")
+
+    # you can add more canonical fields here if you want (status, customer_id, etc.)
+
+    return out, warnings
+
 
 # --- references to your existing helpers (assumed present in your file) ------
 # _file_health, apply_common_transforms, _preflight_and_compute,
@@ -1328,52 +1434,103 @@ async def _df_from_data_url(url: str) -> pd.DataFrame:
             return pd.read_csv(io.BytesIO(raw))
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"data_url CSV parse failed: {e}")
-
-async def _load_df_from_any(*, data_file, processed_key: str | None, data_url: str | None, expected_kind: str | None):
+async def _load_df_from_any(
+    *,
+    data_file: UploadFile | None,
+    processed_key: str | None,
+    data_url: str | None,
+    expected_kind: str | None = None,
+    user_id: int | str | None = None,
+    dataset_id: int | None = None,
+) -> tuple[pd.DataFrame | None, list[str], str | None]:
     """
-    Try data_file (UploadFile), then data_url (HTTP), then processed_key (storage).
-    Return (df, warnings, source_used).
+    Load a DataFrame from:
+      1) uploaded file
+      2) explicit data_url
+      3) processed_key (fs: local or Supabase)
+
+    Returns (df, warnings, source_used)
     """
     warnings: list[str] = []
+    df: pd.DataFrame | None = None
+    source_used: str | None = None
 
-    # 1) direct upload wins
+    # 1) uploaded file takes priority
     if data_file is not None:
         try:
             content = await data_file.read()
-            if not content or len(content) < 5:
-                warnings.append("Uploaded data_file was empty.")
-            else:
-                # try gzip then plain
-                try:
-                    df = pd.read_csv(io.BytesIO(gzip.decompress(content)))
-                except Exception:
-                    df = pd.read_csv(io.BytesIO(content))
-                return df, warnings, "data_file"
+            df = pd.read_csv(io.BytesIO(content), low_memory=False)
+            source_used = "upload"
+            return df, warnings, source_used
         except Exception as e:
-            warnings.append(f"data_file read failed: {e}")
+            warnings.append(f"Failed to read uploaded file: {e}")
 
-    # 2) signed URL
+    # 2) direct signed URL
     if data_url:
         try:
-            df = await _df_from_data_url(data_url)
-            return df, warnings, "data_url"
-        except HTTPException as e:
-            warnings.append(e.detail if isinstance(e.detail, str) else "data_url read failed")
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(data_url)
+                resp.raise_for_status()
+                df = pd.read_csv(io.StringIO(resp.text), low_memory=False)
+            source_used = "data_url"
+            return df, warnings, source_used
         except Exception as e:
-            warnings.append(f"data_url read failed: {e}")
+            warnings.append(f"Failed to fetch data_url: {e}")
 
-    # 3) processed key
+    # 3) processed_key
     if processed_key:
+        # ---- NEW: LOCAL FS BRANCH ----
+        if processed_key.startswith("fs:") and user_id is not None and dataset_id is not None:
+            try:
+                # fs:{user_id}/{dataset_id}/{filename}
+                filename = processed_key.split("/")[-1]
+                from storage import user_dataset_root
+                root = user_dataset_root(user_id=user_id, dataset_id=dataset_id)
+                csv_path = PathL(root) / "processed" / filename
+
+                logger.info(
+                    "_load_df_from_any: loading local fs CSV | processed_key=%s path=%s",
+                    processed_key,
+                    csv_path,
+                )
+
+                if not csv_path.exists():
+                    warnings.append(f"Local processed CSV not found at {csv_path}")
+                else:
+                    df = pd.read_csv(csv_path, low_memory=False)
+                    source_used = "processed_key_local_fs"
+                    return df, warnings, source_used
+            except Exception as e:
+                warnings.append(f"Failed to load local processed CSV: {e}")
+
+        # ---- SUPABASE BRANCH FOR NON-fs KEYS ----
         try:
-            df = _df_from_processed_key(processed_key)
-            return df, warnings, "processed_key"
-        except HTTPException as e:
-            warnings.append(e.detail if isinstance(e.detail, str) else "processed_key read failed")
+            bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+            key = _strip_bucket_prefix(processed_key)
+
+            logger.info(
+                "_load_df_from_any: fetching processed CSV from Supabase | bucket=%s key=%s",
+                bucket,
+                key,
+            )
+            from datasets import sb_signed_url  # your real function
+            url = sb_signed_url(bucket, key, seconds=300)
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(url)
+                if resp.status_code >= 400:
+                    warnings.append(
+                        f"Supabase fetch failed for key={key} status={resp.status_code}"
+                    )
+                else:
+                    df = pd.read_csv(io.StringIO(resp.text), low_memory=False)
+                    source_used = "processed_key_supabase"
+                    return df, warnings, source_used
         except Exception as e:
-            warnings.append(f"processed_key read failed: {e}")
+            warnings.append(f"Failed to load processed_key from Supabase: {e}")
 
     # Nothing worked
-    return None, warnings, None
+    return df, warnings, source_used
+
 import pandas as pd
 from typing import Optional
 
@@ -1401,12 +1558,13 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Request, File, Form, Depends, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from planner import ensure_minimal_event_schema
 
 @router.post("/derive")
 async def derive_columns(
     request: Request,
     data_file: UploadFile | None = File(None),
-    processed_key: str | None = Form(None),   # durable key
+    processed_key: str | None = Form(None),   # durable key (from preprocess, if available)
     data_url: str | None = Form(None),        # signed URL
     current_user: "User" = Depends(get_current_active_user),
 ):
@@ -1420,35 +1578,102 @@ async def derive_columns(
 
     dataset_id_raw = form.get("dataset_id")
     dataset_id: int | None = int(dataset_id_raw) if dataset_id_raw else None
-    user_id = getattr(current_user, "id", None)
+
+    # Make user_id consistent with other endpoints
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
 
     # ---- Optional expected kind hint ----
     kind_hint = (form.get("kind") or options.get("kind") or "").strip().lower() or None
     VALID_KINDS = {"customers", "orders", "marketing"}
     expected_kind = kind_hint if (kind_hint in VALID_KINDS) else None
 
-    # ---- Read the table from any provided source ----
     df, read_warnings, source_used = await _load_df_from_any(
         data_file=data_file,
         processed_key=processed_key,
         data_url=data_url,
         expected_kind=expected_kind,
+        user_id=user_id,
+        dataset_id=dataset_id,
     )
+
+    # Start warnings list with any read-time warnings
+    warnings: list[str] = list(read_warnings or [])
+
     logger.info(
         "derive: source_used=%s processed_key=%s data_url=%s",
         source_used, processed_key, bool(data_url)
     )
 
-    warnings: list[str] = list(read_warnings or [])
+    # ---- NEW: Fallback to dataset record if no DF loaded ----
+    if (df is None or (hasattr(df, "__len__") and len(df) == 0)) and dataset_id is not None:
+        try:
+            from auth import get_user_db  # adjust import path if different
+        except Exception:
+            get_user_db = None
+
+        if get_user_db is not None:
+            try:
+                from auth import Dataset  # adjust import path if different
+            except Exception:
+                Dataset = None
+
+            if Dataset is not None:
+                try:
+                    with get_user_db(current_user) as db:
+                        ds = (
+                            db.query(Dataset)
+                            .filter(Dataset.id == int(dataset_id))
+                            .first()
+                        )
+                        if ds:
+                            # Prefer processed → then file_path → then original
+                            src_key = (
+                                getattr(ds, "processed_file_path", None)
+                                or getattr(ds, "file_path",          None)
+                                or getattr(ds, "original_file_path", None)
+                            )
+                        else:
+                            src_key = None
+
+                    if src_key:
+                        try:
+                            from storage import _download_object_to_temp  # your real function
+                            tmp_path = _download_object_to_temp(
+                                src_key,
+                                user_id=user_id,
+                                dataset_id=dataset_id,
+                            )
+                            df = pd.read_csv(tmp_path)
+                            source_used = f"dataset:{src_key}"
+                            logger.info(
+                                "derive: loaded DF via dataset fallback, src_key=%s",
+                                src_key,
+                            )
+                        except Exception as e:
+                            warnings.append(
+                                f"Failed to load dataset {dataset_id} from storage: {e}"
+                            )
+                except Exception as e:
+                    warnings.append(f"Dataset lookup failed for dataset_id={dataset_id}: {e}")
+
+    # ---- If still nothing, bail early ----
     if df is None or (hasattr(df, "__len__") and len(df) == 0):
         return {
             "skipped": True,
-            "reason": "Uploaded file could not be parsed or is empty.",
+            "reason": "Uploaded/linked file could not be parsed or is empty.",
             "source": source_used,
+            "warnings": warnings,
         }
 
     # ---- Normalize headers ----
-    df = normalize_headers(df)
+    try:
+        df = normalize_headers(df)
+    except Exception as e:
+        logger.exception("derive: normalize_headers failed: %s", e)
+        warnings.append(f"normalize_headers failed: {e}")
+        # we keep df as-is; you could also bail here if you want
+
+    logger.info("derive: df columns after normalize_headers=%s", list(df.columns))
 
     # ---- Light kind inference (fallback to 'orders') ----
     cols = set(df.columns)
@@ -1461,33 +1686,74 @@ async def derive_columns(
     else:
         kind_specific = "orders"
 
-    # ---- Coerce to canonical shape ----
-    C = None; O = None; M = None
-    if kind_specific == "customers":
-        cust_map = mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None
-        used_mapping = {"customers": finalize_mapping(df, cust_map, CUSTOMER_SYNS),
-                        "orders": None, "marketing": None}
-        C = coerce_customers(df, used_mapping["customers"])
-        key_field = "customer_id"
+    logger.info("derive: inferred kind_specific=%s", kind_specific)
 
-    elif kind_specific == "marketing":
-        mkt_map = mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None
-        used_mapping = {"marketing": finalize_mapping(df, mkt_map, MKT_SYNS),
-                        "customers": None, "orders": None}
-        M = coerce_marketing(df, used_mapping["marketing"])
-        key_field = "campaign_id"
+    # ---- Coerce to canonical shape (defensive) ----
+    C = None
+    O = None
+    M = None
+    used_mapping = {"customers": None, "orders": None, "marketing": None}
+    key_field = None
 
-    else:
-        # 'orders' (explicit or fallback)
-        if isinstance(mappings, dict) and isinstance(mappings.get("orders"), dict):
-            used_mapping = {"orders": finalize_mapping(df, mappings["orders"], ORDER_SYNS),
-                            "customers": None, "marketing": None}
-            O = coerce_orders(df, used_mapping["orders"])
+    try:
+        if kind_specific == "customers":
+            cust_map = mappings.get("customers") if isinstance(mappings.get("customers"), dict) else None
+            used_mapping["customers"] = finalize_mapping(df, cust_map, CUSTOMER_SYNS)
+            C = coerce_customers(df, used_mapping["customers"])
+            key_field = "customer_id"
+
+        elif kind_specific == "marketing":
+            mkt_map = mappings.get("marketing") if isinstance(mappings.get("marketing"), dict) else None
+            used_mapping["marketing"] = finalize_mapping(df, mkt_map, MKT_SYNS)
+            M = coerce_marketing(df, used_mapping["marketing"])
+            key_field = "campaign_id"
+
         else:
-            used_mapping = {"orders": None, "customers": None, "marketing": None}
+            # 'orders' (explicit or fallback)
+            if isinstance(mappings, dict) and isinstance(mappings.get("orders"), dict):
+                used_mapping["orders"] = finalize_mapping(df, mappings["orders"], ORDER_SYNS)
+                O = coerce_orders(df, used_mapping["orders"])
+            else:
+                used_mapping["orders"] = None
+                O, gen_w = _coerce_generic_as_orders(df)
+                warnings.extend(gen_w or [])
+            key_field = "order_id"
+
+    except KeyError as e:
+        # This is where pandas Index.get_loc(KeyError) usually bubbles from.
+        logger.exception(
+            "derive: canonical coercion KeyError for kind=%s: missing column %s",
+            kind_specific,
+            e,
+        )
+        warnings.append(
+            f"Failed to coerce as {kind_specific} due to missing column: {e}. "
+            "Falling back to generic orders schema."
+        )
+        # Fallback: treat as generic orders
+        kind_specific = "orders"
+        used_mapping = {"customers": None, "orders": None, "marketing": None}
+        try:
             O, gen_w = _coerce_generic_as_orders(df)
             warnings.extend(gen_w or [])
-        key_field = "order_id"
+            key_field = "order_id"
+        except Exception as e2:
+            logger.exception("derive: _coerce_generic_as_orders also failed: %s", e2)
+            return {
+                "skipped": True,
+                "reason": f"Could not coerce file into a usable schema: {e2}",
+                "source": source_used,
+                "warnings": warnings,
+            }
+
+    except Exception as e:
+        logger.exception("derive: canonical coercion failed for kind=%s: %s", kind_specific, e)
+        return {
+            "skipped": True,
+            "reason": f"Coercion to canonical schema failed: {e}",
+            "source": source_used,
+            "warnings": warnings,
+        }
 
     # ---- Pick the working frame (assign D BEFORE using it) ----
     def _pick_first_nonempty_df(*dfs):
@@ -1501,46 +1767,94 @@ async def derive_columns(
 
     D = _pick_first_nonempty_df(C, O, M)
 
+    if not isinstance(D, pd.DataFrame) or D.empty:
+        logger.warning("derive: no nonempty canonical DF (C/O/M all empty).")
+        return {
+            "skipped": True,
+            "reason": "Could not construct a non-empty canonical dataset.",
+            "source": source_used,
+            "warnings": warnings,
+        }
+
+    # ---- NEW: Adaptive minimal event schema (always produce event_id/value/timestamp/entity_id) ----
+    try:
+        events_df, synthetic_meta = ensure_minimal_event_schema(
+            D,
+            kind=kind_specific,
+            warnings=warnings,
+        )
+    except Exception as e:
+        logger.exception("derive: ensure_minimal_event_schema failed: %s", e)
+        warnings.append(f"ensure_minimal_event_schema failed: {e}")
+        events_df = D
+        synthetic_meta = {
+            "synthetic_event_id": False,
+            "synthetic_entity_id": False,
+            "synthetic_timestamp": False,
+            "synthetic_value": False,
+        }
+
+    # If no explicit key_field was discovered, fall back to event_id
+    if key_field is None:
+        key_field = "event_id"
+
     # ---- File health / transforms (guard all DF truthiness) ----
     file_health = {"customers": None, "orders": None, "marketing": None}
-    file_health[kind_specific] = _file_health(
-        D if (isinstance(D, pd.DataFrame) and not D.empty) else None,
-        kind_specific
-    )
+    file_health[kind_specific] = _file_health(events_df, kind_specific)
 
-    if isinstance(D, pd.DataFrame) and not D.empty:
-        D, _ = apply_common_transforms(D, key_field=key_field, user_tz=options.get("user_tz"))
+    try:
+        events_df, _ = apply_common_transforms(
+            events_df,
+            key_field=key_field,
+            user_tz=options.get("user_tz"),
+        )
+    except KeyError as e:
+        logger.exception("derive: apply_common_transforms KeyError (key_field=%s): %s", key_field, e)
+        warnings.append(f"apply_common_transforms failed due to missing column: {e}")
+    except Exception as e:
+        logger.exception("derive: apply_common_transforms failed: %s", e)
+        warnings.append(f"apply_common_transforms failed: {e}")
 
     # ---- Uploads (only for present kind) ----
     uploads = {"customers": None, "orders": None, "marketing": None}
-    uploads[kind_specific] = await _upload_csv_bytes(
-        user_id,
-        kind_specific,
-        D if (isinstance(D, pd.DataFrame) and not D.empty) else None
-    )
+    try:
+        uploads[kind_specific] = await _upload_csv_bytes(
+            user_id,
+            kind_specific,
+            events_df if (isinstance(events_df, pd.DataFrame) and not events_df.empty) else None,
+        )
+    except Exception as e:
+        logger.exception("derive: _upload_csv_bytes failed for kind=%s: %s", kind_specific, e)
+        warnings.append(f"_upload_csv_bytes failed for {kind_specific}: {e}")
 
     # ---- Preview cache (single, de-duplicated) ----
     try:
-        if dataset_id is not None and isinstance(D, pd.DataFrame) and not D.empty:
-            PREVIEW_STORE[dataset_id] = D.head(50).to_dict("records")
+        if dataset_id is not None and isinstance(events_df, pd.DataFrame) and not events_df.empty:
+            PREVIEW_STORE[dataset_id] = events_df.head(50).to_dict("records")
     except Exception:
         pass
 
     # ---- Planner signals (optional) ----
     planner_signals = None
     try:
-        preview_rows = D.head(50).to_dict("records") if (isinstance(D, pd.DataFrame) and not D.empty) else None
+        preview_rows = (
+            events_df.head(50).to_dict("records")
+            if (isinstance(events_df, pd.DataFrame) and not events_df.empty)
+            else None
+        )
         if target:
             t_model = TargetSpecModel(**target)
             sig_obj = map_target_to_signals(t_model, preview_rows)
             planner_signals = sig_obj.model_dump() if hasattr(sig_obj, "model_dump") else dict(sig_obj or {})
+
             if planner_signals and dataset_id is not None:
                 SIGNALS_STORE[dataset_id] = planner_signals
                 try:
                     save_signals(user_id=user_id, dataset_id=dataset_id, signals=planner_signals)
                 except Exception:
                     pass
-    except Exception:
+    except Exception as e:
+        logger.exception("derive: planner_signals build failed: %s", e)
         planner_signals = None
 
     # ---- Normalize actions input (simple, robust) ----
@@ -1564,7 +1878,6 @@ async def derive_columns(
     norm_actions = _norm_actions(actions)
 
     # ---- Defaults for downstream fields (safe) ----
-    # If you already compute these elsewhere, replace the defaults below.
     partial = {
         "eligible_population": {
             "emailable_pct": 0.50,
@@ -1573,7 +1886,9 @@ async def derive_columns(
     }
     calc_gaps = False
     coverage_pct = (
-        float(D.notna().mean().mean()) if (isinstance(D, pd.DataFrame) and not D.empty) else 0.0
+        float(events_df.notna().mean().mean())
+        if (isinstance(events_df, pd.DataFrame) and not events_df.empty)
+        else 0.0
     )
 
     # ---- Horizons / risk / capacity ----
@@ -1634,6 +1949,11 @@ async def derive_columns(
             f"Max action spend over {chosen}d ({max_spend_over_horizon:.2f}) exceeds budget_cap ({budget_cap:.2f}). Will clip by risk preset."
         )
 
+    adaptive_mode = {
+        "enabled": True,
+        "synthetic": synthetic_meta,
+    }
+
     derived = {
         **partial,
         "target_horizon": {"chosen": chosen, "tested": tested, "rationale": "midpoint (placeholder)"},
@@ -1654,6 +1974,7 @@ async def derive_columns(
         "ops_cost_estimate": ops_cost_estimate,
         "risk_preset": risk_preset,
         "budget": {"budget_cap": budget_cap, "notes": budget_notes},
+        "adaptive_mode": adaptive_mode,
     }
 
     return {
@@ -1772,7 +2093,7 @@ def _read_table_local(path: str) -> Optional[pd.DataFrame]:
     """
     Read CSV/XLSX/Parquet best-effort from a local temp path.
     """
-    p = Path(path)
+    p = PathL(path)
     ext = p.suffix.lower()
     try:
         if ext in (".csv", ".txt", ".tsv"):
@@ -1806,7 +2127,7 @@ def _download_processed_to_temp(dataset_id: int, current_user) -> Optional[str]:
             return None
 
     # download
-    suffix = Path(str(key)).suffix or ".csv"
+    suffix = PathL(str(key)).suffix or ".csv"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
     try:

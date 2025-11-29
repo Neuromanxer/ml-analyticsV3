@@ -2360,356 +2360,592 @@ def _upload_dataframe_as_processed(df: pd.DataFrame, *, user_id: str | int, proc
 @router.post("/{dataset_id}/preprocess")
 def preprocess_dataset_endpoint(
     dataset_id: int,
-    body: "PreprocessRequest",                                   # type: ignore[name-defined]
+    body: "PreprocessRequest",  # type: ignore[name-defined]
     current_user = Depends(get_current_active_user),
 ):
-    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Unauthenticated")
-
-    # Resolve ORIGINAL → local cache (never chain-process a processed file)
-    with get_user_db(current_user) as db:
-        ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
-        if not ds:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        src_key = getattr(ds, "original_file_path", None) or getattr(ds, "file_path", None)
-        if not src_key:
-            raise HTTPException(status_code=400, detail="Dataset has no file path")
-
-        try:
-            src_csv_path = _download_object_to_temp(src_key, user_id=user_id, dataset_id=dataset_id)
-        except Exception:
-            src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
-
-        prior_file_path = getattr(ds, "file_path", None)
-        original_name = os.path.basename(_strip_bucket_prefix(src_key)) if src_key else "data.csv"
-
-    # Workspace
-    root = user_dataset_root(user_id, dataset_id)
-    dirs = ensure_dirs(root)
-    data_dir = dirs["data_dir"]; enc_dir = dirs["encoder_info_dir"]; proc_dir = dirs["data_process_dir"]
-
-    # Materialize train/test placeholders
-    train_csv_path = os.path.join(data_dir, "train.csv")
-    shutil.copy2(src_csv_path, train_csv_path)
-
-    test_csv_path = os.path.join(data_dir, "test.csv")
-    if not os.path.exists(test_csv_path):
-        PathL(test_csv_path).write_text("", encoding="utf-8")
-
-    # Read sample (robust)
-    sample_df = _read_sample_robust(train_csv_path, nrows=5000)
-
-    # Quick empty check: headers-only or all-null rows?
-    if sample_df is None or sample_df.shape[0] == 0 or sample_df.dropna(how="all").shape[0] == 0:
-        raise HTTPException(
-            status_code=422,
-            detail="Uploaded CSV appears to have no data rows (headers-only or fully empty after cleaning).",
-        )
-
-    # Try to load previously saved meta.json (from intake)
-    meta = None
     try:
-        meta = load_intake_meta(user_id=user_id, dataset_id=dataset_id, current_user=current_user)
-    except Exception:
-        meta = None
+        user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthenticated")
 
-    # Backfill meta if needed
-    if meta is None:
-        intake_res = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
-        meta = _meta_to_json(intake_res.meta)
-        save_intake_artifacts(
-            dataset_id=dataset_id,
-            user_id=user_id,
-            meta=meta,
-            stats={},
-            preview=None,
-            artifacts=None,
-        )
-   # Re-map sample_df columns to normalized names using intake meta (if available)
-    try:
-        header_map = (meta or {}).get("header_map")  # meta from _meta_to_json(intake_res.meta)
-        if header_map:
-            # meta.header_map was original_name -> ColumnMeta, rebuild mapping:
-            norm_map = {orig: info["normalized_name"] for orig, info in header_map.items()}
-            sample_df_norm = sample_df.rename(columns=norm_map)
-        else:
-            sample_df_norm = sample_df
-    except Exception:
-        sample_df_norm = sample_df
-    meta_for_detect = meta if isinstance(meta, dict) else _meta_to_json(meta) if meta is not None else {}
+        # Resolve ORIGINAL → local cache (never chain-process a processed file)
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+            if not ds:
+                raise HTTPException(status_code=404, detail="Dataset not found")
 
-    # Source of truth for classification target:
-    # 1) user override in request
-    # 2) intake suggestions from meta
-    # 3) fallback: detect on sample_df_norm here (only for target resolution)
-    user_tgt = getattr(body, "target_cls_col", None)
-    user_pos = getattr(body, "positive_label", None)
-    suggested = (meta or {}).get("suggested") or {}
-    meta_tgt = suggested.get("target_cls_col")
-    meta_pos = suggested.get("positive_label")
-    target_source = "detect_now"
-    if user_tgt:
-        target_cls_norm = user_tgt
-        positive_label  = user_pos if user_pos is not None else guess_positive_label(sample_df_norm, user_tgt)
-        target_source = "user_override"
-    elif meta_tgt:
-        target_cls_norm = meta_tgt
-        positive_label  = meta_pos if meta_pos is not None else guess_positive_label(sample_df_norm, meta_tgt)
-        target_source = "intake_suggested"
-    else:
-        try:
-            det_now_for_target = detect_columns(
-                sample_df_norm,
-                meta=meta_for_detect,
-                context=(meta_for_detect or {}).get("context_inferred")
-                )
-        except Exception:
-            hints = {}
-        try:
-            det_now_for_target = detect_columns(
-                sample_df_norm,
-                meta=meta_for_detect,
-                context=(meta_for_detect or {}).get("context_inferred")
-            )
-        except Exception:
-            det_now_for_target = {}
-        target_cls_norm = det_now_for_target.get("target_cls_col")
-        positive_label  = guess_positive_label(sample_df_norm, target_cls_norm)
-    def _coerce_label_dtype(df, col, label):
-        if label is None or col not in df.columns:
-            return label
-        try:
-            ser = df[col]
-            # try using the pandas dtype to cast back
-            return ser.dtype.type(label) if hasattr(ser.dtype, "type") else label
-        except Exception:
-            return label
+            src_key = getattr(ds, "original_file_path", None) or getattr(ds, "file_path", None)
+            if not src_key:
+                raise HTTPException(status_code=400, detail="Dataset has no file path")
 
-    positive_label = _coerce_label_dtype(sample_df_norm, target_cls_norm, positive_label)
+            try:
+                src_csv_path = _download_object_to_temp(src_key, user_id=user_id, dataset_id=dataset_id)
+            except Exception:
+                src_csv_path = resolve_and_cache_dataset_csv(db=db, dataset_id=dataset_id, user_id=user_id)
 
-    try:
-        hints = detect_columns(sample_df_norm, meta=meta_for_detect, context=(meta_for_detect or {}).get("context_inferred"))
-    except Exception:
-        hints = {}
+            prior_file_path = getattr(ds, "file_path", None)
+            original_name = os.path.basename(_strip_bucket_prefix(src_key)) if src_key else "data.csv"
 
-    canon_by_norm = (meta_for_detect or {}).get("canonical_by_normalized") or {}
+        # Workspace
+        root = user_dataset_root(user_id, dataset_id)
+        dirs = ensure_dirs(root)
+        data_dir = dirs["data_dir"]; enc_dir = dirs["encoder_info_dir"]; proc_dir = dirs["data_process_dir"]
 
-    def _norms_for(*canonicals):
-        return [n for n, c in canon_by_norm.items() if c in canonicals]
-    default_ids = ["id"] if "id" in sample_df_norm.columns else []
-    id_cols_norm = _norms_for("order_id") or _norms_for("customer_id") or (hints.get("id_cols") or default_ids)
-    date_cols_norm     = _norms_for("created_at", "updated_at") or (hints.get("date_cols") or [])
-    target_reg_norm    = hints.get("target_reg_col") or None
-    group_cols_norm    = (hints.get("group_cols") or [])[:3]
-    text_cols_norm     = hints.get("text_cols") or []
-    ignore_cols_norm   = hints.get("ignore_cols") or []
-    keep_continuous    = hints.get("numeric_keep_continuous") or []
+        # Materialize train/test placeholders
+        train_csv_path = os.path.join(data_dir, "train.csv")
+        shutil.copy2(src_csv_path, train_csv_path)
 
-    cfg = PreprocessConfig(
-        data_dir=data_dir,
-        encoder_info_dir=enc_dir,
-        data_process_dir=proc_dir,
-        id_cols=id_cols_norm,
-        target_cls_col=target_cls_norm,
-        positive_label=positive_label,
-        target_reg_col=target_reg_norm,
-        group_cols=_safe_list(group_cols_norm)[:3],
-        date_cols=_safe_list(date_cols_norm),
-        text_cols=_safe_list(text_cols_norm),
-        ignore_cols=_safe_list(ignore_cols_norm),
-        numeric_to_cat=True,
-        numeric_bins=10,
-        numeric_keep_continuous=_safe_list(keep_continuous),
-        max_onehot_cardinality=80,
-        add_date_parts=True,
-        verbose=True,
-    )
+        test_csv_path = os.path.join(data_dir, "test.csv")
+        if not os.path.exists(test_csv_path):
+            PathL(test_csv_path).write_text("", encoding="utf-8")
 
+        # Read sample (robust)
+        sample_df = _read_sample_robust(train_csv_path, nrows=5000)
 
-    # Optional split build (not fatal)
-    try:
-        build_and_save_train_test(cfg, train_csv="train.csv", test_csv="test.csv")
-    except Exception:
-        pass
-
-    processed_fname = make_processed_name(original_name, dataset_id)
-
-    # Run full preprocessing
-    try:
-        artifacts = preprocess_full_dataset(
-            cfg,
-            csv_path=train_csv_path,
-            user_id=str(user_id),
-            filename=processed_fname,
-            fit_encoders=True,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Preprocess failed: {e}")
-    
-
-    # Resolve processed key
-    processed_key = (
-        artifacts.get("data_csv")
-        or artifacts.get("processed_csv")
-        or artifacts.get("normalized_csv")
-    )
-
-    # ------------------ Guardrail: replace EMPTY output ------------------
-    # If pipeline produced no rows or we can't verify rows, fall back to light-normalized upload
-    rows_processed = artifacts.get("rows_processed")
-    # If rows_processed is missing, double-check the remote file's head
-    is_nonempty_remote = _remote_csv_has_rows(processed_key) if processed_key else False
-    produced_empty = (rows_processed is not None and int(rows_processed) == 0) or (not rows_processed and not is_nonempty_remote)
-
-    fallback_used = False
-    if produced_empty:
-        # Light-normalize the original and upload as processed
-        try:
-            light = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
-            df_light = light.df_normalized
-        except Exception:
-            df_light = sample_df  # at least pass through sample if intake fails
-
-        if df_light is not None and not df_light.empty:
-            # upload df_light to processed_fname
-            storage_path = _upload_dataframe_as_processed(df_light, user_id=user_id, processed_fname=processed_fname)
-            if not storage_path:
-                raise HTTPException(status_code=500, detail="Processed pipeline yielded empty output and fallback upload failed.")
-            processed_key = storage_path
-            # refresh artifacts & metrics to reflect fallback
-            artifacts["data_csv"] = processed_key
-            artifacts["rows_processed"] = int(df_light.shape[0])
-            artifacts["cols_processed"] = int(df_light.shape[1])
-            artifacts["null_rate_after_full"] = float(compute_null_rate(df_light))
-            fallback_used = True
-        else:
-            # No salvageable rows at all → fail with a clear message
+        # Quick empty check: headers-only or all-null rows?
+        if sample_df is None or sample_df.shape[0] == 0 or sample_df.dropna(how="all").shape[0] == 0:
             raise HTTPException(
                 status_code=422,
-                detail="Processing produced an empty dataset and fallback also had 0 rows. "
-                       "Please upload a file with at least one non-empty data row."
+                detail="Uploaded CSV appears to have no data rows (headers-only or fully empty after cleaning).",
             )
 
-    if not processed_key:
-        raise HTTPException(status_code=500, detail="Pipeline did not return processed data key")
-     # after you compute artifacts & processed_key
-    rows_processed = artifacts.get("rows_processed")
-    cols_processed = artifacts.get("cols_processed")
-
-    is_nonempty_remote = _remote_csv_has_rows(processed_key) if processed_key else False
-
-    produced_empty = (
-        (rows_processed is not None and int(rows_processed) == 0)
-        or (cols_processed is not None and int(cols_processed) == 0)   # ← add this
-        or (not rows_processed and not is_nonempty_remote)
-    )
-
-    null_rate_before_sample = compute_null_rate(sample_df)
-    # Persist: store BOTH paths (preserve original)
-    with get_user_db(current_user) as db:
-        ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
-        if not ds:
-            raise HTTPException(status_code=404, detail="Dataset not found for update")
-
-        if not getattr(ds, "original_file_path", None):
-            setattr(ds, "original_file_path", getattr(ds, "file_path", None))
-
-        if hasattr(ds, "processed_file_path"):
-            ds.processed_file_path = processed_key
-
-        ds.file_path    = processed_key
-        ds.stage        = "processed"
-        ds.processed_at = datetime.utcnow()
-
-        if artifacts.get("encoder_pkl"):
-            setattr(ds, "encoder_path", artifacts["encoder_pkl"])
-
-        db.add(ds)
-        db.commit()
-        db.refresh(ds)
-
-        original_key = getattr(ds, "original_file_path", None) or prior_file_path
-
-    # Metrics
-    null_rate_after_full = artifacts.get("null_rate_after_full")
-    metrics = {
-        "null_rate_before_sample": round(null_rate_before_sample, 6),
-        "null_rate_after_full": (round(float(null_rate_after_full), 6)
-                                 if null_rate_after_full is not None else None),
-        "rows_processed": artifacts.get("rows_processed"),
-        "cols_processed": artifacts.get("cols_processed"),
-    }
-
-    # Signed URLs (best-effort)
-    def _signed_or_none(key: str | None):
-        if not key:
-            return None
+        # Try to load previously saved meta.json (from intake)
+        meta = None
         try:
-            bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
-            return sb_signed_url(bucket, _strip_bucket_prefix(key), seconds=300)
+            meta = load_intake_meta(user_id=user_id, dataset_id=dataset_id, current_user=current_user)
         except Exception:
-            return None
+            meta = None
 
-    payload = {
-        "dataset_id": dataset_id,
-        "user_id": user_id,
-        "config_used": {
-            "id_cols": cfg.id_cols,
-            "target_cls_col": cfg.target_cls_col,
-            "positive_label": cfg.positive_label,
-            "target_source": target_source,
-            "target_reg_col": cfg.target_reg_col,
-            "group_cols": cfg.group_cols,
-            "date_cols": cfg.date_cols,
-            "text_cols": cfg.text_cols,
-            "ignore_cols": cfg.ignore_cols,
-            "numeric_keep_continuous": cfg.numeric_keep_continuous,
-            "numeric_bins": cfg.numeric_bins,
-            "numeric_to_cat": cfg.numeric_to_cat,
-            "max_onehot_cardinality": cfg.max_onehot_cardinality,
-            "add_date_parts": cfg.add_date_parts,
-        },
-        "dirs": {
-            "data_dir": cfg.data_dir,
-            "encoder_info_dir": cfg.encoder_info_dir,
-            "data_process_dir": cfg.data_process_dir,
-        },
-        "artifacts": artifacts,
-        "metrics": metrics,
-        "message": "Preprocess & Clean completed" + (" (fallback used: light normalize)" if fallback_used else ""),
-        "files": {
-            "original": {
-                "key": original_key,
-                "signedUrl": _signed_or_none(original_key),
-                "filename": original_name,
+        # Backfill meta if needed
+        if meta is None:
+            intake_res = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
+            meta = _meta_to_json(intake_res.meta)
+            save_intake_artifacts(
+                dataset_id=dataset_id,
+                user_id=user_id,
+                meta=meta,
+                stats={},
+                preview=None,
+                artifacts=None,
+            )
+
+        # Re-map sample_df columns to normalized names using intake meta (if available)
+        try:
+            header_map = (meta or {}).get("header_map")
+            if header_map:
+                # meta.header_map was original_name -> ColumnMeta, rebuild mapping:
+                norm_map = {orig: info["normalized_name"] for orig, info in header_map.items()}
+                sample_df_norm = sample_df.rename(columns=norm_map)
+            else:
+                sample_df_norm = sample_df
+        except Exception:
+            sample_df_norm = sample_df
+        meta_for_detect = meta if isinstance(meta, dict) else _meta_to_json(meta) if meta is not None else {}
+
+        # Source of truth for classification target:
+        # 1) user override in request
+        # 2) intake suggestions from meta
+        # 3) fallback: detect on sample_df_norm here (only for target resolution)
+        user_tgt = getattr(body, "target_cls_col", None)
+        user_pos = getattr(body, "positive_label", None)
+        suggested = (meta or {}).get("suggested") or {}
+        meta_tgt = suggested.get("target_cls_col")
+        meta_pos = suggested.get("positive_label")
+        target_source = "detect_now"
+        if user_tgt:
+            target_cls_norm = user_tgt
+            positive_label  = user_pos if user_pos is not None else guess_positive_label(sample_df_norm, user_tgt)
+            target_source = "user_override"
+        elif meta_tgt:
+            target_cls_norm = meta_tgt
+            positive_label  = meta_pos if meta_pos is not None else guess_positive_label(sample_df_norm, meta_tgt)
+            target_source = "intake_suggested"
+        else:
+            try:
+                det_now_for_target = detect_columns(
+                    sample_df_norm,
+                    meta=meta_for_detect,
+                    context=(meta_for_detect or {}).get("context_inferred"),
+                )
+            except Exception:
+                det_now_for_target = {}
+            target_cls_norm = det_now_for_target.get("target_cls_col")
+            positive_label  = guess_positive_label(sample_df_norm, target_cls_norm)
+
+        def _coerce_label_dtype(df, col, label):
+            if label is None or col not in df.columns:
+                return label
+            try:
+                ser = df[col]
+                # try using the pandas dtype to cast back
+                return ser.dtype.type(label) if hasattr(ser.dtype, "type") else label
+            except Exception:
+                return label
+
+        positive_label = _coerce_label_dtype(sample_df_norm, target_cls_norm, positive_label)
+
+        try:
+            hints = detect_columns(sample_df_norm, meta=meta_for_detect, context=(meta_for_detect or {}).get("context_inferred"))
+        except Exception:
+            hints = {}
+
+        canon_by_norm = (meta_for_detect or {}).get("canonical_by_normalized") or {}
+
+        def _norms_for(*canonicals):
+            return [n for n, c in canon_by_norm.items() if c in canonicals]
+
+        default_ids = ["id"] if "id" in sample_df_norm.columns else []
+        id_cols_norm      = _norms_for("order_id") or _norms_for("customer_id") or (hints.get("id_cols") or default_ids)
+        date_cols_norm    = _norms_for("created_at", "updated_at") or (hints.get("date_cols") or [])
+        target_reg_norm   = hints.get("target_reg_col") or None
+        group_cols_norm   = (hints.get("group_cols") or [])[:3]
+        text_cols_norm    = hints.get("text_cols") or []
+        ignore_cols_norm  = hints.get("ignore_cols") or []
+        keep_continuous   = hints.get("numeric_keep_continuous") or []
+
+        cfg = PreprocessConfig(
+            data_dir=data_dir,
+            encoder_info_dir=enc_dir,
+            data_process_dir=proc_dir,
+            id_cols=id_cols_norm,
+            target_cls_col=target_cls_norm,
+            positive_label=positive_label,
+            target_reg_col=target_reg_norm,
+            group_cols=_safe_list(group_cols_norm)[:3],
+            date_cols=_safe_list(date_cols_norm),
+            text_cols=_safe_list(text_cols_norm),
+            ignore_cols=_safe_list(ignore_cols_norm),
+            numeric_to_cat=True,
+            numeric_bins=10,
+            numeric_keep_continuous=_safe_list(keep_continuous),
+            max_onehot_cardinality=80,
+            add_date_parts=True,
+            verbose=True,
+        )
+
+        # Optional split build (not fatal)
+        try:
+            build_and_save_train_test(cfg, train_csv="train.csv", test_csv="test.csv")
+        except Exception:
+            pass
+
+        processed_fname = make_processed_name(original_name, dataset_id)
+
+        # ------------------ FULL PREPROCESS CALL ------------------
+        try:
+            artifacts = preprocess_full_dataset(
+                cfg,
+                csv_path=train_csv_path,
+                user_id=str(user_id),
+                dataset_id=dataset_id,
+                filename=processed_fname,
+                fit_encoders=True,
+            )
+        except HTTPException as e:
+            logger.exception("preprocess_full_dataset raised HTTPException: %s", e)
+            raise
+        except Exception as e:
+            logger.exception("preprocess_full_dataset crashed: %s", e)
+            raise HTTPException(status_code=500, detail=f"Preprocess failed: {e}")
+
+        logger.info(
+            "preprocess_endpoint: preprocess_full_dataset returned | keys=%s",
+            list(artifacts.keys()),
+        )
+
+        # ------------------ AFTER preprocess_full_dataset RETURNS ------------------
+
+        # Extract storage info (added by preprocess_full_dataset)
+        storage_mode = artifacts.get("storage_mode", "full")
+        storage_reason = artifacts.get("storage_reason")
+
+        processed_key = (
+            artifacts.get("processed_key")       # sb:... or fs:...
+            or artifacts.get("data_csv")
+            or artifacts.get("processed_csv")
+            or artifacts.get("normalized_csv")
+        )
+
+        rows_processed = artifacts.get("rows_processed")
+        cols_processed = artifacts.get("cols_processed")
+
+        logger.info(
+            "preprocess_endpoint: initial artifacts snapshot | "
+            "storage_mode=%s storage_reason=%s rows=%s cols=%s "
+            "processed_key=%s data_csv=%s null_rate_after_full=%s",
+            storage_mode,
+            storage_reason,
+            rows_processed,
+            cols_processed,
+            processed_key,
+            artifacts.get("data_csv"),
+            artifacts.get("null_rate_after_full"),
+        )
+
+        def _is_supabase_key(key: str | None) -> bool:
+            # Only bare Supabase-style paths should be treated as remote objects.
+            # Anything starting with fs: is local-only.
+            if not key:
+                return False
+            return not str(key).startswith("fs:")
+
+        # Only call _remote_csv_has_rows for Supabase keys
+        if _is_supabase_key(processed_key):
+            try:
+                logger.info("preprocess_endpoint: probing remote csv for rows, key=%s", processed_key)
+                is_nonempty_remote = _remote_csv_has_rows(processed_key)
+                logger.info(
+                    "preprocess_endpoint: remote csv probe complete, key=%s, is_nonempty_remote=%s",
+                    processed_key,
+                    is_nonempty_remote,
+                )
+            except Exception as e:
+                logger.warning(
+                    "preprocess_endpoint: remote csv probe failed for %s: %s",
+                    processed_key,
+                    e,
+                    exc_info=True,
+                )
+                is_nonempty_remote = False
+        else:
+            is_nonempty_remote = False
+            logger.info(
+                "preprocess_endpoint: processed_key is local or missing; skipping remote probe. key=%s",
+                processed_key,
+            )
+
+        # ------------------ Guardrail: replace EMPTY output ------------------
+        try:
+            rp = int(rows_processed) if rows_processed is not None else None
+        except Exception as e:
+            logger.warning("preprocess_endpoint: failed to cast rows_processed=%r to int: %s", rows_processed, e)
+            rp = None
+
+        try:
+            cp = int(cols_processed) if cols_processed is not None else None
+        except Exception as e:
+            logger.warning("preprocess_endpoint: failed to cast cols_processed=%r to int: %s", cols_processed, e)
+            cp = None
+
+        produced_empty = (
+            (rp is not None and rp == 0)
+            or (cp is not None and cp == 0)
+            or (rp in (None, 0) and not is_nonempty_remote)
+        )
+
+        logger.info(
+            "preprocess_endpoint: empty-check snapshot | rp=%s cp=%s is_nonempty_remote=%s produced_empty=%s",
+            rp,
+            cp,
+            is_nonempty_remote,
+            produced_empty,
+        )
+
+        fallback_used = False
+        if produced_empty:
+            logger.warning("preprocess_endpoint: produced_empty=True, entering fallback_light_normalize")
+            # Light-normalize the original and upload as processed
+            try:
+                light = intake_and_normalize(src_csv_path, base_currency="USD", country_hint="US")
+                df_light = light.df_normalized
+                logger.info(
+                    "preprocess_endpoint: fallback intake_and_normalize produced df_light shape=%s",
+                    df_light.shape if df_light is not None else None,
+                )
+            except Exception as e:
+                logger.warning(
+                    "preprocess_endpoint: fallback intake_and_normalize failed, using sample_df. err=%s",
+                    e,
+                    exc_info=True,
+                )
+                df_light = sample_df  # at least pass through sample if intake fails
+
+            if df_light is not None and not df_light.empty:
+                storage_path = _upload_dataframe_as_processed(
+                    df_light,
+                    user_id=user_id,
+                    processed_fname=processed_fname,
+                )
+                logger.info(
+                    "preprocess_endpoint: fallback _upload_dataframe_as_processed returned storage_path=%s",
+                    storage_path,
+                )
+                if not storage_path:
+                    logger.error(
+                        "preprocess_endpoint: fallback upload failed – storage_path is None/empty"
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Processed pipeline yielded empty output and fallback upload failed.",
+                    )
+                processed_key = storage_path
+                # refresh artifacts & metrics to reflect fallback
+                artifacts["data_csv"] = storage_path
+                artifacts["rows_processed"] = int(df_light.shape[0])
+                artifacts["cols_processed"] = int(df_light.shape[1])
+                try:
+                    artifacts["null_rate_after_full"] = float(compute_null_rate(df_light))
+                except Exception as e:
+                    logger.warning(
+                        "preprocess_endpoint: compute_null_rate(df_light) failed in fallback: %s",
+                        e,
+                        exc_info=True,
+                    )
+                    artifacts["null_rate_after_full"] = None
+                fallback_used = True
+                storage_mode = "full"
+                storage_reason = "fallback_light_normalize"
+                logger.info(
+                    "preprocess_endpoint: fallback complete | new_processed_key=%s rows=%s cols=%s",
+                    processed_key,
+                    artifacts.get("rows_processed"),
+                    artifacts.get("cols_processed"),
+                )
+            else:
+                logger.error(
+                    "preprocess_endpoint: produced_empty=True but df_light is None/empty – aborting with 422"
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Processing produced an empty dataset and fallback also had 0 rows. "
+                        "Please upload a file with at least one non-empty data row."
+                    ),
+                )
+
+        # If we *expected* to store but ended with no key, treat as error
+        if not processed_key and storage_mode in ("full", "supabase"):
+            logger.error(
+                "preprocess_endpoint: expected processed_key for storage_mode=%s, but got processed_key=%r",
+                storage_mode,
+                processed_key,
+            )
+            raise HTTPException(status_code=500, detail="Pipeline did not return processed data key")
+
+        # ---- SAFER null-rate metric on sample_df ----
+        try:
+            null_rate_before_sample = compute_null_rate(sample_df)
+            logger.info(
+                "preprocess_endpoint: compute_null_rate(sample_df)=%s",
+                null_rate_before_sample,
+            )
+        except Exception as e:
+            logger.warning(
+                "preprocess_endpoint: compute_null_rate(sample_df) failed: %s",
+                e,
+                exc_info=True,
+            )
+            null_rate_before_sample = None
+
+        # ------------------ DB PERSIST ------------------
+        logger.info(
+            "preprocess_endpoint: entering DB persist | processed_key=%s storage_mode=%s storage_reason=%s",
+            processed_key,
+            storage_mode,
+            storage_reason,
+        )
+        with get_user_db(current_user) as db:
+            ds = db.query(Dataset).filter(Dataset.id == int(dataset_id)).first()
+            if not ds:
+                logger.error("preprocess_endpoint: dataset %s not found during persist", dataset_id)
+                raise HTTPException(status_code=404, detail="Dataset not found for update")
+
+            if not getattr(ds, "original_file_path", None):
+                setattr(ds, "original_file_path", getattr(ds, "file_path", None))
+
+            if processed_key:
+                if hasattr(ds, "processed_file_path"):
+                    ds.processed_file_path = processed_key
+
+                ds.file_path    = processed_key
+                ds.stage        = "processed"
+                ds.processed_at = datetime.utcnow()
+
+            if artifacts.get("encoder_pkl"):
+                setattr(ds, "encoder_path", artifacts["encoder_pkl"])
+
+            db.add(ds)
+            db.commit()
+            db.refresh(ds)
+
+            original_key = getattr(ds, "original_file_path", None) or prior_file_path
+
+            logger.info(
+                "preprocess_endpoint: DB persist complete | original_key=%s file_path=%s stage=%s",
+                original_key,
+                ds.file_path,
+                ds.stage,
+            )
+
+        # ------------------ METRICS BUILD ------------------
+        null_rate_after_full = artifacts.get("null_rate_after_full")
+        logger.info(
+            "preprocess_endpoint: metrics raw values | "
+            "null_rate_before_sample=%s null_rate_after_full=%s",
+            null_rate_before_sample,
+            null_rate_after_full,
+        )
+
+        try:
+            metrics = {
+                "null_rate_before_sample": (
+                    round(float(null_rate_before_sample), 6)
+                    if null_rate_before_sample is not None
+                    else None
+                ),
+                "null_rate_after_full": (
+                    round(float(null_rate_after_full), 6)
+                    if null_rate_after_full is not None
+                    else None
+                ),
+                "rows_processed": rows_processed,
+                "cols_processed": cols_processed,
+            }
+            logger.info("preprocess_endpoint: metrics build OK | metrics=%s", metrics)
+        except Exception as e:
+            logger.exception("preprocess_endpoint: metrics build failed: %s", e)
+            raise HTTPException(status_code=500, detail=f"metrics build failed: {e}")
+
+                # ------------------ SIGNED URLS ------------------
+        def _is_supabase_key(key: str | None) -> bool:
+            """
+            Only bare Supabase-style object paths should be signed.
+            Local 'fs:' keys or empty values are never sent to Supabase.
+            """
+            if not key:
+                return False
+            return not str(key).startswith("fs:")
+
+        def _signed_or_none(key: str | None):
+            if not _is_supabase_key(key):
+                logger.info(
+                    "preprocess_endpoint: skipping signed URL for key=%s (local-or-empty)",
+                    key,
+                )
+                return None
+            try:
+                bucket = os.environ.get("SUPABASE_BUCKET", "user-uploads")
+                url = sb_signed_url(bucket, _strip_bucket_prefix(key), seconds=300)
+                logger.info("preprocess_endpoint: signed URL generated for key=%s", key)
+                return url
+            except Exception as e:
+                logger.warning(
+                    "preprocess_endpoint: sb_signed_url failed for %s: %s",
+                    key,
+                    e,
+                    exc_info=True,
+                )
+                return None
+
+        # Prefer the explicit Supabase key from artifacts, but fall back to processed_key
+        supabase_processed_key = artifacts.get("data_csv")
+        if not supabase_processed_key and storage_mode == "supabase":
+            # Backward/defensive: if we're in Supabase mode and processed_key
+            # looks like a Supabase object, use that.
+            if _is_supabase_key(processed_key):
+                supabase_processed_key = processed_key
+
+        processed_signed_url = _signed_or_none(supabase_processed_key)
+        original_signed_url  = _signed_or_none(original_key)
+
+        msg = "Preprocess & Clean completed"
+        if fallback_used:
+            msg += " (fallback used: light normalize)"
+        if storage_mode not in ("full", "supabase"):
+            if storage_reason:
+                msg += f" (storage_mode={storage_mode}, reason={storage_reason})"
+            else:
+                msg += f" (storage_mode={storage_mode})"
+
+        # ------------------ PAYLOAD BUILD ------------------
+        logger.info("preprocess_endpoint: building payload object")
+        payload = {
+            "dataset_id": dataset_id,
+            "user_id": user_id,
+            "config_used": {
+                "id_cols": cfg.id_cols,
+                "target_cls_col": cfg.target_cls_col,
+                "positive_label": cfg.positive_label,
+                "target_source": target_source,
+                "target_reg_col": cfg.target_reg_col,
+                "group_cols": cfg.group_cols,
+                "date_cols": cfg.date_cols,
+                "text_cols": cfg.text_cols,
+                "ignore_cols": cfg.ignore_cols,
+                "numeric_keep_continuous": cfg.numeric_keep_continuous,
+                "numeric_bins": cfg.numeric_bins,
+                "numeric_to_cat": cfg.numeric_to_cat,
+                "max_onehot_cardinality": cfg.max_onehot_cardinality,
+                "add_date_parts": cfg.add_date_parts,
             },
-            "processed": {
-                "key": processed_key,
-                "signedUrl": _signed_or_none(processed_key),
-                "filename": processed_fname,
+            "dirs": {
+                "data_dir": cfg.data_dir,
+                "encoder_info_dir": cfg.encoder_info_dir,
+                "data_process_dir": cfg.data_process_dir,
             },
-        },
-        "replaced_original": False,
-        "old_file_path": original_key,
-        "new_file_path": processed_key,
-        "meta": {
-        "data_gaps": (meta or {}).get("data_gaps"),
-        "assumptions": (meta or {}).get("assumptions"),
-        "priors": (meta or {}).get("priors"),
-        "prior_provenance": (meta or {}).get("prior_provenance"),
-        "suggested": (meta or {}).get("suggested"),
-        "hints": {
-        "target_cls_candidates": (hints or {}).get("target_cls_candidates"),
-        "why": (hints or {}).get("why"),
-    },
+            "artifacts": artifacts,
+            "metrics": metrics,
+            "message": msg,
+            "files": {
+                "original": {
+                    "key": original_key,
+                    "signedUrl": original_signed_url,
+                    "filename": original_name,
+                },
+                "processed": {
+                    "key": processed_key,
+                    "signedUrl": processed_signed_url,
+                    "filename": processed_fname if processed_key else None,
+                },
+            },
+            "replaced_original": False,
+            "old_file_path": original_key,
+            "new_file_path": processed_key,
+            "meta": {
+                "data_gaps": (meta or {}).get("data_gaps"),
+                "assumptions": (meta or {}).get("assumptions"),
+                "priors": (meta or {}).get("priors"),
+                "prior_provenance": (meta or {}).get("prior_provenance"),
+                "suggested": (meta or {}).get("suggested"),
+                "hints": {
+                    "target_cls_candidates": (hints or {}).get("target_cls_candidates"),
+                    "why": (hints or {}).get("why"),
+                },
+            },
+            "storage": {
+                "mode": storage_mode,
+                "reason": storage_reason,
+            },
+            "processed_key": processed_key,
+        }
 
-    },
+        logger.info(
+            "preprocess_endpoint: payload built | "
+            "processed_key=%s storage_mode=%s message=%s",
+            processed_key,
+            storage_mode,
+            msg,
+        )
 
-    }
+        # Final safety: log and catch JSON serialization issues
+        try:
+            logger.info("preprocess_endpoint: about to serialize + return JSONResponse")
+            resp_content = sanitize_for_json(payload)
+            logger.info("preprocess_endpoint: sanitize_for_json completed successfully")
+            return JSONResponse(content=resp_content, status_code=200)
+        except Exception as e:
+            logger.exception("sanitize_for_json or JSONResponse failed: %s", e)
+            raise HTTPException(status_code=500, detail=f"Serialization failed: {type(e).__name__}: {e}")
 
-    return JSONResponse(content=sanitize_for_json(payload), status_code=200)
+    # --------------- TOP-LEVEL CATCH-ALL FOR THE ENDPOINT ---------------
+    except HTTPException:
+        # Already structured for the client; we just want the traceback in logs.
+        logger.exception("HTTPException in preprocess_dataset_endpoint")
+        raise
+    except Exception as e:
+        logger.exception("Unhandled exception in preprocess_dataset_endpoint: %s", e)
+        raise HTTPException(status_code=500, detail=f"Internal error: {type(e).__name__}: {e}")
+
 @router.put("/{dataset_id}/file")
 async def replace_dataset_file(
     dataset_id: int = Path(..., gt=0),
@@ -2938,14 +3174,47 @@ SAMPLE_ROWS     = 5_000        # sample for profiling
 
 def safe_table_name(name: str) -> str:
     return name.strip().replace(" ", "_").lower()
-def infer_sqlalchemy_column(name, dtype):
-    """Infer SQLAlchemy column type from pandas dtype."""
-    if pd.api.types.is_integer_dtype(dtype):
-        return Column(name, Integer)
-    elif pd.api.types.is_float_dtype(dtype):
+
+# Postgres 32-bit integer range
+INT32_MIN = -2_147_483_648
+INT32_MAX =  2_147_483_647
+def infer_sqlalchemy_column(name: str, series: pd.Series):
+    """
+    SAFER inference for SQLAlchemy column types.
+    Avoids integer overflow on large identifiers (EAN/UPC/GTIN/skus/order ids).
+    """
+
+    # Clean nulls for checks
+    s = series.dropna()
+
+    # ---- 1. Identify "ID-like" columns (store as TEXT) ----
+    id_keywords = ["ean", "upc", "gtin", "sku", "barcode", "code"]
+    if any(tok in name.lower() for tok in id_keywords):
+        return Column(name, Text)
+
+    # ---- 2. Check if integer dtype ----
+    if pd.api.types.is_integer_dtype(series):
+        # If column contains extremely large integers → use BigInteger
+        if len(s) > 0:
+            try:
+                min_val = int(s.min())
+                max_val = int(s.max())
+                if min_val >= INT32_MIN and max_val <= INT32_MAX:
+                    return Column(name, Integer)
+                else:
+                    return Column(name, BigInteger)
+            except Exception:
+                # mixed weird values → store as TEXT
+                return Column(name, Text)
+        else:
+            return Column(name, Integer)
+
+    # ---- 3. Floats ----
+    if pd.api.types.is_float_dtype(series):
         return Column(name, Float)
-    else:
-        return Column(name, String)
+
+    # ---- 4. Fallback: store as TEXT ----
+    return Column(name, Text)
 import logging, re
 from pathlib import Path as PathL
 from fastapi import HTTPException, Depends, Query

@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, Union, Protocol
 from pydantic import BaseModel, Field, conint, confloat
+import pandas as pd
 class SignalsIn(BaseModel):
     hasLabel: Optional[bool] = None
     labelType: Optional[str] = Field(None, pattern="^(binary|multiclass|numeric)$")
@@ -374,7 +375,6 @@ def _infer_label_type_from_preview(rows: List[Dict[str, Any]], target_col: str) 
     if not rows or not target_col:
         return None
     try:
-        import pandas as pd
         s = pd.Series([r.get(target_col) for r in rows])
         # numeric?
         as_num = pd.to_numeric(s, errors="coerce")
@@ -884,6 +884,80 @@ def load_preview_for_dataset(dataset_id: Optional[int]) -> Optional[List[Dict[st
         except Exception:
             return None
     return None
+import pandas as pd     # ✅ valid
+def ensure_minimal_event_schema(
+    df: pd.DataFrame,
+    kind: str,
+    warnings: list[str],
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Ensure df has at least: event_id, value, timestamp (optional), entity_id (optional).
+    Returns (df_with_cols, meta_flags).
+    """
+    df = df.copy()
+    meta = {
+        "synthetic_event_id": False,
+        "synthetic_entity_id": False,
+        "synthetic_timestamp": False,
+        "synthetic_value": False,
+    }
+
+    # 1) event_id (core key)
+    event_candidates = ["order_id", "id", "event_id", "transaction_id"]
+    for c in event_candidates:
+        if c in df.columns:
+            df["event_id"] = df[c].astype(str)
+            break
+    else:
+        df["event_id"] = df.index.astype(str)
+        meta["synthetic_event_id"] = True
+        warnings.append("Synthetic event_id created from row index (no id-like column found).")
+
+    # 2) value (amount)
+    value_candidates = ["amount", "total", "revenue", "price", "value"]
+    for c in value_candidates:
+        if c in df.columns:
+            df["value"] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+            break
+    else:
+        # fallback: count-based value = 1 per row
+        df["value"] = 1.0
+        meta["synthetic_value"] = True
+        warnings.append("No amount-like column found; using value=1.0 per event.")
+
+    # 3) timestamp (optional but useful)
+    ts_candidates = ["order_date", "created_at", "timestamp", "event_time", "date"]
+    ts_col = None
+    for c in ts_candidates:
+        if c in df.columns:
+            ts_col = c
+            parsed = pd.to_datetime(df[c], errors="coerce", utc=True)
+            if parsed.notna().any():
+                df["timestamp"] = parsed
+                break
+            else:
+                ts_col = None
+
+    if "timestamp" not in df.columns:
+        # synthetic monotonic timeline
+        base = pd.Timestamp("2020-01-01", tz="UTC")
+        df["timestamp"] = base + pd.to_timedelta(range(len(df)), unit="D")
+        meta["synthetic_timestamp"] = True
+        warnings.append("No usable date column; synthetic timestamp sequence assigned.")
+
+    # 4) entity_id (customer or group, optional)
+    entity_candidates = ["customer_id", "user_id", "account_id", "email"]
+    for c in entity_candidates:
+        if c in df.columns:
+            df["entity_id"] = df[c].astype(str)
+            break
+    else:
+        # Optional: don't always force an entity; you can leave it missing
+        df["entity_id"] = df["event_id"]
+        meta["synthetic_entity_id"] = True
+        warnings.append("No entity/customer column; using event_id as entity_id (no grouping).")
+
+    return df, meta
 
 
 def derive_signals_for_compile(
