@@ -597,6 +597,28 @@ async def delete_user_account(current_user = Depends(get_current_active_user)):
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
 
 
+# API endpoint
+@app.post("/eda")
+async def eda(file: UploadFile = File(...), target_column: str = None):
+    try:
+        contents = await file.read()
+        df = pd.read_csv(BytesIO(contents))
+        
+        eda_result = perform_eda(df)
+        model_suggestion = {}
+        
+        if target_column:
+            model_suggestion = suggest_models(df, target_column)
+        
+        result = {
+            "EDA": eda_result,
+            "Model Suggestion": model_suggestion
+        }
+        return JSONResponse(content=result)
+    
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=400)
+
 import os
 import io
 import re

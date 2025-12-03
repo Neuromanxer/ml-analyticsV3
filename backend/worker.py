@@ -119,13 +119,19 @@ logger = logging.getLogger(__name__)
 #     backend="redis://red-d1n270gdl3ps73fqo7fg:6379/1"
 # )
 
-BROKER_URL = "redis://localhost:6379/0"
-RESULT_BACKEND = "redis://localhost:6379/1"
+# BROKER_URL = "redis://localhost:6379/0"
+# RESULT_BACKEND = "redis://localhost:6379/1"
+
+# celery_app = Celery(
+#     "worker",
+#     broker=BROKER_URL,
+#     backend=RESULT_BACKEND
+# )
 
 celery_app = Celery(
     "worker",
-    broker=BROKER_URL,
-    backend=RESULT_BACKEND
+    broker="redis://localhost:6379/0",
+    backend="redis://localhost:6379/1"
 )
 
 import numpy as np
