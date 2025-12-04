@@ -834,44 +834,63 @@ function isTokenExpired(token) {
         return true;
     }
 }
-
 async function refreshUserToken() {
-    const refreshToken = safeStorageGet('refresh_token');
-    
-    if (!refreshToken) {
-        throw new Error('No refresh token available');
+  const refreshToken = safeStorageGet('refresh_token');
+
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: 'include' // keep if you rely on cookies, otherwise remove
+    });
+
+    // Read the body exactly once as text (defensive)
+    const raw = await response.text();
+
+    // Try to parse JSON if there's content; otherwise keep as null
+    let parsed = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        // Not JSON (maybe HTML error page) — keep parsed as null
+        console.warn('Response not JSON:', raw);
+      }
     }
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || `HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        const tokenStored = storeAuthTokens({
-            access_token: data.access_token,
-            refresh_token: data.refresh_token || refreshToken
-        });
-        
-        if (!tokenStored) {
-            throw new Error('Failed to store refreshed tokens');
-        }
-        
-        return true;
-    } catch (error) {
-        console.error('Token refresh failed:', error);
-        clearAuthStorage();
-        throw error;
+
+    // If response status is error, surface useful message
+    if (!response.ok) {
+      const errMsg = (parsed && (parsed.detail || parsed.error)) || `HTTP ${response.status}`;
+      throw new Error(errMsg);
     }
+
+    // Success path — parsed might be null if server returned empty body
+    if (!parsed || !parsed.access_token) {
+      throw new Error('Invalid token response from server');
+    }
+
+    const tokenStored = storeAuthTokens({
+      access_token: parsed.access_token,
+      refresh_token: parsed.refresh_token || refreshToken
+    });
+
+    if (!tokenStored) {
+      throw new Error('Failed to store refreshed tokens');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    clearAuthStorage();
+    throw error;
+  }
 }
+
 
 // FIXED: Signup form handler
 signupForm.addEventListener('submit', async function (event) {
