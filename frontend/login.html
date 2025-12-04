@@ -564,8 +564,9 @@
 
 <script>
     // Fixed login script - key changes highlighted with comments
-//const API_BASE_URL = 'http://127.0.0.1:8000';
-const API_BASE_URL = 'https://ml-analyticsv3.onrender.com/';
+
+const API_BASE_URL = 'http://127.0.0.1:8000';
+// const API_BASE_URL = 'https://ml-insightsv2.onrender.com';
 // Get DOM elements
 const signUpButton = document.getElementById('signUp');
 const signInButton = document.getElementById('signIn');
@@ -754,10 +755,10 @@ function showForgotPasswordModal() {
     });
   }
 // Put near the top of your <script> tag
-const DEFAULT_NEXT = urlParams.get('next') || "http://127.0.0.1:8080/"; // use same host style as your Next app
+const DEFAULT_NEXT = urlParams.get('next') || "http://127.0.0.1:3000/"; // use same host style as your Next app
 function redirectWithTokens(tokenData) {
-  // Always redirect to dashboard.html on the current host
-  const u = new URL('/dashboard.html', window.location.origin);
+  // Always redirect to dashboard.html
+  const u = new URL('/dashboard.html', 'http://127.0.0.1:8080');
 
   const params = new URLSearchParams();
   if (tokenData.access_token)  params.set("access_token", tokenData.access_token);
@@ -834,63 +835,44 @@ function isTokenExpired(token) {
         return true;
     }
 }
+
 async function refreshUserToken() {
-  const refreshToken = safeStorageGet('refresh_token');
-
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-      credentials: 'include' // keep if you rely on cookies, otherwise remove
-    });
-
-    // Read the body exactly once as text (defensive)
-    const raw = await response.text();
-
-    // Try to parse JSON if there's content; otherwise keep as null
-    let parsed = null;
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        // Not JSON (maybe HTML error page) — keep parsed as null
-        console.warn('Response not JSON:', raw);
-      }
+    const refreshToken = safeStorageGet('refresh_token');
+    
+    if (!refreshToken) {
+        throw new Error('No refresh token available');
     }
-
-    // If response status is error, surface useful message
-    if (!response.ok) {
-      const errMsg = (parsed && (parsed.detail || parsed.error)) || `HTTP ${response.status}`;
-      throw new Error(errMsg);
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        const tokenStored = storeAuthTokens({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || refreshToken
+        });
+        
+        if (!tokenStored) {
+            throw new Error('Failed to store refreshed tokens');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        clearAuthStorage();
+        throw error;
     }
-
-    // Success path — parsed might be null if server returned empty body
-    if (!parsed || !parsed.access_token) {
-      throw new Error('Invalid token response from server');
-    }
-
-    const tokenStored = storeAuthTokens({
-      access_token: parsed.access_token,
-      refresh_token: parsed.refresh_token || refreshToken
-    });
-
-    if (!tokenStored) {
-      throw new Error('Failed to store refreshed tokens');
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-    clearAuthStorage();
-    throw error;
-  }
 }
-
 
 // FIXED: Signup form handler
 signupForm.addEventListener('submit', async function (event) {
