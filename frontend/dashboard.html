@@ -1273,24 +1273,28 @@
                 <small>Control vs Test Experimentation</small>
               </button>
             </div>
-          </div>
+          </div><div class="analysis-category">
+        <h3>Predictions</h3>
+        <div class="btn-group">
+          <button id="btn-classification-predict" class="btn analysis-btn" data-category="prediction">
+            <i class="fas fa-magic"></i>
+            <span>Predict (Classification)</span>
+            <small>Make categorical predictions</small>
+          </button>
 
-          <div class="analysis-category">
-            <h3>Predictions</h3>
-            <div class="btn-group">
-              <button id="btn-classification-predict" class="btn analysis-btn" data-category="prediction">
-                <i class="fas fa-magic"></i>
-                <span>Predict (Classification)</span>
-                <small>Make categorical predictions</small>
-              </button>
-              <button id="btn-regression-predict" class="btn analysis-btn" data-category="prediction">
-                <i class="fas fa-chart-bar"></i>
-                <span>Predict (Regression)</span>
-                <small>Make numerical predictions</small>
-              </button>
-            </div>
-          </div>
+          <button id="btn-classification-predict-score" class="btn analysis-btn" data-category="prediction">
+            <i class="fas fa-shield-alt"></i>
+            <span>Predict (Classification Probability Score)</span>
+            <small>Get probabilities & risk tiers</small>
+          </button>
+
+          <button id="btn-regression-predict" class="btn analysis-btn" data-category="prediction">
+            <i class="fas fa-chart-bar"></i>
+            <span>Predict (Regression)</span>
+            <small>Make numerical predictions</small>
+          </button>
         </div>
+      </div>
 
         <div class="analysis-actions">
           <button class="btn primary large" onclick="prepareAndRunAnalysis()" id="run-analysis-btn" disabled>
@@ -1332,8 +1336,8 @@
 
   <script>
 
-  // const API_BASE_URL = 'http://127.0.0.1:8000';
-  const API_BASE_URL = 'https://ml-analyticsv3.onrender.com';
+  const API_BASE_URL = 'http://127.0.0.1:8000';
+  // const API_BASE_URL = 'https://ml-analyticsv3.onrender.com';
       // Inputs & preview elements
     const fullInput  = document.getElementById('full-input');
     const trainInput = document.getElementById('train-input');
@@ -1366,22 +1370,23 @@
   let lastValidRows = null;
 
     // 1) Map your friendly endpoint names to their paths
-    const endpointMap = {
-      regression:             '/regression/',
-      classification:         '/classification/',
-      clustering:             '/cluster/',
-      visualize:              '/visualize/',
-      'ab_test':              '/ab_test/',
-      counterfactual:         '/counterfactual/',
-      segments:               '/segment_analysis/',
-      risk:                   '/risk_analysis/',
-      'decision-paths':       '/decision_paths/',
-      'time-series-analysis': '/forecast/',
-      survival:               '/survival/',
-      'classification-predict': '/classification/predict/',
-      'regression-predict':     '/regression/predict/',
-      'what_if':                '/what_if/'    
-    };
+const endpointMap = {
+  regression:                 '/regression/',
+  classification:             '/classification/',
+  clustering:                 '/cluster/',
+  visualize:                  '/visualize/',
+  ab_test:                    '/ab_test/',
+  counterfactual:             '/counterfactual/',
+  segments:                   '/segment_analysis/',
+  risk:                       '/risk_analysis/',
+  'decision-paths':           '/decision_paths/',
+  'time-series-analysis':     '/forecast/',
+  survival:                   '/survival/',
+  'classification-predict':   '/classification/predict/',
+  'classification-predict-score': '/classification/predict_score/', // new endpoint added
+  'regression-predict':       '/regression/predict/',
+  'what_if':                  '/what_if/'    
+};
 
   // Show error message
   function showError(message) {
@@ -1589,7 +1594,9 @@ document.getElementById('btn-survival').addEventListener('click', () => selectAn
 document.getElementById('btn-classification-predict').addEventListener('click', () => selectAnalysisMethod('classification-predict'));
 document.getElementById('btn-regression-predict').addEventListener('click', () => selectAnalysisMethod('regression-predict'));
 document.getElementById('btn-what_if').addEventListener('click', () => selectAnalysisMethod('what_if'));
-  
+document.getElementById('btn-classification-predict-score').addEventListener('click', () => 
+    selectAnalysisMethod('classification-predict-score')
+);
 fullInput.addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;

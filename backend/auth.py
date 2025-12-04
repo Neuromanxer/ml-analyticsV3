@@ -98,8 +98,10 @@ IMAGES_DIR = "images"
 SECRET_KEY = os.getenv("SECRET_KEY", "")  # fallback for local testing
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
 # Time for access token expiry
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Password hashing utilities
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @property
@@ -135,8 +137,10 @@ class DatasetResponse(BaseModel):
     created_by: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    # Pydantic v2 style configuration
+    model_config = {
+        "from_attributes": True
+    }
 class DatasetCreate(BaseModel):
     name: str = Field(..., max_length=100, description="Name of the dataset")
     description: str | None = Field(None, description="Optional description of the dataset")
@@ -165,21 +169,24 @@ class UserResponse(BaseModel):
     created_at: datetime
     tokens: float
 
-    class Config:
-        orm_mode = True
+    # Pydantic v2 style configuration
+    model_config = {
+        "from_attributes": True
+    }
 class DataLocationOut(BaseModel):
     db_name: Optional[str]
     storage_bucket: Optional[str]
     storage_region: Optional[str]
     file_storage_path: Optional[str]  # e.g., "user-uploads/user123/"
-    
-    class Config:
-        orm_mode = True
+
+    # Pydantic v2 style configuration
+    model_config = {
+        "from_attributes": True
+    }
 class AuthTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str
-
+    token_type: str = "bearer"
 
 class RegisterResponse(BaseModel):
     user: UserResponse
@@ -255,7 +262,7 @@ class User(Base):
 
 
 # OAuth2 scheme - Update tokenUrl to include the full path
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth")
 # Single unified function to get master DB session
 
 
@@ -712,26 +719,41 @@ async def delete_user_account(current_user = Depends(get_current_active_user)):
     except Exception as e:
         logger.error(f"Error deleting user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+# First, let's fix the token endpoint to properly return both tokens
 @router.post("/token", response_model=AuthTokenResponse)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_master_db_session)
 ):
+    """Get access token and refresh token for authentication."""
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
+        logger.warning(f"Failed login attempt for email: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": user.email})
-    refresh_token = create_refresh_token(data={"sub": user.email})
+    logger.info(f"User logged in successfully: {form_data.username}")
+
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+
+    # Create refresh token
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(data={"sub": user.email}, expires_delta=refresh_token_expires)
 
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
+        "access_token": access_token, 
+        "refresh_token": refresh_token, 
         "token_type": "bearer"
     }
+
 
 # Now, let's add a proper refresh token endpoint
 @router.post("/refresh-token", response_model=Token)

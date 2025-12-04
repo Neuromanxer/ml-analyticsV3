@@ -750,6 +750,177 @@ def do_classification(
     except Exception as e:
         print(f"[⚠️] Error in do_classification: {e}")
         raise e
+    
+def do_classification_predict_score(
+    user_id: str,
+    current_user: dict,
+    file_path: str,
+    drop_columns: str = ""
+) -> dict:
+    """
+    Classification endpoint that provides probability scores and risk tiers,
+    while keeping original preprocessing, feature alignment, Supabase upload,
+    visualizations, and metadata logging.
+    """
+    def convert_numpy_types(obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(item) for item in obj]
+        else:
+            return obj
+
+    try:
+        # ─────────── Load model & training columns ───────────
+        model_path = f"{user_id}/{user_id}_best_classifier.pkl"
+        model_bytes = download_file_from_supabase(model_path)
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.pkl', delete=False) as f:
+            f.write(model_bytes)
+            model_file_path = f.name
+        model = joblib.load(model_file_path)
+
+        training_columns_data = download_file_from_supabase(f"{user_id}/training_columns.json")
+        training_columns = json.loads(training_columns_data.decode('utf-8'))
+
+        # ─────────── Load prediction CSV ───────────
+        prediction_data = download_file_from_supabase(file_path)
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as f:
+            f.write(prediction_data)
+            temp_csv_path = f.name
+
+        # ─────────── Preprocessing ───────────
+        pred_df = pd.read_csv(temp_csv_path)
+        original_df = pred_df.copy()
+        original_shape = pred_df.shape
+
+        # Identify target column if present
+        known_targets = ['target', 'label', 'class', 'y', 'Target', 'Label', 'Class']
+        target_column_actual = next((c for c in known_targets if c in pred_df.columns), None)
+        true_labels = pred_df[target_column_actual].copy() if target_column_actual else None
+
+        # Drop ID/target/drop_columns
+        drop_features = ['ID'] + ([target_column_actual] if target_column_actual else [])
+        if drop_columns:
+            drops = [c.strip() for c in drop_columns.split(",") if c.strip() and c in pred_df.columns]
+            pred_df.drop(columns=drops, inplace=True)
+        pred_df.drop(columns=drop_features, inplace=True, errors='ignore')
+
+        # Preprocess and align columns
+        X_pred, _, _ = preprocess_data(pred_df)
+        X_pred = X_pred.reset_index(drop=True)
+        missing_cols = set(training_columns) - set(X_pred.columns)
+        extra_cols = set(X_pred.columns) - set(training_columns)
+        for col in missing_cols: X_pred[col] = 0
+        X_pred.drop(columns=list(extra_cols), inplace=True, errors='ignore')
+        X_pred = X_pred.reindex(columns=training_columns, fill_value=0)
+
+        # ─────────── Predict ───────────
+        predictions = model.predict(X_pred)
+        if hasattr(model, 'predict_proba'):
+            prediction_probs = model.predict_proba(X_pred)
+            positive_probs = prediction_probs[:, 1]  # probability of positive class
+        else:
+            positive_probs = predictions
+            prediction_probs = None
+
+        # Assign risk tiers
+        def assign_risk(prob):
+            if prob >= 0.8: return "Extreme Risk"
+            if prob >= 0.5: return "High Risk"
+            if prob >= 0.2: return "Medium Risk"
+            return "Low Risk"
+        risk_tiers = [assign_risk(p) for p in positive_probs]
+
+        # Conversion rate calculation
+        conversion_rate = None
+        if true_labels is not None and hasattr(model, "classes_") and len(model.classes_) == 2:
+            predicted_positive = (predictions == 1).sum()
+            tp = ((true_labels == 1) & (predictions == 1)).sum()
+            conversion_rate = float((tp / predicted_positive) * 100) if predicted_positive else 0.0
+
+        # ─────────── Create output df ───────────
+        output_df = original_df.copy()
+        output_df['prediction'] = predictions
+        output_df['confidence'] = positive_probs
+        output_df['risk_tier'] = risk_tiers
+
+        if prediction_probs is not None:
+            classes = model.classes_
+            for i, class_name in enumerate(classes):
+                output_df[f'prob_class_{class_name}'] = prediction_probs[:, i]
+
+        # ─────────── Visualizations ───────────
+        visualizations = {}
+        try:
+            fig_dist = plt.figure(figsize=(8,6))
+            sns.barplot(x=list(Counter(predictions).keys()), y=list(Counter(predictions).values()))
+            plt.title("Prediction Distribution")
+            plt.xlabel("Class")
+            plt.ylabel("Count")
+            plt.xticks(rotation=45)
+            visualizations["prediction_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_dist)}"
+            plt.close(fig_dist)
+        except: pass
+
+        try:
+            fig_conf = plt.figure(figsize=(8,6))
+            plt.hist(positive_probs, bins=20, alpha=0.7, edgecolor='black')
+            plt.axvline(np.mean(positive_probs), color='red', linestyle='--', label=f'Mean: {np.mean(positive_probs):.3f}')
+            plt.title("Confidence Distribution")
+            plt.xlabel("Confidence Score")
+            plt.ylabel("Frequency")
+            plt.legend()
+            visualizations["confidence_distribution"] = f"data:image/png;base64,{plot_to_base64(fig_conf)}"
+            plt.close(fig_conf)
+        except: pass
+
+        # ─────────── Save & upload predictions ───────────
+        output_filename = f"predictions_{PathL(file_path).stem}.csv"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as temp_output:
+            output_df.to_csv(temp_output.name, index=False)
+            temp_output_path = temp_output.name
+
+        supabase_output_path = upload_file_to_supabase(
+            user_id=str(user_id),
+            file_path=temp_output_path,
+            filename=output_filename
+        )
+        signed_url = get_file_url(supabase_output_path, expires_in=3600)
+        os.unlink(temp_output_path)
+        os.unlink(model_file_path)
+        os.unlink(temp_csv_path)
+
+        # ─────────── Stats ───────────
+        pred_stats = {
+            "total_predictions": int(len(predictions)),
+            "unique_classes": int(len(set(predictions))),
+            "class_distribution": {str(k): int(v) for k, v in Counter(predictions).items()},
+            "mean_confidence": float(np.mean(positive_probs)),
+            "min_confidence": float(np.min(positive_probs)),
+            "max_confidence": float(np.max(positive_probs))
+        }
+
+        response_data = {
+            "status": "success",
+            "user_id": user_id,
+            "dataset": Path(file_path).name,
+            "output_file": supabase_output_path,
+            "signed_url": signed_url,
+            "metrics": pred_stats,
+            "data_preview": output_df.head(10).to_dict('records'),
+            "conversion_rate": conversion_rate
+        }
+        return convert_numpy_types(response_data)
+
+    except Exception as e:
+        return {"status": "error", "user_id": user_id, "error_message": str(e), "error_type": type(e).__name__}
+
 def do_classification_predict(
     user_id: str,
     current_user: dict,
@@ -6705,6 +6876,35 @@ def run_classification(
         train_path=train_path,
         test_path=test_path,
         target_column=target_column,
+        drop_columns=drop_columns
+    )
+@celery_app.task
+def run_classification_predict_score(
+    user_id: str,
+    file_path: str,
+    drop_columns: str = "",
+    current_user: dict = None
+):
+    """
+    Celery task for running classification predictions and returning probability scores and risk tiers.
+    
+    Args:
+        user_id: User identifier to locate the saved model
+        file_path: Path to CSV file containing new data for predictions
+        drop_columns: Comma-separated column names to drop before prediction
+        current_user: Optional dictionary with user info
+    
+    Returns:
+        Dictionary containing predictions, probability scores, risk tiers, and metadata
+    """
+    import time
+    time.sleep(1)  # optional throttle or delay
+
+    # Call your probability-score version of the classification function
+    return do_classification_predict_score(
+        user_id=user_id,
+        current_user=current_user,
+        file_path=file_path,
         drop_columns=drop_columns
     )
 @celery_app.task

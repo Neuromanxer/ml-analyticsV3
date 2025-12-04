@@ -123,7 +123,7 @@ from io import BytesIO
 from score import router as score_router
 from ai import generate_insights
 from ai import router as ai_router
-from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_visualization, run_counterfactual
+from worker import run_classification, run_clustering, run_segment_analysis, run_label_clusters, run_classification_predict, run_classification_predict_score, run_visualization, run_counterfactual
 from worker import run_regression, run_risk_analysis, run_regression_predict, run_forecast, run_survival_analysis, run_what_if, run_decision_paths, run_ab_test
 from ecs_launcher import launch_job_on_ecs
 from worker import make_json_safe
@@ -929,7 +929,75 @@ async def classification(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing classification: {str(e)}")
+@app.post("/classification/predict_score/")
+async def classification_predict_score(
+    file: UploadFile = File(...),
+    drop_columns: str = Form(""),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Predict using previously trained classification model and return probability scores and risk tiers.
+    """
+    # ───────── Token check ───────────
+    MINIMUM_TOKENS = 0.05
+    if current_user.tokens is None or current_user.tokens < MINIMUM_TOKENS:
+        raise HTTPException(403, "Insufficient token balance to begin processing.")
 
+    user_id = current_user.id
+
+    # ───────── Validate trained model exists on Supabase ───────────
+    model_supabase_path = f"{user_id}/{user_id}_best_classifier.pkl"
+    try:
+        _ = download_file_from_supabase(model_supabase_path)
+    except Exception as e:
+        raise HTTPException(404, f"No trained classification model found on Supabase. Please train a model first. Details: {str(e)}")
+
+    # ───────── Validate uploaded file ───────────
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(400, "Prediction file must be a CSV.")
+
+    try:
+        # Save file temporarily
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_path = tmp.name
+
+        # Upload to Supabase under user-specific path
+        supabase_path = upload_file_to_supabase(
+            user_id=str(user_id),
+            file_path=temp_path,
+            filename=f"predict_{file.filename}"
+        )
+        os.remove(temp_path)
+
+        # ───────── Launch Celery Task ───────────
+        task = run_classification_predict_score.delay(
+            user_id=user_id,
+            current_user={
+                "id": current_user.id,
+                "email": current_user.email,
+                "subscription": current_user.subscription
+            },
+            file_path=supabase_path,
+            drop_columns=drop_columns
+        )
+
+        # Await task completion in threadpool
+        response_data = await run_in_threadpool(task.get)
+
+        # ───────── Deduct Tokens ───────────
+        if response_data.get("status") == "success":
+            try:
+                tokens_to_deduct = min(MINIMUM_TOKENS, current_user.tokens)
+                current_user.tokens -= tokens_to_deduct
+                # Commit token deduction in your DB here
+            except Exception as token_error:
+                print(f"[⚠️] Token deduction failed: {token_error}")
+
+        return response_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 @app.post("/classification/predict/")
 async def classification_predict(
     file: UploadFile = File(...),
