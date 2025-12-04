@@ -98,10 +98,8 @@ IMAGES_DIR = "images"
 SECRET_KEY = os.getenv("SECRET_KEY", "")  # fallback for local testing
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
 # Time for access token expiry
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 # Password hashing utilities
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @property
@@ -180,7 +178,8 @@ class DataLocationOut(BaseModel):
 class AuthTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str
+
 
 class RegisterResponse(BaseModel):
     user: UserResponse
@@ -714,13 +713,12 @@ async def delete_user_account(current_user = Depends(get_current_active_user)):
         logger.error(f"Error deleting user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
 
-# First, let's fix the token endpoint to properly return both tokens
 @router.post("/token", response_model=AuthTokenResponse)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_master_db_session)
 ):
-    """Get access token and refresh token for authentication."""
+    """Authenticate user and return access + refresh tokens."""
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         logger.warning(f"Failed login attempt for email: {form_data.username}")
@@ -740,14 +738,16 @@ async def login_for_access_token(
 
     # Create refresh token
     refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    refresh_token = create_refresh_token(data={"sub": user.email}, expires_delta=refresh_token_expires)
+    refresh_token = create_refresh_token(
+        data={"sub": user.email}, expires_delta=refresh_token_expires
+    )
 
+    # Return both tokens as JSON
     return {
-        "access_token": access_token, 
-        "refresh_token": refresh_token, 
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }
-
 
 # Now, let's add a proper refresh token endpoint
 @router.post("/refresh-token", response_model=Token)
