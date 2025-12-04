@@ -712,37 +712,21 @@ async def delete_user_account(current_user = Depends(get_current_active_user)):
     except Exception as e:
         logger.error(f"Error deleting user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
-
 @router.post("/token", response_model=AuthTokenResponse)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_master_db_session)
 ):
-    """Authenticate user and return access + refresh tokens."""
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
-        logger.warning(f"Failed login attempt for email: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Incorrect email or password"
         )
 
-    logger.info(f"User logged in successfully: {form_data.username}")
+    access_token = create_access_token(data={"sub": user.email})
+    refresh_token = create_refresh_token(data={"sub": user.email})
 
-    # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-
-    # Create refresh token
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    refresh_token = create_refresh_token(
-        data={"sub": user.email}, expires_delta=refresh_token_expires
-    )
-
-    # Return both tokens as JSON
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
