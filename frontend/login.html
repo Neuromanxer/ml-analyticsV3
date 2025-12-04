@@ -992,89 +992,121 @@ signupForm.addEventListener('submit', async function (event) {
     }
 });
 
-
-// FIXED: Signin form handler
+// FIXED: Signin form handler (defensive parsing)
 signinForm.addEventListener('submit', async function(event) {
-    event.preventDefault();
-    clearMessages();
-    
-    const formData = new FormData(event.target);
-    const email = formData.get('email')?.trim();
-    const password = formData.get('password')?.trim();
-    
-    if (!email) {
-        showError('signin-error', 'Please enter your email');
-        return;
-    }
-    if (!password) {
-        showError('signin-error', 'Please enter your password');
-        return;
-    }
-    
-    signinLoading.style.display = 'block';
+  event.preventDefault();
+  clearMessages();
 
+  const formData = new FormData(event.target);
+  const email = formData.get('email')?.trim();
+  const password = formData.get('password')?.trim();
+
+  if (!email) {
+    showError('signin-error', 'Please enter your email');
+    return;
+  }
+  if (!password) {
+    showError('signin-error', 'Please enter your password');
+    return;
+  }
+
+  signinLoading.style.display = 'block';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        username: email,
+        password: password
+      })
+    });
+
+    // Read the body once as text (defensive)
+    const raw = await response.text();
+    let data = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch (parseErr) {
+        console.warn('Token endpoint returned non-JSON:', raw);
+      }
+    }
+
+    if (!response.ok) {
+      // Prefer any server-provided message; fall back to status
+      const errMsg = (data && (data.detail || data.message || data.error)) || `Login failed (status ${response.status})`;
+      throw new Error(errMsg);
+    }
+
+    // Ensure we have tokens (server should send them)
+    if (!data || !data.access_token) {
+      throw new Error('Login succeeded but server returned invalid token response.');
+    }
+
+    const tokensStored = storeAuthTokens({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      name: email,
+      email: email
+    });
+
+    if (!tokensStored) {
+      throw new Error('Failed to store authentication tokens');
+    }
+
+    // Optional user reinit — defensive: server may return empty body
     try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ username: email, password: password })
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.detail || data.message || 'Login failed');
-        }
-        
-        const tokensStored = storeAuthTokens({
-            access_token: data.access_token,
-            refresh_token: data.refresh_token,
-            name: email,
-            email: email
-        });
-        
-        if (!tokensStored) {
-            throw new Error('Failed to store authentication tokens');
-        }
+      const reinitRes = await fetch(`${API_BASE_URL}/api/auth/reinit-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({ email: email })
+      });
 
-        // Optional user reinit
-        try {
-            await fetch(`${API_BASE_URL}/api/auth/reinit-user`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ email: email })
-            });
-        } catch (reinitError) {
-            console.warn('User reinit failed:', reinitError);
+      const reinitRaw = await reinitRes.text();
+      if (!reinitRes.ok) {
+        // Try to parse a helpful message if present
+        let reinitData = null;
+        if (reinitRaw) {
+          try { reinitData = JSON.parse(reinitRaw); } catch (e) { /* ignore */ }
         }
-
-        showSuccess('signin-success', 'Login successful! Redirecting...');
-        
-        setTimeout(() => {
-        const isLoggedIn = safeStorageGet('userLoggedIn') === 'true';
-        const at = safeStorageGet('access_token');
-        if (isLoggedIn && at) {
-          // forward tokens to the app so it can ingest and persist on its origin
-          redirectWithTokens(nextPage || DEFAULT_NEXT, {
-            access_token: at,
-            refresh_token: safeStorageGet('refresh_token'),
-            name: email,
-            email
-          });
-        } else {
-          showError('signin-error', 'Authentication verification failed. Please try again.');
-          clearAuthStorage();
-        }
-      }, 2000);
-
-        
-    } catch (err) {
-        console.error('Login failed:', err);
-        showError('signin-error', err.message);
-    } finally {
-        signinLoading.style.display = 'none';
+        console.warn('User reinit responded with error:', reinitRes.status, reinitData || reinitRaw);
+      }
+    } catch (reinitError) {
+      console.warn('User reinit failed (network or server error):', reinitError);
     }
+
+    showSuccess('signin-success', 'Login successful! Redirecting...');
+
+    setTimeout(() => {
+      const isLoggedIn = safeStorageGet('userLoggedIn') === 'true';
+      const at = safeStorageGet('access_token');
+      if (isLoggedIn && at) {
+        // forward tokens to the app so it can ingest and persist on its origin
+        redirectWithTokens(nextPage || DEFAULT_NEXT, {
+          access_token: at,
+          refresh_token: safeStorageGet('refresh_token'),
+          name: email,
+          email
+        });
+      } else {
+        showError('signin-error', 'Authentication verification failed. Please try again.');
+        clearAuthStorage();
+      }
+    }, 2000);
+
+  } catch (err) {
+    console.error('Login failed:', err);
+    showError('signin-error', err.message || 'Login failed');
+  } finally {
+    signinLoading.style.display = 'none';
+  }
 });
+
 
 // Social auth functions
 function socialSignIn(provider) {
