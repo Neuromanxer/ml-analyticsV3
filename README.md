@@ -68,7 +68,7 @@ jupyter notebook
 
 Watch the full walkthrough of the project here:
 
-[![Watch the video](https://www.youtube.com/watch?v=c7xor7jz7Xc&t=6s)
+[![Watch the video](https://www.youtube.com/watch?v=c7xor7jz7Xc&t=11s)
 
 ## 🧠 Future Improvements
 
